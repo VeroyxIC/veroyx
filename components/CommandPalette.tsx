@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("contract") || q.includes("award") || q.includes("subcontract") || q.includes("procurement") || q.includes("prime")) {
+        list.push({
+          type: "technology",
+          title: "Defense Contracts & Flow-Down Radar",
+          subtitle: "Prime Awards, Tier-1 Subsystems & Agency Obligations",
+          href: "/contracts"
+        })
+      }
+
       if (q.includes("payload") || q.includes("fairing") || q.includes("envelope") || q.includes("mass") || q.includes("lift")) {
         list.push({
           type: "technology",
