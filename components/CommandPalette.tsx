@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("engine") || q.includes("propulsion") || q.includes("thrust") || q.includes("isp")) {
+        list.push({
+          type: "technology",
+          title: "Propulsion Engine Matrix",
+          subtitle: "Specific Impulse (Isp), Chamber Pressure & Thrust-to-Weight",
+          href: "/propulsion"
+        })
+      }
+
       if (q.includes("ssa") || q.includes("debris") || q.includes("collision") || q.includes("risk")) {
         list.push({
           type: "technology",
