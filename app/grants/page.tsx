@@ -1,32 +1,27 @@
 import Link from "next/link"
-import { createClient } from "@supabase/supabase-js"
-import { ShieldCheck, DollarSign, Calendar, ExternalLink } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { ExternalLink } from "lucide-react"
 import ExportButton from "@/components/ExportButton"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
 export default async function GrantsPage() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const { data: grants } = await supabase
+    .from("grants")
+    .select("*")
+    .order("name", { ascending: true })
 
-  let grants: any[] = []
-
-  if (supabaseUrl && supabaseKey) {
-    const supabase = createClient(supabaseUrl, supabaseKey)
-    const { data } = await supabase.from("grants").select("*").order("name")
-    if (data) grants = data
-  }
+  const list = grants || []
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-6 sm:px-12 font-sans">
       <div className="max-w-7xl mx-auto space-y-8">
-        
         <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-xs font-mono uppercase tracking-widest mb-3">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Procurement & Non-Dilutive Capital
+              Procurement & Non-Dilutive Capital ({list.length} Indexed)
             </div>
             <h1 className="text-4xl font-black tracking-tight text-white font-mono">
               FEDERAL PRIME CONTRACTS & SBIR
@@ -35,11 +30,11 @@ export default async function GrantsPage() {
               Non-dilutive awards, Space Force mission orders, and NASA CLPS contracts awarded to commercial space operators.
             </p>
           </div>
-          <ExportButton data={grants} filename="veroyx-defense-contracts" />
+          <ExportButton data={list} filename="veroyx-defense-contracts" />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {grants.map((g) => (
+          {list.map((g: any) => (
             <Link
               key={g.slug}
               href={`/grants/${g.slug}`}
@@ -69,7 +64,6 @@ export default async function GrantsPage() {
             </Link>
           ))}
         </div>
-
       </div>
     </div>
   )
