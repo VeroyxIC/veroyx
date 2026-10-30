@@ -1,253 +1,179 @@
-import { notFound } from "next/navigation"
 import Link from "next/link"
-import { createClient } from "@supabase/supabase-js"
-import { 
-  Building2, MapPin, DollarSign, Users, Globe, 
-  ArrowLeft, Cpu, ShieldCheck, ChevronRight, Activity 
-} from "lucide-react"
+import { notFound } from "next/navigation"
+import { supabase } from "@/lib/supabase"
+import { ArrowLeft, ExternalLink, DollarSign, MapPin, Building, Shield, Cpu, Calendar } from "lucide-react"
+import ExportButton from "@/components/ExportButton"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 interface Props {
   params: Promise<{ slug: string }>
 }
 
-import type { Metadata } from "next"
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export default async function CompanyDetailPage({ params }: Props) {
   const { slug } = await params
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !supabaseKey) {
-    return { title: "Company Profile | Veroyx Space Intelligence" }
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey)
   const { data: company } = await supabase
     .from("companies")
-    .select("name, sector, description, funding_total")
+    .select("*")
     .eq("slug", slug)
     .single()
 
   if (!company) {
-    return { title: "Company Dossier | Veroyx" }
-  }
-
-  const title = `${company.name} — Commercial Aerospace Dossier | Veroyx`
-  const description = company.description 
-    ? company.description.slice(0, 160) + "..."
-    : `Institutional intelligence, funding telemetry, and propulsion specifications for ${company.name}.`
-
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      url: `https://www.veroyx.com/companies/${slug}`,
-      siteName: "Veroyx Space Intelligence",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-    },
-    alternates: {
-      canonical: `https://www.veroyx.com/companies/${slug}`,
-    },
-  }
-}
-
-export default async function CompanyDossierPage({ params }: Props) {
-  const { slug } = await params
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
     notFound()
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey)
-
-  const { data: company, error } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("slug", slug)
-    .single()
-
-  if (error || !company) {
-    notFound()
-  }
-
-  const { data: relatedGrants } = await supabase
-    .from("grants")
-    .select("*")
-    .ilike("name", `%${company.name}%`)
-    .limit(3)
+  // Cross-reference related hardware and awards
+  const [{ data: technologies }, { data: grants }] = await Promise.all([
+    supabase.from("technologies").select("*").eq("company_id", company.id),
+    supabase.from("grants").select("*").eq("company_id", company.id),
+  ])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-6 sm:px-12 font-sans">
       <div className="max-w-6xl mx-auto space-y-10">
-        <div>
-          <Link 
-            href="/companies" 
+        
+        {/* Navigation Bar */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-6">
+          <Link
+            href="/companies"
             className="inline-flex items-center gap-2 text-xs font-mono text-slate-400 hover:text-cyan-400 transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            BACK TO COMMERCIAL DIRECTORY
+            <ArrowLeft className="w-4 h-4" />
+            RETURN TO DIRECTORY
           </Link>
+          <ExportButton data={[company]} filename={`veroyx-${company.slug}-dossier`} />
         </div>
 
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              Verified Commercial Prime
-            </div>
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white font-mono">
-              {company.name}
-            </h1>
-            <p className="text-slate-400 mt-2 text-sm font-mono flex items-center gap-2">
-              <span>SECTOR INDEX:</span>
-              <span className="text-cyan-300 font-semibold">{company.sector || "Commercial Aerospace"}</span>
-            </p>
+        {/* Header Section */}
+        <div className="space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            {company.sector || "Commercial Prime"}
           </div>
-
-          {company.website && (
-            <div>
-              <a
-                href={company.website}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-200 hover:text-white text-xs font-mono transition-all"
-              >
-                <Globe className="w-3.5 h-3.5 text-cyan-400" />
-                <span>OFFICIAL PORTAL</span>
-                <ChevronRight className="w-3 h-3 text-slate-500" />
-              </a>
-            </div>
-          )}
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
+            {company.name}
+          </h1>
+          <p className="text-slate-300 text-base max-w-3xl leading-relaxed">
+            {company.description}
+          </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>TOTAL CAPITAL</span>
-              <DollarSign className="w-4 h-4 text-emerald-400" />
+        {/* Telemetry Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+              Capital Raised
             </div>
-            <div className="text-2xl font-bold font-mono text-white mt-2">
-              {company.funding_total || "Confidential"}
+            <div className="text-xl font-bold text-white">
+              {company.funding_total || "Classified / Undisclosed"}
             </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Disclosed private/public</div>
           </div>
 
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>HEADCOUNT</span>
-              <Users className="w-4 h-4 text-cyan-400" />
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+              Operational HQ
             </div>
-            <div className="text-2xl font-bold font-mono text-white mt-2">
-              {company.employee_count ? `${company.employee_count}+` : "Scale-up"}
-            </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Full-time engineering</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>PRIMARY HQ</span>
-              <MapPin className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="text-sm font-bold font-mono text-white mt-3 line-clamp-1">
+            <div className="text-xl font-bold text-white">
               {company.hq_location || "United States"}
             </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Operations base</div>
           </div>
 
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>OPERATIONAL STATUS</span>
-              <Activity className="w-4 h-4 text-purple-400" />
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <Calendar className="w-3.5 h-3.5 text-blue-400" />
+              Founded
             </div>
-            <div className="text-sm font-bold font-mono text-emerald-400 mt-3 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-              ACTIVE PRIME
+            <div className="text-xl font-bold text-white">
+              {company.founded_year || "Verified Commercial"}
             </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Tier-1 Qualified</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <Building className="w-3.5 h-3.5 text-purple-400" />
+              Stage
+            </div>
+            <div className="text-xl font-bold text-white">
+              {company.stage || "Growth / Scale"}
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="p-7 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
-              <h2 className="text-lg font-bold font-mono text-white flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-cyan-400" />
-                EXECUTIVE INTELLIGENCE PROFILE
+        {/* Relational Intelligence Sections */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-4">
+          
+          {/* Hardware & Systems */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <Cpu className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-lg font-bold font-mono text-white tracking-wide">
+                SYSTEMS & HARDWARE ({technologies?.length || 0})
               </h2>
-              <p className="text-slate-300 leading-relaxed text-sm">
-                {company.description}
-              </p>
             </div>
-
-            <div className="p-7 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
-              <h2 className="text-lg font-bold font-mono text-white flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                ASSOCIATED FEDERAL CONTRACTS & SBIR/STTR AWARDS
-              </h2>
-              {relatedGrants && relatedGrants.length > 0 ? (
-                <div className="space-y-3">
-                  {relatedGrants.map((grant) => (
-                    <div key={grant.slug} className="p-4 rounded-lg bg-slate-950/80 border border-slate-800 flex justify-between items-center text-xs font-mono">
-                      <div>
-                        <div className="text-slate-200 font-semibold">{grant.name}</div>
-                        <div className="text-slate-500 mt-0.5">{grant.awarding_agency || "Federal Agency"}</div>
-                      </div>
-                      <div className="text-emerald-400 font-bold">
-                        ${Number(grant.amount).toLocaleString()} USD
-                      </div>
+            {technologies && technologies.length > 0 ? (
+              <div className="space-y-3">
+                {technologies.map((t: any) => (
+                  <Link
+                    key={t.slug}
+                    href={`/technologies/${t.slug}`}
+                    className="block p-4 rounded-lg bg-slate-900/30 border border-slate-800 hover:border-cyan-500/40 transition-all"
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-mono font-bold text-white text-sm">{t.name}</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/30">
+                        TRL {t.trl || 7}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs font-mono text-slate-500 italic">
-                  No public direct prime contract filings attached to this operational entity.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4 font-mono text-xs">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider border-b border-slate-800 pb-2">
-                Dossier Specifications
-              </h3>
-              <div className="flex justify-between py-1 border-b border-slate-800/40">
-                <span className="text-slate-500">DATABASE ID:</span>
-                <span className="text-slate-300">{company.slug}</span>
+                    <p className="text-xs text-slate-400 line-clamp-2">{t.description}</p>
+                  </Link>
+                ))}
               </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/40">
-                <span className="text-slate-500">INDEX SECURITY:</span>
-                <span className="text-cyan-400">UNCLASSIFIED</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/40">
-                <span className="text-slate-500">VERIFIED CADENCE:</span>
-                <span className="text-slate-300">DAILY</span>
-              </div>
-            </div>
-
-            <div className="p-6 rounded-xl bg-gradient-to-br from-cyan-950/30 to-slate-900 border border-cyan-500/20 text-xs font-mono space-y-3">
-              <div className="text-cyan-400 font-bold flex items-center gap-2">
-                <Cpu className="w-4 h-4" />
-                DATA ACCESS NOTE
-              </div>
-              <p className="text-slate-400 leading-relaxed text-[11px]">
-                Programmatic telemetry ingested via Supabase PostgREST edge API. To request full hardware schematic dossiers, query through the terminal command palette.
+            ) : (
+              <p className="text-xs font-mono text-slate-600 p-4 border border-dashed border-slate-800 rounded-lg">
+                No proprietary hardware lines unclassified under public records.
               </p>
-            </div>
+            )}
           </div>
+
+          {/* Federal Awards & Contracts */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <Shield className="w-4 h-4 text-emerald-400" />
+              <h2 className="text-lg font-bold font-mono text-white tracking-wide">
+                DEFENSE & NASA CONTRACTS ({grants?.length || 0})
+              </h2>
+            </div>
+            {grants && grants.length > 0 ? (
+              <div className="space-y-3">
+                {grants.map((g: any) => (
+                  <Link
+                    key={g.slug}
+                    href={`/grants/${g.slug}`}
+                    className="block p-4 rounded-lg bg-slate-900/30 border border-slate-800 hover:border-emerald-500/40 transition-all"
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-mono font-bold text-white text-sm">{g.name}</span>
+                      <span className="text-xs font-mono text-emerald-400 font-bold">
+                        {g.amount ? `$${(g.amount / 1000000).toFixed(1)}M` : "Classified"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 line-clamp-2">{g.description}</p>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs font-mono text-slate-600 p-4 border border-dashed border-slate-800 rounded-lg">
+                No active public grant or SBIR obligations recorded.
+              </p>
+            )}
+          </div>
+
         </div>
+
       </div>
     </div>
   )

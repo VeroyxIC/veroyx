@@ -1,287 +1,85 @@
-import { notFound } from "next/navigation"
 import Link from "next/link"
-import { createClient } from "@supabase/supabase-js"
-import { 
-  Cpu, ArrowLeft, Orbit, CheckCircle2, 
-  ShieldCheck, Layers, Gauge, ExternalLink, Activity
-} from "lucide-react"
+import { notFound } from "next/navigation"
+import { supabase } from "@/lib/supabase"
+import { ArrowLeft, Cpu, Gauge, Orbit, ShieldCheck } from "lucide-react"
+import ExportButton from "@/components/ExportButton"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 interface Props {
   params: Promise<{ slug: string }>
 }
 
-const TRL_STAGES = [
-  { level: 1, title: "Basic Principles" },
-  { level: 2, title: "Concept Formulated" },
-  { level: 3, title: "Proof of Concept" },
-  { level: 4, title: "Lab Validation" },
-  { level: 5, title: "Relevant Environment" },
-  { level: 6, title: "System Prototype" },
-  { level: 7, title: "Space Demo" },
-  { level: 8, title: "Flight Qualified" },
-  { level: 9, title: "Flight Proven" },
-]
-
-import type { Metadata } from "next"
-
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export default async function TechnologyDetailPage({ params }: Props) {
   const { slug } = await params
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!supabaseUrl || !supabaseKey) {
-    return { title: "Hardware Specification | Veroyx Space Intelligence" }
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey)
   const { data: tech } = await supabase
     .from("technologies")
-    .select("name, sector, trl, description")
+    .select("*, companies(*)")
     .eq("slug", slug)
     .single()
 
   if (!tech) {
-    return { title: "Flight System Dossier | Veroyx" }
-  }
-
-  const title = `${tech.name} (TRL ${tech.trl || 7}) — Hardware Telemetry | Veroyx`
-  const description = tech.description 
-    ? tech.description.slice(0, 160) + "..."
-    : `Technical specifications, flight maturity ladder, and operational envelope for ${tech.name}.`
-
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      type: "website",
-      url: `https://www.veroyx.com/technologies/${slug}`,
-      siteName: "Veroyx Space Intelligence",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-    },
-    alternates: {
-      canonical: `https://www.veroyx.com/technologies/${slug}`,
-    },
-  }
-}
-
-export default async function TechnologyDossierPage({ params }: Props) {
-  const { slug } = await params
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseKey) {
     notFound()
   }
-
-  const supabase = createClient(supabaseUrl, supabaseKey)
-
-  const { data: tech, error } = await supabase
-    .from("technologies")
-    .select("*")
-    .eq("slug", slug)
-    .single()
-
-  if (error || !tech) {
-    notFound()
-  }
-
-  const currentTrl = Number(tech.trl) || 6
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-6 sm:px-12 font-sans">
-      <div className="max-w-6xl mx-auto space-y-10">
+      <div className="max-w-5xl mx-auto space-y-10">
         
-        {/* Breadcrumb */}
-        <div>
-          <Link 
-            href="/technologies" 
+        <div className="flex items-center justify-between border-b border-slate-800 pb-6">
+          <Link
+            href="/technologies"
             className="inline-flex items-center gap-2 text-xs font-mono text-slate-400 hover:text-cyan-400 transition-colors"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            BACK TO PROPULSION & HARDWARE INDEX
+            <ArrowLeft className="w-4 h-4" />
+            RETURN TO HARDWARE INDEX
           </Link>
+          <ExportButton data={[tech]} filename={`veroyx-${tech.slug}-spec`} />
         </div>
 
-        {/* Header Telemetry */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-              Proprietary Flight System
-            </div>
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-white font-mono">
-              {tech.name}
-            </h1>
-            <p className="text-slate-400 mt-2 text-sm font-mono flex items-center gap-2">
-              <span>SYSTEM CLASSIFICATION:</span>
-              <span className="text-cyan-300 font-semibold">{tech.sector || "Space Systems Architecture"}</span>
-            </p>
+        <div className="space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            TRL {tech.trl || 7} • {tech.sector || "Space Hardware"}
           </div>
-
-          <div className="font-mono text-xs flex items-center gap-3">
-            <span className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-2">
-              <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              STATUS: <strong className="text-emerald-400">ACTIVE FLIGHT R&D</strong>
-            </span>
-          </div>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
+            {tech.name}
+          </h1>
+          <p className="text-slate-300 text-base max-w-3xl leading-relaxed">
+            {tech.description}
+          </p>
         </div>
 
-        {/* TRL Maturity Progress Ladder */}
-        <div className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-bold font-mono text-white flex items-center gap-2">
-                <Gauge className="w-4 h-4 text-cyan-400" />
-                NASA / DOD TECHNOLOGY READINESS LEVEL (TRL)
-              </h2>
-              <p className="text-xs font-mono text-slate-400 mt-0.5">
-                Current Maturity: <span className="text-cyan-400 font-bold">TRL {currentTrl} of 9</span> — {TRL_STAGES[currentTrl - 1]?.title}
-              </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono">
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <Orbit className="w-3.5 h-3.5 text-cyan-400" />
+              Target Operational Envelope
             </div>
-            <span className="text-xs font-mono px-2.5 py-1 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-300 self-start sm:self-auto">
-              {currentTrl >= 7 ? "SPACE DEMONSTRATED" : "VALIDATION BENCH"}
-            </span>
-          </div>
-
-          {/* 9-Stage Progress Steps */}
-          <div className="grid grid-cols-3 sm:grid-cols-9 gap-1.5 pt-2">
-            {TRL_STAGES.map((s) => {
-              const isPassed = s.level <= currentTrl
-              const isCurrent = s.level === currentTrl
-              return (
-                <div 
-                  key={s.level} 
-                  className={`p-2 rounded-md border text-center transition-all ${
-                    isCurrent 
-                      ? "bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-lg shadow-cyan-950" 
-                      : isPassed 
-                        ? "bg-slate-800/80 border-slate-700 text-slate-200" 
-                        : "bg-slate-950/40 border-slate-900 text-slate-600"
-                  }`}
-                >
-                  <div className="text-[11px] font-mono font-bold">TRL {s.level}</div>
-                  <div className="text-[9px] font-mono truncate hidden sm:block mt-0.5">{s.title}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Core Specs Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>TARGET REGIME</span>
-              <Orbit className="w-4 h-4 text-cyan-400" />
-            </div>
-            <div className="text-lg font-bold font-mono text-white mt-2 truncate">
-              {tech.target_domain || "Low-Earth Orbit"}
-            </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Operational orbital envelope</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>REUSABILITY</span>
-              <Layers className="w-4 h-4 text-emerald-400" />
-            </div>
-            <div className="text-lg font-bold font-mono text-white mt-2">
-              Multi-Flight Rated
-            </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Rapid turnaround architecture</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>DUAL-USE QUALIFIED</span>
-              <ShieldCheck className="w-4 h-4 text-purple-400" />
-            </div>
-            <div className="text-lg font-bold font-mono text-white mt-2">
-              DoD & Civil Space
-            </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">ITAR / EAR compliant baseline</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
-              <span>DEPLOYMENT READINESS</span>
-              <CheckCircle2 className="w-4 h-4 text-amber-400" />
-            </div>
-            <div className="text-lg font-bold font-mono text-emerald-400 mt-2">
-              Verified Specs
-            </div>
-            <div className="text-[11px] font-mono text-slate-500 mt-1">Hardware telemetry confirmed</div>
-          </div>
-        </div>
-
-        {/* Technical Description & Architecture Breakdown */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="p-7 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
-              <h2 className="text-lg font-bold font-mono text-white flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-cyan-400" />
-                SYSTEM ARCHITECTURE & FLIGHT MECHANICS
-              </h2>
-              <p className="text-slate-300 leading-relaxed text-sm">
-                {tech.description}
-              </p>
-            </div>
-
-            <div className="p-6 rounded-xl bg-slate-900/40 border border-slate-800/80 space-y-3 font-mono text-xs">
-              <h3 className="text-white font-bold uppercase tracking-wider flex items-center gap-2">
-                <Activity className="w-4 h-4 text-cyan-400" />
-                OPERATIONAL FLIGHT CONSTRAINTS
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-slate-300">
-                <div className="p-3 rounded bg-slate-950 border border-slate-800/80">
-                  <span className="text-slate-500 block text-[10px]">ENVIRONMENTAL SPECS</span>
-                  Active microgravity & aerodynamic hypersonic profile
-                </div>
-                <div className="p-3 rounded bg-slate-950 border border-slate-800/80">
-                  <span className="text-slate-500 block text-[10px]">DATA INTERFACE</span>
-                  SpaceWire & MIL-STD-1553 compatible telemetry bus
-                </div>
-              </div>
+            <div className="text-lg font-bold text-white">
+              {tech.target_domain || "LEO / Suborbital"}
             </div>
           </div>
 
-          {/* Sidebar Metadata */}
-          <div className="space-y-6">
-            <div className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4 font-mono text-xs">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider border-b border-slate-800 pb-2">
-                Telemetry Meta
-              </h3>
-              <div className="flex justify-between py-1 border-b border-slate-800/40">
-                <span className="text-slate-500">SYSTEM SLUG:</span>
-                <span className="text-slate-300 truncate max-w-[150px]">{tech.slug}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/40">
-                <span className="text-slate-500">SECTOR INDEX:</span>
-                <span className="text-cyan-400">{tech.sector}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-800/40">
-                <span className="text-slate-500">HARDWARE CADENCE:</span>
-                <span className="text-slate-300">TRL {currentTrl}</span>
-              </div>
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <Gauge className="w-3.5 h-3.5 text-blue-400" />
+              NASA/DoD Readiness Level
             </div>
+            <div className="text-lg font-bold text-white">
+              Level {tech.trl || 7} of 9
+            </div>
+          </div>
 
-            <div className="p-6 rounded-xl bg-gradient-to-br from-cyan-950/30 to-slate-900 border border-cyan-500/20 text-xs font-mono space-y-3">
-              <div className="text-cyan-400 font-bold flex items-center gap-2">
-                <ExternalLink className="w-4 h-4" />
-                PROCUREMENT INTEGRATION
-              </div>
-              <p className="text-slate-400 leading-relaxed text-[11px]">
-                System architecture indexed for commercial primes and defense acquisition offices. Cross-reference technical specs using the global command palette (⌘K).
-              </p>
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[11px] text-slate-500 flex items-center gap-1.5 uppercase">
+              <Cpu className="w-3.5 h-3.5 text-purple-400" />
+              Developer Entity
+            </div>
+            <div className="text-lg font-bold text-white truncate">
+              {tech.companies?.name || "Proprietary Prime"}
             </div>
           </div>
         </div>
