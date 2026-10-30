@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("payload") || q.includes("fairing") || q.includes("envelope") || q.includes("mass") || q.includes("lift")) {
+        list.push({
+          type: "technology",
+          title: "Launch Fairing & Payload Trade Engine",
+          subtitle: "Usable Envelope Clearance, Acoustic Load & Mass-to-Orbit",
+          href: "/payload"
+        })
+      }
+
       if (q.includes("sar") || q.includes("radar") || q.includes("chirp") || q.includes("microwave")) {
         list.push({
           type: "technology",
