@@ -31,6 +31,9 @@ export default function Navbar() {
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
             LAUNCHES
           </Link>
+          <Link href="/compare" className="hover:text-cyan-400 transition-colors">
+            COMPARE
+          </Link>
           <Link href="/analytics" className="text-white hover:text-cyan-400 transition-colors px-3 py-1.5 rounded-md bg-slate-900 border border-slate-800 hover:border-cyan-500/50">
             RADAR
           </Link>
