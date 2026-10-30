@@ -64,6 +64,9 @@ export default function WatchlistPage() {
           <div className="flex items-center gap-2 font-mono text-xs px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
             <Bell className="w-4 h-4 text-cyan-400" />
             <span>DISPATCH ALERTS: <strong className="text-cyan-400">ENABLED</strong></span>
+            <Link href="/watchlist/dispatch" className="text-[11px] font-bold text-cyan-400 hover:underline ml-2">
+              OPEN DISPATCH ARRAY →
+            </Link>
           </div>
         </div>
 
