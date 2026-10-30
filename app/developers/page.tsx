@@ -1,10 +1,20 @@
 "use client"
 
 import { useState } from "react"
-import { Terminal, Copy, Check, Code2, Globe, Key } from "lucide-react"
+import { Terminal, Copy, Check, Code2, Globe, Key, Shield, Building2, Mail, CheckCircle2, X } from "lucide-react"
 
 export default function DevelopersPage() {
   const [copied, setCopied] = useState<string | null>(null)
+  const [showModal, setShowModal] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [issuedKey, setIssuedKey] = useState<string | null>(null)
+
+  const [formData, setFormData] = useState({
+    organization: "",
+    email: "",
+    entityType: "Defense / Commercial Prime",
+    intendedUse: "Algorithmic telemetry ingestion & supply chain auditing",
+  })
 
   const copySnippet = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -12,11 +22,34 @@ export default function DevelopersPage() {
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const curlExample1 = `curl -X GET "https://veroyx.com/api/v1/telemetry?entity=companies&limit=5" \
-  -H "Accept: application/json"`
+  const handleApply = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
 
-  const curlExample2 = `curl -X GET "https://veroyx.com/api/v1/telemetry?entity=technologies&trl=8" \
-  -H "Accept: application/json"`
+    try {
+      const res = await fetch("/api/v1/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      })
+      const result = await res.json()
+      if (result.success && result.token) {
+        setIssuedKey(result.token)
+      }
+    } catch (err) {
+      console.error("Provisioning failed:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const activeToken = issuedKey || "Bearer vx_live_9f81a7b2e3c04d55b8014a9e"
+
+  const curlExample1 = `curl -X GET "https://veroyx.com/api/v1/telemetry?entity=companies&limit=5" \\
+  -H "Authorization: ${activeToken}"`
+
+  const curlExample2 = `curl -X GET "https://veroyx.com/api/v1/telemetry?entity=technologies&trl=8" \\
+  -H "Authorization: ${activeToken}"`
 
   const jsonSample = `{
   "status": "success",
@@ -48,37 +81,52 @@ export default function DevelopersPage() {
               Query aerospace primes, propulsion systems, defense grants, and live launch manifests directly into your trading algorithms or internal intelligence pipelines.
             </p>
           </div>
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <span className="px-3 py-1.5 rounded-lg bg-emerald-950/50 border border-emerald-500/30 text-emerald-400 font-bold">
-              API STATUS: 99.98% ONLINE
-            </span>
-          </div>
+
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all shrink-0"
+          >
+            <Shield className="w-4 h-4" />
+            REQUEST ENTERPRISE TOKEN
+          </button>
         </div>
 
+        {/* Credentials Box */}
         <div className="p-6 rounded-xl bg-slate-900/40 border border-slate-800 space-y-4">
-          <div className="flex items-center gap-2 font-mono text-sm text-cyan-400 font-bold">
-            <Key className="w-4 h-4" /> PUBLIC ACCESS BEARER TOKEN
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-mono text-sm text-cyan-400 font-bold">
+              <Key className="w-4 h-4" />
+              {issuedKey ? "PROVISIONED INSTITUTIONAL BEARER TOKEN" : "SANDBOX BEARER TOKEN"}
+            </div>
+            {issuedKey && (
+              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30">
+                ACTIVE • 300 REQ/MIN
+              </span>
+            )}
           </div>
+
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950 p-4 rounded-lg border border-slate-800 font-mono text-xs">
             <code className="text-slate-300 truncate w-full sm:w-auto">
-              Bearer vx_live_9f81a7b2e3c04d55b8014a9e
+              {activeToken}
             </code>
             <button
-              onClick={() => copySnippet("Bearer vx_live_9f81a7b2e3c04d55b8014a9e", "key")}
+              onClick={() => copySnippet(activeToken, "key")}
               className="px-3 py-1.5 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 shrink-0 flex items-center gap-1.5 transition-all"
             >
-              {copied === "key" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied === "key" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
               {copied === "key" ? "COPIED" : "COPY TOKEN"}
             </button>
           </div>
         </div>
 
+        {/* Endpoints & Schema */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-6">
             <h3 className="text-lg font-bold font-mono text-white flex items-center gap-2">
               <Terminal className="w-4 h-4 text-cyan-400" />
               REST ENDPOINTS
             </h3>
+
             <div className="space-y-4 font-mono text-xs">
               <div className="p-4 rounded-xl bg-slate-900/30 border border-slate-800 space-y-3">
                 <div className="flex items-center gap-2">
@@ -138,6 +186,109 @@ export default function DevelopersPage() {
             </div>
           </div>
         </div>
+
+        {/* Modal */}
+        {showModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl relative">
+              <button
+                onClick={() => setShowModal(false)}
+                className="absolute top-6 right-6 text-slate-500 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {issuedKey ? (
+                <div className="text-center space-y-4 py-4">
+                  <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
+                  <h3 className="text-2xl font-bold font-mono text-white">KEY ISSUED SUCCESSFULLY</h3>
+                  <p className="text-xs text-slate-400">
+                    Your institutional tier-1 access token has been activated and loaded into your terminal session.
+                  </p>
+                  <div className="p-3 bg-slate-950 border border-slate-800 rounded font-mono text-xs text-cyan-400 break-all">
+                    {issuedKey}
+                  </div>
+                  <button
+                    onClick={() => setShowModal(false)}
+                    className="w-full py-2.5 rounded bg-slate-800 hover:bg-slate-700 text-white font-mono text-xs font-bold"
+                  >
+                    RETURN TO DEVELOPER SUITE
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleApply} className="space-y-4">
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-bold font-mono text-white flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-cyan-400" />
+                      INSTITUTIONAL ACCESS REQUEST
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Provision dedicated enterprise rate-limits (300 req/min) for commercial, defense, and venture operations.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3 font-mono text-xs">
+                    <div>
+                      <label className="text-slate-400 block mb-1">ORGANIZATION NAME</label>
+                      <input
+                        required
+                        type="text"
+                        placeholder="e.g. Lockheed Martin, USSF, In-Q-Tel"
+                        value={formData.organization}
+                        onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">AUTHORIZED WORK EMAIL</label>
+                      <input
+                        required
+                        type="email"
+                        placeholder="analyst@domain.com"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">ENTITY CLASSIFICATION</label>
+                      <select
+                        value={formData.entityType}
+                        onChange={(e) => setFormData({ ...formData, entityType: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      >
+                        <option>Defense / Commercial Prime</option>
+                        <option>Venture Capital / Sovereign Fund</option>
+                        <option>Federal / Military Department</option>
+                        <option>Aerospace R&D Lab</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-slate-400 block mb-1">INTENDED USE CASE</label>
+                      <input
+                        type="text"
+                        value={formData.intendedUse}
+                        onChange={(e) => setFormData({ ...formData, intendedUse: e.target.value })}
+                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    disabled={loading}
+                    type="submit"
+                    className="w-full py-2.5 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs tracking-wider transition-all disabled:opacity-50 mt-4"
+                  >
+                    {loading ? "AUTHENTICATING & PROVISIONING..." : "GENERATE INSTITUTIONAL KEY"}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
