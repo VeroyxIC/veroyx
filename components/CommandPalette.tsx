@@ -58,11 +58,13 @@ export default function CommandPalette() {
       const q = query.toLowerCase()
 
       const [
+        { data: constellations },
         { data: companies },
         { data: technologies },
         { data: grants },
         { data: launches }
       ] = await Promise.all([
+        supabase.from("constellations").select("name, slug, operator, orbit_regime").ilike("name", `%${q}%`).limit(3),
         supabase.from("companies").select("name, slug, sector").ilike("name", `%${q}%`).limit(3),
         supabase.from("technologies").select("name, slug, sector, trl").ilike("name", `%${q}%`).limit(3),
         supabase.from("grants").select("name, slug, awarding_agency, amount").ilike("name", `%${q}%`).limit(3),
@@ -70,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      ;(constellations || []).forEach((c) => {
+        list.push({
+          type: "technology",
+          title: c.name,
+          subtitle: `${c.operator} • ${c.orbit_regime} Shell`,
+          href: `/constellations`
+        })
+      })
+
 
       ;(companies || []).forEach((c) => {
         list.push({
