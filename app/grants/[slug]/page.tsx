@@ -12,6 +12,54 @@ interface Props {
   params: Promise<{ slug: string }>
 }
 
+import type { Metadata } from "next"
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    return { title: "Federal Prime Obligation | Veroyx Space Intelligence" }
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey)
+  const { data: grant } = await supabase
+    .from("grants")
+    .select("name, awarding_agency, amount, description")
+    .eq("slug", slug)
+    .single()
+
+  if (!grant) {
+    return { title: "Prime Award Filing | Veroyx" }
+  }
+
+  const title = `${grant.name} — Federal Contract Telemetry | Veroyx`
+  const description = grant.description 
+    ? grant.description.slice(0, 160) + "..."
+    : `Procurement filing, agency obligations, and contract compliance details for ${grant.name}.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: `https://www.veroyx.com/grants/${slug}`,
+      siteName: "Veroyx Space Intelligence",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    alternates: {
+      canonical: `https://www.veroyx.com/grants/${slug}`,
+    },
+  }
+}
+
 export default async function GrantDossierPage({ params }: Props) {
   const { slug } = await params
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

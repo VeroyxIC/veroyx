@@ -24,6 +24,54 @@ const TRL_STAGES = [
   { level: 9, title: "Flight Proven" },
 ]
 
+import type { Metadata } from "next"
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    return { title: "Hardware Specification | Veroyx Space Intelligence" }
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey)
+  const { data: tech } = await supabase
+    .from("technologies")
+    .select("name, sector, trl, description")
+    .eq("slug", slug)
+    .single()
+
+  if (!tech) {
+    return { title: "Flight System Dossier | Veroyx" }
+  }
+
+  const title = `${tech.name} (TRL ${tech.trl || 7}) — Hardware Telemetry | Veroyx`
+  const description = tech.description 
+    ? tech.description.slice(0, 160) + "..."
+    : `Technical specifications, flight maturity ladder, and operational envelope for ${tech.name}.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: `https://www.veroyx.com/technologies/${slug}`,
+      siteName: "Veroyx Space Intelligence",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    alternates: {
+      canonical: `https://www.veroyx.com/technologies/${slug}`,
+    },
+  }
+}
+
 export default async function TechnologyDossierPage({ params }: Props) {
   const { slug } = await params
 

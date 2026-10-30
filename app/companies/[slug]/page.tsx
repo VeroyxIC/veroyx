@@ -12,6 +12,54 @@ interface Props {
   params: Promise<{ slug: string }>
 }
 
+import type { Metadata } from "next"
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    return { title: "Company Profile | Veroyx Space Intelligence" }
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey)
+  const { data: company } = await supabase
+    .from("companies")
+    .select("name, sector, description, funding_total")
+    .eq("slug", slug)
+    .single()
+
+  if (!company) {
+    return { title: "Company Dossier | Veroyx" }
+  }
+
+  const title = `${company.name} — Commercial Aerospace Dossier | Veroyx`
+  const description = company.description 
+    ? company.description.slice(0, 160) + "..."
+    : `Institutional intelligence, funding telemetry, and propulsion specifications for ${company.name}.`
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      url: `https://www.veroyx.com/companies/${slug}`,
+      siteName: "Veroyx Space Intelligence",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+    },
+    alternates: {
+      canonical: `https://www.veroyx.com/companies/${slug}`,
+    },
+  }
+}
+
 export default async function CompanyDossierPage({ params }: Props) {
   const { slug } = await params
 
