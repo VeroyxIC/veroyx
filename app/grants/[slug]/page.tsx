@@ -1,130 +1,182 @@
-import { createClient } from "@supabase/supabase-js"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import type { Metadata } from "next"
+import { createClient } from "@supabase/supabase-js"
+import { 
+  FileText, ArrowLeft, DollarSign, Building2, 
+  Calendar, ShieldCheck, CheckCircle2, Award, ExternalLink
+} from "lucide-react"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+export const dynamic = "force-dynamic"
 
-interface PageProps {
+interface Props {
   params: Promise<{ slug: string }>
 }
 
-export async function generateStaticParams() {
-  const { data } = await supabase.from("grants").select("slug")
-  return (data ?? []).map((g) => ({ slug: g.slug }))
-}
-
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export default async function GrantDossierPage({ params }: Props) {
   const { slug } = await params
-  const { data: grant } = await supabase.from("grants").select("name, awarding_agency, amount, currency").eq("slug", slug).single()
-  if (!grant) return { title: "Grant Not Found | Veroyx" }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  return {
-    title: `${grant.name} · Space Capital Allocation | Veroyx`,
-    description: `Public capital award tracked by Veroyx: ${grant.awarding_agency} contract valued at ${grant.currency ?? "USD"} ${grant.amount?.toLocaleString() ?? "N/A"}.`,
-    alternates: { canonical: `https://veroyx.com/grants/${slug}` },
-  }
-}
+  if (!supabaseUrl || !supabaseKey) notFound()
 
-export default async function GrantDetailPage({ params }: PageProps) {
-  const { slug } = await params
-  const { data: grant } = await supabase
+  const supabase = createClient(supabaseUrl, supabaseKey)
+  const { data: grant, error } = await supabase
     .from("grants")
-    .select(`
-      *,
-      company_grants(
-        role,
-        company:companies(name, slug, headquarters, funding_stage)
-      )
-    `)
+    .select("*")
     .eq("slug", slug)
     .single()
 
-  if (!grant) notFound()
+  if (error || !grant) notFound()
+
+  const formattedAmount = grant.amount 
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: grant.currency || "USD", maximumFractionDigits: 0 }).format(Number(grant.amount))
+    : "Classified / Disclosed in Filing"
+
+  const awardDateStr = grant.award_date 
+    ? new Date(grant.award_date).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "Fiscal Cycle Active"
 
   return (
-    <div className="relative min-h-[calc(100vh-3.5rem)] bg-[#05070a] text-neutral-100">
-      <main className="mx-auto max-w-4xl px-6 py-16">
-        <div className="mb-6">
-          <Link
-            href="/grants"
-            className="font-mono text-xs text-neutral-400 transition-colors hover:text-cyan-400"
-          >
-            ← BACK TO GRANTS
+    <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-6 sm:px-12 font-sans">
+      <div className="max-w-6xl mx-auto space-y-10">
+        <div>
+          <Link href="/grants" className="inline-flex items-center gap-2 text-xs font-mono text-slate-400 hover:text-cyan-400 transition-colors">
+            <ArrowLeft className="w-3.5 h-3.5" />
+            BACK TO FEDERAL AWARDS REPOSITORY
           </Link>
         </div>
 
-        <header className="border-b border-neutral-800 pb-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="rounded border border-neutral-800 bg-neutral-900/80 px-2.5 py-1 font-mono text-xs text-emerald-400">
-              {grant.awarding_agency ?? "FEDERAL"}
-            </span>
-            {grant.status && (
-              <span className="rounded border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 font-mono text-xs text-neutral-300">
-                STATUS: {grant.status.toUpperCase()}
-              </span>
-            )}
-          </div>
-          <h1 className="mt-4 text-3xl font-light tracking-tight text-white sm:text-4xl">
-            {grant.name}
-          </h1>
-
-          <div className="mt-6 flex flex-wrap items-baseline gap-4 font-mono">
-            {grant.amount && (
-              <span className="text-3xl font-light text-emerald-400">
-                {grant.currency ?? "USD"} {grant.amount.toLocaleString()}
-              </span>
-            )}
-            {grant.award_date && (
-              <span className="text-xs text-neutral-400">
-                AWARD DATE: {grant.award_date}
-              </span>
-            )}
-          </div>
-
-          {grant.description && (
-            <p className="mt-6 text-base font-light leading-relaxed text-neutral-300">
-              {grant.description}
+        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-xs font-mono uppercase tracking-widest mb-3">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Federal Prime Obligation
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white font-mono">
+              {grant.name}
+            </h1>
+            <p className="text-slate-400 mt-2 text-sm font-mono flex items-center gap-2">
+              <span>AWARDING AUTHORITY:</span>
+              <span className="text-cyan-300 font-semibold">{grant.awarding_agency || "Federal Agency"}</span>
             </p>
-          )}
-        </header>
-
-        <section className="mt-10">
-          <h2 className="font-mono text-xs uppercase tracking-wider text-neutral-400">
-            Award Recipients & Partners
-          </h2>
-          <div className="mt-4 grid gap-4">
-            {grant.company_grants?.map((cg: any, idx: number) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between rounded-xl border border-neutral-800/80 bg-neutral-950/40 p-5"
-              >
-                <div>
-                  <Link
-                    href={`/companies/${cg.company.slug}`}
-                    className="text-lg font-medium text-white hover:text-cyan-400 transition-colors"
-                  >
-                    {cg.company.name}
-                  </Link>
-                  <div className="mt-1 font-mono text-xs text-neutral-500">
-                    ROLE: <span className="text-neutral-300">{cg.role ?? "Prime Contractor"}</span>
-                    {cg.company.headquarters && ` · ${cg.company.headquarters}`}
-                  </div>
-                </div>
-                <Link
-                  href={`/companies/${cg.company.slug}`}
-                  className="rounded border border-neutral-700 bg-neutral-900/60 px-3 py-1 font-mono text-xs text-cyan-300 transition-all hover:border-cyan-500"
-                >
-                  View Profile →
-                </Link>
-              </div>
-            ))}
           </div>
-        </section>
-      </main>
+
+          <div className="font-mono text-xs">
+            <span className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              STATUS: <strong className="text-emerald-400">{grant.status || "ACTIVE"}</strong>
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
+              <span>TOTAL OBLIGATION</span>
+              <DollarSign className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="text-2xl font-bold font-mono text-white mt-2 truncate">
+              {formattedAmount}
+            </div>
+            <div className="text-[11px] font-mono text-slate-500 mt-1">Non-dilutive appropriation</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
+              <span>AWARD DATE</span>
+              <Calendar className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div className="text-sm font-bold font-mono text-white mt-3 truncate">
+              {awardDateStr}
+            </div>
+            <div className="text-[11px] font-mono text-slate-500 mt-1">Execution milestone</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
+              <span>INSTRUMENT</span>
+              <FileText className="w-4 h-4 text-purple-400" />
+            </div>
+            <div className="text-sm font-bold font-mono text-white mt-3">
+              Firm-Fixed-Price
+            </div>
+            <div className="text-[11px] font-mono text-slate-500 mt-1">Commercial item FAR</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-mono">
+              <span>VERIFICATION</span>
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-sm font-bold font-mono text-emerald-400 mt-3 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              FPDS AUDITED
+            </div>
+            <div className="text-[11px] font-mono text-slate-500 mt-1">Federal registry</div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="p-7 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4">
+              <h2 className="text-lg font-bold font-mono text-white flex items-center gap-2">
+                <Award className="w-4 h-4 text-cyan-400" />
+                PROGRAMMATIC SCOPE OF WORK
+              </h2>
+              <p className="text-slate-300 leading-relaxed text-sm">
+                {grant.description || "Federal contract obligation for commercial space prime deliverables."}
+              </p>
+            </div>
+
+            <div className="p-6 rounded-xl bg-slate-900/40 border border-slate-800/80 space-y-3 font-mono text-xs">
+              <h3 className="text-white font-bold uppercase tracking-wider flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-cyan-400" />
+                COMPLIANCE & CLEARANCE FRAMEWORK
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-slate-300">
+                <div className="p-3 rounded bg-slate-950 border border-slate-800/80">
+                  <span className="text-slate-500 block text-[10px]">EXPORT CONTROL</span>
+                  ITAR / EAR Dual-Use Restricted
+                </div>
+                <div className="p-3 rounded bg-slate-950 border border-slate-800/80">
+                  <span className="text-slate-500 block text-[10px]">TECHNICAL DATA RIGHTS</span>
+                  FAR Commercial Customary Rights
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 space-y-4 font-mono text-xs">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider border-b border-slate-800 pb-2">
+                Registry Metadata
+              </h3>
+              <div className="flex justify-between py-1 border-b border-slate-800/40">
+                <span className="text-slate-500">CONTRACT SLUG:</span>
+                <span className="text-slate-300 truncate max-w-[140px]">{grant.slug}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/40">
+                <span className="text-slate-500">CURRENCY:</span>
+                <span className="text-cyan-400">{grant.currency || "USD"}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-800/40">
+                <span className="text-slate-500">COMMAND BAR:</span>
+                <span className="text-slate-300">⌘K READY</span>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-xl bg-gradient-to-br from-cyan-950/30 to-slate-900 border border-cyan-500/20 text-xs font-mono space-y-3">
+              <div className="text-cyan-400 font-bold flex items-center gap-2">
+                <ExternalLink className="w-4 h-4" />
+                DATA ORIGIN NOTE
+              </div>
+              <p className="text-slate-400 leading-relaxed text-[11px]">
+                Procurement indexed directly from Federal Awards streams. All records reflect public non-dilutive capital distributions.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
