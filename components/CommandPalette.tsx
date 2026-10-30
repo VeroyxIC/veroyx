@@ -2,248 +2,188 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
-import { Search, Building, Cpu, Shield, Rocket, ArrowRight, X } from "lucide-react"
+import { 
+  Search, 
+  Building2, 
+  Cpu, 
+  Rocket, 
+  Radio, 
+  FileText, 
+  ShieldCheck, 
+  Orbit, 
+  ArrowRight,
+  Compass,
+  X
+} from "lucide-react"
 
-interface SearchResult {
-  type: "company" | "technology" | "grant" | "launch"
+interface SearchItem {
+  id: string
+  category: "TOOL" | "COMPANY" | "CONTRACT" | "TECH" | "STATION" | "LAUNCH"
   title: string
   subtitle: string
+  badge?: string
   href: string
 }
+
+const STATIC_PLATFORM_TOOLS: SearchItem[] = [
+  { id: "tool-scenarios", category: "TOOL", title: "Mission Architecture Scenario Builder", subtitle: "Unified Launch, Power, RF & Thermal Synthesizer", href: "/scenarios", badge: "ENGINE" },
+  { id: "tool-contracts", category: "TOOL", title: "Defense Contracts & Flow-Down Radar", subtitle: "DoD Prime Awards & Subcontractor Distributions", href: "/contracts", badge: "DEFENSE" },
+  { id: "tool-ground", category: "TOOL", title: "Ground Station Topology & Contact Scheduler", subtitle: "Global Earth Stations, Bands & Contact Passes", href: "/ground-stations", badge: "NETWORK" },
+  { id: "tool-thermal", category: "TOOL", title: "Thermal Management & Cryo Boil-Off", subtitle: "Stefan-Boltzmann Radiation & MLI Insulation", href: "/thermal", badge: "PHYSICS" },
+  { id: "tool-isam", category: "TOOL", title: "ISAM & Rendezvous (RPO) Simulator", subtitle: "Clohessy-Wiltshire Dynamics & V-bar/R-bar Gates", href: "/isam", badge: "PHYSICS" },
+  { id: "tool-payload", category: "TOOL", title: "Fairing & Payload Trade Engine", subtitle: "Usable Envelope Clearance & Mass-to-Orbit Margins", href: "/payload", badge: "ENGINE" },
+  { id: "tool-sar", category: "TOOL", title: "Synthetic Aperture Radar (SAR) Simulator", subtitle: "All-Weather Ground Resolution & Chirp Bandwidth", href: "/sar", badge: "SENSOR" },
+  { id: "tool-optical", category: "TOOL", title: "Optical Sensor & GSD Simulator", subtitle: "Ground Sample Distance, Diffraction Limit & NIIRS", href: "/optical", badge: "SENSOR" },
+  { id: "tool-rf", category: "TOOL", title: "RF Downlink Budget Calculator", subtitle: "Friis Path Loss, Dish Gain & Eb/N0 Margin", href: "/rf", badge: "TELEMETRY" },
+  { id: "tool-power", category: "TOOL", title: "Spacecraft Power & Radiation Simulator", subtitle: "Solar Cell Degradation & Battery Sizing", href: "/power", badge: "PHYSICS" },
+  { id: "tool-propulsion", category: "TOOL", title: "Propulsion Specific Impulse Matrix", subtitle: "Chamber Pressure, Isp & Thermodynamics", href: "/propulsion", badge: "PROPULSION" },
+  { id: "tool-ssa", category: "TOOL", title: "Space Situational Awareness (3D Radar)", subtitle: "Orbital Debris Shells & Close Conjunctions", href: "/ssa", badge: "RADAR" },
+  { id: "tool-passes", category: "TOOL", title: "Satellite Pass Predictor", subtitle: "Keplerian Ground-Track & Overflight Windows", href: "/passes", badge: "FLIGHT" },
+  { id: "tool-trajectory", category: "TOOL", title: "Orbital Trajectory & Delta-V Simulator", subtitle: "Hohmann Transfers & Orbital Mechanics", href: "/trajectory", badge: "PHYSICS" },
+  { id: "tool-launches", category: "TOOL", title: "Live Launch Manifest Radar", subtitle: "Real-Time Manifests & Countdown Tracking", href: "/launches", badge: "OPERATIONS" },
+  { id: "tool-analytics", category: "TOOL", title: "Macro Spending & Capital Trends", subtitle: "Global Aerospace Procurement Insights", href: "/analytics", badge: "MACRO" },
+]
 
 export default function CommandPalette() {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<SearchResult[]>([])
+  const [results, setResults] = useState<SearchItem[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Listen for Cmd+K or Ctrl+K
+  // Listen for Cmd+K / Ctrl+K keyboard shortcut
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
         setOpen((prev) => !prev)
-      }
-      if (e.key === "Escape") {
+      } else if (e.key === "Escape") {
         setOpen(false)
       }
     }
+
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [])
 
-  // Auto-focus input on open
+  // Live Multi-Domain Search Query
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50)
-    } else {
-      setQuery("")
-      setResults([])
-    }
-  }, [open])
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
 
-  // Search execution
-  useEffect(() => {
-    if (!query.trim()) {
-      setResults([])
+    const trimmed = query.trim().toLowerCase()
+
+    if (!trimmed) {
+      setResults(STATIC_PLATFORM_TOOLS.slice(0, 8))
+      setSelectedIndex(0)
       return
     }
 
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      const q = query.toLowerCase()
+    // First match static platform tools
+    const matchedTools = STATIC_PLATFORM_TOOLS.filter(
+      (t) =>
+        t.title.toLowerCase().includes(trimmed) ||
+        t.subtitle.toLowerCase().includes(trimmed) ||
+        t.badge?.toLowerCase().includes(trimmed)
+    )
 
-      const [
-        { data: constellations },
-        { data: companies },
-        { data: technologies },
-        { data: grants },
-        { data: launches }
-      ] = await Promise.all([
-        supabase.from("constellations").select("name, slug, operator, orbit_regime").ilike("name", `%${q}%`).limit(3),
-        supabase.from("companies").select("name, slug, sector").ilike("name", `%${q}%`).limit(3),
-        supabase.from("technologies").select("name, slug, sector, trl").ilike("name", `%${q}%`).limit(3),
-        supabase.from("grants").select("name, slug, awarding_agency, amount").ilike("name", `%${q}%`).limit(3),
-        supabase.from("launches").select("mission_name, slug, vehicle, target_orbit").ilike("mission_name", `%${q}%`).limit(3)
-      ])
-
-      const list: SearchResult[] = []
-      if (q.includes("scenario") || q.includes("architecture") || q.includes("feasibility") || q.includes("mrd") || q.includes("trade")) {
-        list.push({
-          type: "technology",
-          title: "Mission Architecture Scenario Builder",
-          subtitle: "Unified Flight Readiness, Launch, Power, RF & Thermal Synthesizer",
-          href: "/scenarios"
-        })
-      }
-
-      if (q.includes("thermal") || q.includes("cryo") || q.includes("boil") || q.includes("temperature") || q.includes("mli")) {
-        list.push({
-          type: "technology",
-          title: "Spacecraft Thermal & Cryo Boil-Off Simulator",
-          subtitle: "Stefan-Boltzmann Radiation, MLI Insulation & Zero Boil-Off",
-          href: "/thermal"
-        })
-      }
-
-      if (q.includes("isam") || q.includes("rpo") || q.includes("rendezvous") || q.includes("docking") || q.includes("servicing")) {
-        list.push({
-          type: "technology",
-          title: "ISAM & Rendezvous (RPO) Simulator",
-          subtitle: "Clohessy-Wiltshire Dynamics, V-bar/R-bar Gates & Delta-V",
-          href: "/isam"
-        })
-      }
-
-      if (q.includes("ground") || q.includes("station") || q.includes("downlink") || q.includes("gateway") || q.includes("ksat")) {
-        list.push({
-          type: "technology",
-          title: "Ground Station Topology & Contact Scheduler",
-          subtitle: "Global Earth Station Network, Bands & Pass Accumulator",
-          href: "/ground-stations"
-        })
-      }
-
-      if (q.includes("contract") || q.includes("award") || q.includes("subcontract") || q.includes("procurement") || q.includes("prime")) {
-        list.push({
-          type: "technology",
-          title: "Defense Contracts & Flow-Down Radar",
-          subtitle: "Prime Awards, Tier-1 Subsystems & Agency Obligations",
-          href: "/contracts"
-        })
-      }
-
-      if (q.includes("payload") || q.includes("fairing") || q.includes("envelope") || q.includes("mass") || q.includes("lift")) {
-        list.push({
-          type: "technology",
-          title: "Launch Fairing & Payload Trade Engine",
-          subtitle: "Usable Envelope Clearance, Acoustic Load & Mass-to-Orbit",
-          href: "/payload"
-        })
-      }
-
-      if (q.includes("sar") || q.includes("radar") || q.includes("chirp") || q.includes("microwave")) {
-        list.push({
-          type: "technology",
-          title: "Synthetic Aperture Radar (SAR) Simulator",
-          subtitle: "All-Weather Ground Resolution, Chirp Bandwidth & Swath Width",
-          href: "/sar"
-        })
-      }
-
-      if (q.includes("optical") || q.includes("gsd") || q.includes("camera") || q.includes("recon") || q.includes("niirs")) {
-        list.push({
-          type: "technology",
-          title: "Optical Sensor & GSD Recon Simulator",
-          subtitle: "Ground Sample Distance, Diffraction Limit & NIIRS",
-          href: "/optical"
-        })
-      }
-
-      if (q.includes("rf") || q.includes("link") || q.includes("downlink") || q.includes("bandwidth") || q.includes("frequency")) {
-        list.push({
-          type: "technology",
-          title: "RF Link Budget & Downlink Calculator",
-          subtitle: "Friis Path Loss, Dish Gain & Eb/N0 Margin",
-          href: "/rf"
-        })
-      }
-
-      if (q.includes("engine") || q.includes("propulsion") || q.includes("thrust") || q.includes("isp")) {
-        list.push({
-          type: "technology",
-          title: "Propulsion Engine Matrix",
-          subtitle: "Specific Impulse (Isp), Chamber Pressure & Thrust-to-Weight",
-          href: "/propulsion"
-        })
-      }
-
-      if (q.includes("ssa") || q.includes("debris") || q.includes("collision") || q.includes("risk")) {
-        list.push({
-          type: "technology",
-          title: "Space Situational Awareness (SSA)",
-          subtitle: "Debris Conjunction Risk & Miss Distance Radar",
-          href: "/ssa"
-        })
-      }
-
-      if (q.includes("pass") || q.includes("overflight") || q.includes("los") || q.includes("track")) {
-        list.push({
-          type: "technology",
-          title: "Satellite Pass & Overflight Predictor",
-          subtitle: "Line-of-Sight Azimuth & Elevation Predictor",
-          href: "/passes"
-        })
-      }
-
-      if (q.includes("traj") || q.includes("delta") || q.includes("sim") || q.includes("orbit")) {
-        list.push({
-          type: "technology",
-          title: "Trajectory & Delta-V Simulator",
-          subtitle: "Orbital Mechanics & Azimuth Optimization",
-          href: "/trajectory"
-        })
-      }
-      ;(constellations || []).forEach((c) => {
-        list.push({
-          type: "technology",
-          title: c.name,
-          subtitle: `${c.operator} • ${c.orbit_regime} Shell`,
-          href: `/constellations`
-        })
-      })
-
-
-      ;(companies || []).forEach((c) => {
-        list.push({
-          type: "company",
-          title: c.name,
-          subtitle: c.sector || "Commercial Prime",
-          href: `/companies/${c.slug}`
-        })
-      })
-
-      ;(technologies || []).forEach((t) => {
-        list.push({
-          type: "technology",
-          title: t.name,
-          subtitle: `TRL ${t.trl || 7} • ${t.sector || "Orbital System"}`,
-          href: `/technologies/${t.slug}`
-        })
-      })
-
-      ;(grants || []).forEach((g) => {
-        list.push({
-          type: "grant",
-          title: g.name,
-          subtitle: `${g.awarding_agency || "NASA"} • $${g.amount ? (Number(g.amount) / 1000000).toFixed(1) + "M" : "Confidential"}`,
-          href: `/grants/${g.slug}`
-        })
-      })
-
-      ;(launches || []).forEach((l) => {
-        list.push({
-          type: "launch",
-          title: l.mission_name,
-          subtitle: `${l.vehicle} • ${l.target_orbit}`,
-          href: `/launches`
-        })
-      })
-
-      setResults(list)
+    if (trimmed.length < 2) {
+      setResults(matchedTools)
       setSelectedIndex(0)
-      setLoading(false)
+      return
+    }
+
+    setLoading(true)
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
+        const data = await res.json()
+
+        const dynamicItems: SearchItem[] = []
+
+        // Companies
+        data.companies?.forEach((c: any) => {
+          dynamicItems.push({
+            id: `comp-${c.id}`,
+            category: "COMPANY",
+            title: c.name,
+            subtitle: `${c.sector || "Aerospace"} • ${c.country || "Global"}`,
+            badge: c.tier || "ENTERPRISE",
+            href: `/companies/${c.slug}`,
+          })
+        })
+
+        // Defense Contracts
+        data.contracts?.forEach((ct: any) => {
+          dynamicItems.push({
+            id: `contract-${ct.id}`,
+            category: "CONTRACT",
+            title: ct.program_name,
+            subtitle: `Prime: ${ct.prime_contractor} • ${ct.command_agency}`,
+            badge: `$${Number(ct.obligation_value_m).toLocaleString()}M`,
+            href: "/contracts",
+          })
+        })
+
+        // Ground Stations
+        data.groundStations?.forEach((gs: any) => {
+          dynamicItems.push({
+            id: `gs-${gs.id}`,
+            category: "STATION",
+            title: `${gs.name} (${gs.code})`,
+            subtitle: `Operator: ${gs.operator} • ${gs.country}`,
+            badge: gs.supported_bands?.[0] || "GATEWAY",
+            href: "/ground-stations",
+          })
+        })
+
+        // Technologies
+        data.technologies?.forEach((t: any) => {
+          dynamicItems.push({
+            id: `tech-${t.id}`,
+            category: "TECH",
+            title: t.name,
+            subtitle: t.category,
+            badge: `TRL ${t.trl || "9"}`,
+            href: `/technologies/${t.slug}`,
+          })
+        })
+
+        // Launches
+        data.launches?.forEach((l: any) => {
+          dynamicItems.push({
+            id: `launch-${l.id}`,
+            category: "LAUNCH",
+            title: l.mission_name,
+            subtitle: `${l.vehicle} • ${l.operator} (${l.orbit})`,
+            badge: l.status,
+            href: "/launches",
+          })
+        })
+
+        setResults([...matchedTools, ...dynamicItems])
+        setSelectedIndex(0)
+      } catch (err) {
+        setResults(matchedTools)
+      } finally {
+        setLoading(false)
+      }
     }, 200)
 
-    return () => clearTimeout(timer)
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    }
   }, [query])
 
-  // Keyboard navigation inside list
-  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+  const navigateTo = (href: string) => {
+    setOpen(false)
+    router.push(href)
+  }
+
+  // Keyboard navigation inside modal
+  const handleKeyNavigation = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault()
       setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0))
@@ -252,96 +192,117 @@ export default function CommandPalette() {
       setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1))
     } else if (e.key === "Enter" && results[selectedIndex]) {
       e.preventDefault()
-      router.push(results[selectedIndex].href)
-      setOpen(false)
+      navigateTo(results[selectedIndex].href)
     }
   }
 
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-start justify-center pt-24 px-4 z-50">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden font-mono">
-        
-        {/* Search Input Bar */}
-        <div className="p-4 border-b border-slate-800 flex items-center gap-3">
-          <Search className="w-5 h-5 text-cyan-400 shrink-0" />
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-start justify-center pt-20 px-4 sm:px-6">
+      <div 
+        className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden font-mono text-xs flex flex-col max-h-[75vh]"
+        onKeyDown={handleKeyNavigation}
+      >
+        {/* Search Bar Input */}
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-800 bg-slate-900/40">
+          <Search className="w-4 h-4 text-cyan-400 shrink-0" />
           <input
-            ref={inputRef}
+            autoFocus
             type="text"
-            placeholder="Search primes, systems, awards, manifests... (ESC to close)"
+            placeholder="Search programs, contracts, ground stations, companies, or physics engines..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            className="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
+            className="w-full bg-transparent text-white placeholder-slate-500 focus:outline-none text-sm font-sans"
           />
           {query && (
-            <button onClick={() => setQuery("")} className="text-slate-500 hover:text-white">
+            <button
+              onClick={() => setQuery("")}
+              className="text-slate-500 hover:text-white p-1"
+            >
               <X className="w-4 h-4" />
             </button>
           )}
-          <span className="text-[10px] text-slate-500 border border-slate-800 rounded px-1.5 py-0.5 shrink-0">
+          <span className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400">
             ESC
           </span>
         </div>
 
-        {/* Results Stream */}
-        <div className="max-h-96 overflow-y-auto p-2">
-          {loading ? (
-            <div className="p-6 text-center text-xs text-slate-500">
-              SCANNING AEROSPACE TELEMETRY ARRAYS...
-            </div>
-          ) : results.length > 0 ? (
-            <div className="space-y-1">
-              {results.map((item, idx) => {
-                const active = idx === selectedIndex
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      router.push(item.href)
-                      setOpen(false)
-                    }}
-                    onMouseEnter={() => setSelectedIndex(idx)}
-                    className={`w-full text-left p-3 rounded-lg flex items-center justify-between transition-all ${
-                      active ? "bg-cyan-950/80 border border-cyan-500/30 text-white" : "text-slate-400 hover:bg-slate-800/50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      {item.type === "company" && <Building className="w-4 h-4 text-cyan-400 shrink-0" />}
-                      {item.type === "technology" && <Cpu className="w-4 h-4 text-purple-400 shrink-0" />}
-                      {item.type === "grant" && <Shield className="w-4 h-4 text-emerald-400 shrink-0" />}
-                      {item.type === "launch" && <Rocket className="w-4 h-4 text-blue-400 shrink-0" />}
-                      <div>
-                        <div className="text-xs font-bold text-white tracking-wide truncate">{item.title}</div>
-                        <div className="text-[10px] text-slate-400">{item.subtitle}</div>
-                      </div>
-                    </div>
-                    <ArrowRight className={`w-3.5 h-3.5 transition-transform ${active ? "text-cyan-400 translate-x-0.5" : "text-slate-600"}`} />
-                  </button>
-                )
-              })}
-            </div>
-          ) : query.trim() ? (
-            <div className="p-6 text-center text-xs text-slate-500">
-              NO TELEMETRY MATCHES FOUND FOR &quot;{query}&quot;
-            </div>
-          ) : (
-            <div className="p-6 text-center text-xs text-slate-500">
-              TYPE TO SEARCH ENTITIES, HARDWARE PLATFORMS, OR MISSION FLIGHTS
+        {/* Results List */}
+        <div className="overflow-y-auto p-2 space-y-1 flex-1">
+          {loading && (
+            <div className="py-2 px-4 text-slate-500 text-[11px] animate-pulse">
+              QUERYING SUPABASE RELATIONAL CORES...
             </div>
           )}
+
+          {results.length === 0 && !loading && (
+            <div className="py-12 text-center text-slate-500 text-xs">
+              NO AEROSPACE RECORDS IDENTIFIED FOR &quot;{query}&quot;
+            </div>
+          )}
+
+          {results.map((item, idx) => {
+            const isSelected = idx === selectedIndex
+
+            return (
+              <div
+                key={item.id}
+                onClick={() => navigateTo(item.href)}
+                onMouseEnter={() => setSelectedIndex(idx)}
+                className={`p-3 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                  isSelected
+                    ? "bg-cyan-950/40 border border-cyan-500/30 text-white"
+                    : "hover:bg-slate-900/60 text-slate-300 border border-transparent"
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 shrink-0">
+                    {item.category === "TOOL" && <Compass className="w-3.5 h-3.5 text-cyan-400" />}
+                    {item.category === "COMPANY" && <Building2 className="w-3.5 h-3.5 text-emerald-400" />}
+                    {item.category === "CONTRACT" && <FileText className="w-3.5 h-3.5 text-purple-400" />}
+                    {item.category === "STATION" && <Radio className="w-3.5 h-3.5 text-amber-400" />}
+                    {item.category === "TECH" && <Cpu className="w-3.5 h-3.5 text-cyan-400" />}
+                    {item.category === "LAUNCH" && <Rocket className="w-3.5 h-3.5 text-rose-400" />}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-xs truncate font-sans">
+                        {item.title}
+                      </span>
+                      {item.badge && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate font-sans">
+                      {item.subtitle}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2 text-slate-500">
+                  <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
+                    {item.category}
+                  </span>
+                  <ArrowRight className={`w-3.5 h-3.5 ${isSelected ? "text-cyan-400" : "text-transparent"}`} />
+                </div>
+              </div>
+            )
+          })}
         </div>
 
-        {/* HUD Footer */}
-        <div className="p-2.5 bg-slate-950 border-t border-slate-800 text-[10px] text-slate-500 flex items-center justify-between px-4">
+        {/* Footer Hints */}
+        <div className="px-4 py-2 border-t border-slate-800/80 bg-slate-900/40 flex items-center justify-between text-[10px] text-slate-500">
           <div className="flex items-center gap-3">
-            <span><kbd className="text-slate-400">↑↓</kbd> to navigate</span>
-            <span><kbd className="text-slate-400">ENTER</kbd> to select</span>
+            <span>↑↓ Navigate</span>
+            <span>↵ Select</span>
+            <span>ESC Close</span>
           </div>
-          <span className="text-cyan-500 font-bold">VEROYX HUD v1.0</span>
+          <span>CROSS-DOMAIN INTELLIGENCE HUD</span>
         </div>
-
       </div>
     </div>
   )
