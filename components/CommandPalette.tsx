@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("sar") || q.includes("radar") || q.includes("chirp") || q.includes("microwave")) {
+        list.push({
+          type: "technology",
+          title: "Synthetic Aperture Radar (SAR) Simulator",
+          subtitle: "All-Weather Ground Resolution, Chirp Bandwidth & Swath Width",
+          href: "/sar"
+        })
+      }
+
       if (q.includes("optical") || q.includes("gsd") || q.includes("camera") || q.includes("recon") || q.includes("niirs")) {
         list.push({
           type: "technology",
