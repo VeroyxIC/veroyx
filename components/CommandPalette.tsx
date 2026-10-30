@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("ssa") || q.includes("debris") || q.includes("collision") || q.includes("risk")) {
+        list.push({
+          type: "technology",
+          title: "Space Situational Awareness (SSA)",
+          subtitle: "Debris Conjunction Risk & Miss Distance Radar",
+          href: "/ssa"
+        })
+      }
+
       if (q.includes("pass") || q.includes("overflight") || q.includes("los") || q.includes("track")) {
         list.push({
           type: "technology",
