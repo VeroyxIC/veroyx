@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import SupplyChainGraph from "@/components/SupplyChainGraph"
 import { supabase } from "@/lib/supabase"
 import { ArrowLeft, ExternalLink, DollarSign, MapPin, Building, Shield, Cpu, Calendar } from "lucide-react"
 import ExportButton from "@/components/ExportButton"
