@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("scenario") || q.includes("architecture") || q.includes("feasibility") || q.includes("mrd") || q.includes("trade")) {
+        list.push({
+          type: "technology",
+          title: "Mission Architecture Scenario Builder",
+          subtitle: "Unified Flight Readiness, Launch, Power, RF & Thermal Synthesizer",
+          href: "/scenarios"
+        })
+      }
+
       if (q.includes("thermal") || q.includes("cryo") || q.includes("boil") || q.includes("temperature") || q.includes("mli")) {
         list.push({
           type: "technology",
