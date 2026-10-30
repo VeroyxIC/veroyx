@@ -1,94 +1,74 @@
-import { createClient } from "@supabase/supabase-js"
-import type { Technology } from "@/types/database"
-import type { Metadata } from "next"
 import Link from "next/link"
+import { createClient } from "@supabase/supabase-js"
+import { Cpu, Orbit, ChevronRight, Gauge } from "lucide-react"
+import DataExportMenu from "@/components/DataExportMenu"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-export const metadata: Metadata = {
-  title: "Technologies · Active Hardware Architectures | Veroyx",
-  description: "Verified orbital infrastructure, propulsion systems, and commercial habitation modules.",
-  alternates: { canonical: "https://veroyx.com/technologies" },
-}
+export const dynamic = "force-dynamic"
 
 export default async function TechnologiesPage() {
-  const { data } = await supabase
-    .from("technologies")
-    .select(`
-      *,
-      company_technologies(
-        company:companies(name, slug)
-      )
-    `)
-    .order("trl", { ascending: false })
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  const techs = data ?? []
+  let technologies: any[] = []
+
+  if (supabaseUrl && supabaseKey) {
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    const { data } = await supabase.from("technologies").select("*").order("name")
+    if (data) technologies = data
+  }
 
   return (
-    <div className="relative min-h-screen bg-[#05070a] text-neutral-100 selection:bg-cyan-500/30 selection:text-cyan-200">
-      <main className="relative z-10 mx-auto max-w-6xl px-6 py-20">
-        <header className="mb-12 border-b border-neutral-800 pb-8">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 px-3 py-1 font-mono text-[11px] text-cyan-400 backdrop-blur-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 animate-pulse" />
-            HARDWARE ARCHITECTURES
+    <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-6 sm:px-12 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+              Propulsion & Space Systems Index
+            </div>
+            <h1 className="text-4xl font-black tracking-tight text-white font-mono">
+              AEROSPACE HARDWARE & TECH
+            </h1>
+            <p className="text-slate-400 mt-2 max-w-2xl text-sm">
+              Proprietary orbital vehicles, aerospike engines, reentry capsules, and lunar landers indexed by NASA/DoD TRL readiness.
+            </p>
           </div>
-          <h1 className="text-4xl font-light tracking-tight text-white md:text-5xl">
-            Space Technology Index
-          </h1>
-          <p className="mt-4 max-w-2xl text-neutral-400 font-light">
-            Catalog of tracked commercial flight hardware, expandable habitats, spaceplanes, and orbital propulsion organized by Technology Readiness Level (TRL).
-          </p>
-        </header>
+          <div className="flex items-center gap-3">
+            <DataExportMenu filename="veroyx-technologies" data={technologies} />
+          </div>
+        </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          {techs.map((tech: any) => (
-            <div
-              key={tech.id}
-              className="rounded-xl border border-neutral-800/80 bg-neutral-950/40 p-6 backdrop-blur-md"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {technologies.map((t) => (
+            <Link
+              key={t.slug}
+              href={`/technologies/${t.slug}`}
+              className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col justify-between group space-y-4"
             >
-              <div className="flex items-start justify-between gap-4">
-                <Link href={`/technologies/${tech.slug}`} className="text-lg font-medium text-white hover:text-cyan-400 transition-colors">{tech.name}</Link>
-                <span className="shrink-0 rounded border border-neutral-800 bg-neutral-900/80 px-2 py-0.5 font-mono text-[10px] text-cyan-300">
-                  {tech.sector}
-                </span>
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-cyan-400 mb-2">
+                  <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800">{t.sector || "Propulsion"}</span>
+                  <span className="text-emerald-400 font-bold">TRL {t.trl || 7}</span>
+                </div>
+                <h2 className="text-xl font-bold font-mono text-white group-hover:text-cyan-300 transition-colors">
+                  {t.name}
+                </h2>
+                <p className="text-slate-400 text-xs mt-2 line-clamp-2 leading-relaxed">
+                  {t.description}
+                </p>
               </div>
 
-              {tech.company_technologies?.[0]?.company && (
-                <div className="mt-2 font-mono text-xs text-neutral-500">
-                  DEVELOPER:{" "}
-                  <Link
-                    href={`/companies/${tech.company_technologies[0].company.slug}`}
-                    className="text-cyan-400 hover:underline"
-                  >
-                    {tech.company_technologies[0].company.name}
-                  </Link>
+              <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-slate-400">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Orbit className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span className="truncate">{t.target_domain || "Low-Earth Orbit"}</span>
                 </div>
-              )}
-
-              {tech.description && (
-                <p className="mt-3.5 text-sm font-light leading-relaxed text-neutral-400">
-                  {tech.description}
-                </p>
-              )}
-
-              {tech.trl && (
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="flex h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-800">
-                    <div
-                      className="bg-gradient-to-r from-cyan-500 to-blue-500"
-                      style={{ width: `${(tech.trl / 9) * 100}%` }}
-                    />
-                  </div>
-                  <span className="font-mono text-xs font-medium text-cyan-400">TRL {tech.trl} / 9</span>
-                </div>
-              )}
-            </div>
+                <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-cyan-400 transition-colors shrink-0 ml-2" />
+              </div>
+            </Link>
           ))}
         </div>
-      </main>
+      </div>
     </div>
   )
 }

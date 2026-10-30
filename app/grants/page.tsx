@@ -1,91 +1,78 @@
-import { createClient } from "@supabase/supabase-js"
-import type { Metadata } from "next"
 import Link from "next/link"
+import { createClient } from "@supabase/supabase-js"
+import { ShieldCheck, DollarSign, Calendar, ChevronRight } from "lucide-react"
+import DataExportMenu from "@/components/DataExportMenu"
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-export const metadata: Metadata = {
-  title: "Grants & Public Capital · Federal Space Allocations | Veroyx",
-  description: "Tracked NASA, Space Force, and institutional capital allocations driving the low-Earth orbit economy.",
-  alternates: { canonical: "https://veroyx.com/grants" },
-}
+export const dynamic = "force-dynamic"
 
 export default async function GrantsPage() {
-  const { data } = await supabase
-    .from("grants")
-    .select(`
-      *,
-      company_grants(
-        role,
-        company:companies(name, slug)
-      )
-    `)
-    .order("amount", { ascending: false })
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  const grants = data ?? []
+  let grants: any[] = []
+
+  if (supabaseUrl && supabaseKey) {
+    const supabase = createClient(supabaseUrl, supabaseKey)
+    const { data } = await supabase.from("grants").select("*").order("amount", { ascending: false })
+    if (data) grants = data
+  }
 
   return (
-    <div className="relative min-h-screen bg-[#05070a] text-neutral-100 selection:bg-cyan-500/30 selection:text-cyan-200">
-      <main className="relative z-10 mx-auto max-w-6xl px-6 py-20">
-        <header className="mb-12 border-b border-neutral-800 pb-8">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/60 px-3 py-1 font-mono text-[11px] text-emerald-400 backdrop-blur-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            FEDERAL AWARDS & CONTRACTS
+    <div className="min-h-screen bg-slate-950 text-slate-100 py-12 px-6 sm:px-12 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 text-xs font-mono uppercase tracking-widest mb-3">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Procurement & Non-Dilutive Capital
+            </div>
+            <h1 className="text-4xl font-black tracking-tight text-white font-mono">
+              FEDERAL PRIME CONTRACTS & SBIR
+            </h1>
+            <p className="text-slate-400 mt-2 max-w-2xl text-sm">
+              Non-dilutive awards, Space Force mission orders, and NASA CLPS contracts awarded to commercial space operators.
+            </p>
           </div>
-          <h1 className="text-4xl font-light tracking-tight text-white md:text-5xl">
-            Space Capital Tracker
-          </h1>
-          <p className="mt-4 max-w-2xl text-neutral-400 font-light">
-            Public capital awards, NASA Commercial LEO Destinations (CLD), and commercial resupply allocations fueling commercial primes.
-          </p>
-        </header>
+          <div className="flex items-center gap-3">
+            <DataExportMenu filename="veroyx-grants" data={grants} />
+          </div>
+        </div>
 
-        <div className="space-y-4">
-          {grants.map((grant: any) => (
-            <div
-              key={grant.id}
-              className="rounded-xl border border-neutral-800/80 bg-neutral-950/40 p-6 backdrop-blur-md"
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {grants.map((g) => (
+            <Link
+              key={g.slug}
+              href={`/grants/${g.slug}`}
+              className="p-6 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/40 transition-all flex flex-col justify-between group space-y-4"
             >
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <Link href={`/grants/${grant.slug}`} className="text-lg font-medium text-white hover:text-cyan-400 transition-colors">{grant.name}</Link>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-neutral-400">
-                    {grant.awarding_agency && <span className="text-neutral-300">AGENCY: {grant.awarding_agency}</span>}
-                    {grant.status && <span>STATUS: {grant.status}</span>}
-                    {grant.award_date && <span>DATE: {grant.award_date}</span>}
-                  </div>
-                </div>
-                {grant.amount && (
-                  <span className="font-mono text-lg font-medium text-emerald-400 sm:text-right">
-                    {grant.currency ?? "USD"} {grant.amount.toLocaleString()}
+              <div>
+                <div className="flex items-center justify-between text-xs font-mono text-emerald-400 mb-2">
+                  <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 truncate max-w-[200px]">
+                    {g.awarding_agency || "Federal Agency"}
                   </span>
-                )}
+                  <span className="text-emerald-400 font-bold">
+                    ${Number(g.amount).toLocaleString()}
+                  </span>
+                </div>
+                <h2 className="text-xl font-bold font-mono text-white group-hover:text-emerald-300 transition-colors">
+                  {g.name}
+                </h2>
+                <p className="text-slate-400 text-xs mt-2 line-clamp-2 leading-relaxed">
+                  {g.description}
+                </p>
               </div>
 
-              {grant.company_grants?.[0]?.company && (
-                <div className="mt-3 font-mono text-xs text-neutral-400">
-                  RECIPIENT ({grant.company_grants[0].role ?? "Prime"}):{" "}
-                  <Link
-                    href={`/companies/${grant.company_grants[0].company.slug}`}
-                    className="text-cyan-400 hover:underline"
-                  >
-                    {grant.company_grants[0].company.name}
-                  </Link>
+              <div className="pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-slate-400">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Calendar className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  <span>{g.award_date ? new Date(g.award_date).getFullYear() : "Active"}</span>
                 </div>
-              )}
-
-              {grant.description && (
-                <p className="mt-3.5 text-sm font-light leading-relaxed text-neutral-400">
-                  {grant.description}
-                </p>
-              )}
-            </div>
+                <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 transition-colors shrink-0 ml-2" />
+              </div>
+            </Link>
           ))}
         </div>
-      </main>
+      </div>
     </div>
   )
 }
