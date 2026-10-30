@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("pass") || q.includes("overflight") || q.includes("los") || q.includes("track")) {
+        list.push({
+          type: "technology",
+          title: "Satellite Pass & Overflight Predictor",
+          subtitle: "Line-of-Sight Azimuth & Elevation Predictor",
+          href: "/passes"
+        })
+      }
+
       if (q.includes("traj") || q.includes("delta") || q.includes("sim") || q.includes("orbit")) {
         list.push({
           type: "technology",
