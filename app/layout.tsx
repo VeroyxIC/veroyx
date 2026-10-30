@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import Navbar from "@/components/Navbar"
+import CommandPalette from "@/components/CommandPalette"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
@@ -20,6 +21,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${inter.variable} ${mono.variable} min-h-screen bg-[#05070a] font-sans antialiased text-neutral-100`}>
         <Navbar />
+        <CommandPalette />
         {children}
       </body>
     </html>
