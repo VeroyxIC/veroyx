@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("isam") || q.includes("rpo") || q.includes("rendezvous") || q.includes("docking") || q.includes("servicing")) {
+        list.push({
+          type: "technology",
+          title: "ISAM & Rendezvous (RPO) Simulator",
+          subtitle: "Clohessy-Wiltshire Dynamics, V-bar/R-bar Gates & Delta-V",
+          href: "/isam"
+        })
+      }
+
       if (q.includes("ground") || q.includes("station") || q.includes("downlink") || q.includes("gateway") || q.includes("ksat")) {
         list.push({
           type: "technology",
