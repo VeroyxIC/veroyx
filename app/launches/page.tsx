@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { Rocket, Clock, MapPin, Orbit, Radio } from "lucide-react"
+import OrbitalGlobe from "@/components/OrbitalGlobe"
 
 function CountdownTimer({ targetDate }: { targetDate: string }) {
   const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number }>({ d: 0, h: 0, m: 0, s: 0 })
@@ -78,6 +79,8 @@ export default function LaunchesPage() {
             </div>
           </div>
         </div>
+
+        <OrbitalGlobe />
 
         {loading ? (
           <div className="p-16 text-center font-mono text-cyan-400 flex items-center justify-center gap-3">
