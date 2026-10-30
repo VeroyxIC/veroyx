@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("ground") || q.includes("station") || q.includes("downlink") || q.includes("gateway") || q.includes("ksat")) {
+        list.push({
+          type: "technology",
+          title: "Ground Station Topology & Contact Scheduler",
+          subtitle: "Global Earth Station Network, Bands & Pass Accumulator",
+          href: "/ground-stations"
+        })
+      }
+
       if (q.includes("contract") || q.includes("award") || q.includes("subcontract") || q.includes("procurement") || q.includes("prime")) {
         list.push({
           type: "technology",
