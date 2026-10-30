@@ -72,6 +72,14 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("traj") || q.includes("delta") || q.includes("sim") || q.includes("orbit")) {
+        list.push({
+          type: "technology",
+          title: "Trajectory & Delta-V Simulator",
+          subtitle: "Orbital Mechanics & Azimuth Optimization",
+          href: "/trajectory"
+        })
+      }
       ;(constellations || []).forEach((c) => {
         list.push({
           type: "technology",
