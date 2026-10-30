@@ -219,12 +219,19 @@ Overall Mission Status,${synthesis.overallFeasible ? "GO FOR FLIGHT" : "TRADE IT
           </div>
 
           <div className="flex items-center gap-3 font-mono text-xs">
-            <button
-              onClick={exportMissionDossier}
-              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
+            <Link
+              href={`/scenarios/${selectedKey}/briefing`}
+              className="px-4 py-2.5 rounded-lg bg-cyan-950 border border-cyan-500/50 hover:bg-cyan-900 text-cyan-300 font-bold transition-all flex items-center gap-2 cursor-pointer"
             >
               <FileText className="w-3.5 h-3.5" />
-              EXPORT MISSION DOSSIER (MRD)
+              EXECUTIVE BRIEFING (PDF)
+            </Link>
+            <button
+              onClick={exportMissionDossier}
+              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 hover:text-white font-bold transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              CSV SPEC
             </button>
           </div>
         </div>
