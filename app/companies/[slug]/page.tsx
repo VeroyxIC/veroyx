@@ -3,6 +3,7 @@ import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import SupplyChainGraph from "@/components/SupplyChainGraph"
 import ExportButton from "@/components/ExportButton"
+import WatchlistButton from "@/components/WatchlistButton"
 import { ArrowLeft, ExternalLink, DollarSign, MapPin, Building, Shield, Cpu, Calendar, FileText } from "lucide-react"
 
 export const dynamic = "force-dynamic"
@@ -80,6 +81,7 @@ export default async function CompanyDetailPage({
                 VISIT PRIME <ExternalLink className="w-3.5 h-3.5" />
               </a>
             )}
+            <WatchlistButton entityType="company" entityId={company.id} entityName={company.name} entitySlug={company.slug} />
             <ExportButton
               data={[{ ...company, technologies, grants }]}
               filename={`${company.slug}-dossier`}
