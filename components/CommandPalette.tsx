@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("optical") || q.includes("gsd") || q.includes("camera") || q.includes("recon") || q.includes("niirs")) {
+        list.push({
+          type: "technology",
+          title: "Optical Sensor & GSD Recon Simulator",
+          subtitle: "Ground Sample Distance, Diffraction Limit & NIIRS",
+          href: "/optical"
+        })
+      }
+
       if (q.includes("rf") || q.includes("link") || q.includes("downlink") || q.includes("bandwidth") || q.includes("frequency")) {
         list.push({
           type: "technology",
