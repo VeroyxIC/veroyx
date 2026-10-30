@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-manifests",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/sync-ephemeris",
+      "schedule": "0 6 * * *"
     }
   ]
 }

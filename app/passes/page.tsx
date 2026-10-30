@@ -2,7 +2,19 @@
 
 import { useState, useMemo } from "react"
 import Link from "next/link"
-import { Satellite, MapPin, Eye, Compass, Clock, Radio, ArrowRight, ShieldCheck, Sun, Moon } from "lucide-react"
+import { 
+  Satellite, 
+  MapPin, 
+  Eye, 
+  Compass, 
+  Clock, 
+  Radio, 
+  ArrowRight, 
+  ShieldCheck, 
+  Sun, 
+  Moon, 
+  RefreshCw 
+} from "lucide-react"
 
 interface GroundStation {
   id: string
@@ -43,17 +55,32 @@ export default function OverflightPredictorPage() {
   const [selectedStation, setSelectedStation] = useState<string>("ksc")
   const [selectedAsset, setSelectedAsset] = useState<string>("pelican")
   const [minElevation, setMinElevation] = useState<number>(20)
+  const [syncing, setSyncing] = useState<boolean>(false)
 
   const station = GROUND_STATIONS.find((s) => s.id === selectedStation)!
   const asset = ORBITAL_ASSETS.find((a) => a.id === selectedAsset)!
+
+  const syncCelesTrak = async () => {
+    setSyncing(true)
+    try {
+      const res = await fetch("/api/cron/sync-ephemeris?key=vx_cron_secret_internal_2026")
+      const data = await res.json()
+      if (data.status === "success") {
+        alert(`CELESTRAK SYNC SUCCESS: Ingested ${data.ingestedCount} orbital records.`)
+      } else {
+        alert("Failed to sync ephemeris data.")
+      }
+    } catch {
+      alert("Failed to communicate with CelesTrak upstream.")
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // Deterministic overflight pass calculation
   const predictedPasses = useMemo(() => {
     const passes = []
     const baseTime = Date.now() + 1000 * 60 * 18 // First pass 18 mins from now
-
-    // SGP4 simplified orbital period calculation
-    const orbitalRevsPerDay = 1440 / asset.periodMin
 
     for (let i = 0; i < 5; i++) {
       const passStart = new Date(baseTime + i * (asset.periodMin * 60 * 1000) * 1.6)
@@ -80,7 +107,7 @@ export default function OverflightPredictorPage() {
     }
 
     return passes
-  }, [asset, station, minElevation])
+  }, [asset, minElevation])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
@@ -91,7 +118,7 @@ export default function OverflightPredictorPage() {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
               <Satellite className="w-3.5 h-3.5 animate-spin" />
-              Keplerian Ground-Track &amp; Overflight Geometry
+              Keplerian Ground-Track & Overflight Geometry
             </div>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
               SATELLITE PASS PREDICTOR
@@ -101,9 +128,20 @@ export default function OverflightPredictorPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400">
-            <Radio className="w-3.5 h-3.5 animate-pulse" />
-            EPHEMERIS REVISION: EPOCH 2026.302
+          <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+            <button
+              onClick={syncCelesTrak}
+              disabled={syncing}
+              className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "POLLING NORAD..." : "SYNC CELESTRAK TLEs"}
+            </button>
+
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              EPHEMERIS: EPOCH 2026.302
+            </div>
           </div>
         </div>
 
