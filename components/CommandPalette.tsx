@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("thermal") || q.includes("cryo") || q.includes("boil") || q.includes("temperature") || q.includes("mli")) {
+        list.push({
+          type: "technology",
+          title: "Spacecraft Thermal & Cryo Boil-Off Simulator",
+          subtitle: "Stefan-Boltzmann Radiation, MLI Insulation & Zero Boil-Off",
+          href: "/thermal"
+        })
+      }
+
       if (q.includes("isam") || q.includes("rpo") || q.includes("rendezvous") || q.includes("docking") || q.includes("servicing")) {
         list.push({
           type: "technology",
