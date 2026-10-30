@@ -16,12 +16,14 @@ import {
   Filter,
   Search
 } from "lucide-react"
+import DebrisOrbitVisualizer from "@/components/DebrisOrbitVisualizer"
 
 export default function SSARadarPage() {
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [filterRisk, setFilterRisk] = useState<string>("ALL")
   const [searchQuery, setSearchQuery] = useState<string>("")
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
 
   useEffect(() => {
     async function loadConjunctions() {
@@ -32,6 +34,9 @@ export default function SSARadarPage() {
 
       if (!error && data) {
         setEvents(data)
+        if (data.length > 0) {
+          setSelectedEventId(data[0].event_id)
+        }
       }
       setLoading(false)
     }
@@ -67,7 +72,7 @@ export default function SSARadarPage() {
               SPACE SITUATIONAL AWARENESS
             </h1>
             <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Real-time close-approach radar monitoring high-density LEO shells, collision probability, radial miss vectors, and relative velocity intercept vectors.
+              Real-time close-approach radar monitoring high-density LEO shells, collision probability ($P_c$), radial miss vectors, and relative velocity intercept vectors.
             </p>
           </div>
 
@@ -76,6 +81,13 @@ export default function SSARadarPage() {
             18TH SPACE DEFENSE SQDN FEED: ACTIVE
           </div>
         </div>
+
+        {/* 3D Interactive Conjunction Visualizer */}
+        <DebrisOrbitVisualizer
+          events={events}
+          selectedEventId={selectedEventId}
+          onSelectEvent={(evt) => setSelectedEventId(evt.event_id)}
+        />
 
         {/* Macro Conjunction KPI Ribbon */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
@@ -156,13 +168,17 @@ export default function SSARadarPage() {
             {filteredEvents.map((evt) => {
               const isCrit = evt.risk_level === "CRITICAL"
               const isElev = evt.risk_level === "ELEVATED"
+              const isSelected = evt.event_id === selectedEventId
               const tca = new Date(evt.tca_epoch)
 
               return (
                 <div
                   key={evt.id}
-                  className={`p-6 rounded-2xl bg-slate-900/40 border transition-all space-y-4 ${
-                    isCrit
+                  onClick={() => setSelectedEventId(evt.event_id)}
+                  className={`p-6 rounded-2xl bg-slate-900/40 border transition-all space-y-4 cursor-pointer ${
+                    isSelected
+                      ? "border-cyan-400 ring-1 ring-cyan-400 bg-cyan-950/20 shadow-[0_0_25px_rgba(6,182,212,0.15)]"
+                      : isCrit
                       ? "border-red-500/40 bg-red-950/10 hover:border-red-500/60 shadow-[0_0_20px_rgba(239,68,68,0.08)]"
                       : isElev
                       ? "border-amber-500/40 bg-amber-950/10 hover:border-amber-500/60"
@@ -183,6 +199,11 @@ export default function SSARadarPage() {
                         {evt.risk_level} CONJUNCTION
                       </span>
                       <span className="text-slate-400 font-bold">{evt.event_id}</span>
+                      {isSelected && (
+                        <span className="text-[10px] font-bold text-cyan-400 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/40">
+                          SELECTED ON 3D RADAR
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2 text-slate-400 text-[11px]">

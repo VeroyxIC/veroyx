@@ -72,6 +72,15 @@ export default function CommandPalette() {
       ])
 
       const list: SearchResult[] = []
+      if (q.includes("rf") || q.includes("link") || q.includes("downlink") || q.includes("bandwidth") || q.includes("frequency")) {
+        list.push({
+          type: "technology",
+          title: "RF Link Budget & Downlink Calculator",
+          subtitle: "Friis Path Loss, Dish Gain & Eb/N0 Margin",
+          href: "/rf"
+        })
+      }
+
       if (q.includes("engine") || q.includes("propulsion") || q.includes("thrust") || q.includes("isp")) {
         list.push({
           type: "technology",
