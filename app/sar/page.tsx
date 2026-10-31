@@ -4,236 +4,224 @@ import { useState, useMemo } from "react"
 import Link from "next/link"
 import { 
   Radio, 
-  Layers, 
-  Gauge, 
+  Activity, 
+  Maximize2, 
   Download, 
   ShieldCheck, 
-  Crosshair, 
-  ArrowRight,
-  Activity,
-  Maximize2,
-  Scan,
-  CloudSun
+  AlertTriangle, 
+  ArrowRight, 
+  Gauge, 
+  Sliders, 
+  Zap, 
+  Waves, 
+  Layers 
 } from "lucide-react"
 
 interface SarPreset {
   name: string
-  operator: string
-  band: "X-Band" | "C-Band" | "L-Band"
-  centerFreqGhz: number
+  band: "X-Band (9.6 GHz)" | "C-Band (5.4 GHz)" | "L-Band (1.25 GHz)"
+  frequencyGhz: number
+  orbitAltitudeKm: number
+  peakRfPowerW: number
+  dutyCyclePct: number
   antennaLengthM: number
   antennaWidthM: number
-  bandwidthMhz: number
-  altitudeKm: number
+  chirpBandwidthMhz: number
   incidenceAngleDeg: number
-  mode: "Spotlight" | "Stripmap" | "ScanSAR"
+  noiseFigureDb: number
   description: string
 }
 
 const SAR_PRESETS: Record<string, SarPreset> = {
-  umbra_x: {
-    name: "Umbra High-Resolution SAR",
-    operator: "Umbra Space",
-    band: "X-Band",
-    centerFreqGhz: 9.6,
-    antennaLengthM: 1.2,
-    antennaWidthM: 0.8,
-    bandwidthMhz: 1200,
-    altitudeKm: 520,
-    incidenceAngleDeg: 35,
-    mode: "Spotlight",
-    description: "Ultra-wideband 1200 MHz chirp delivering sub-0.25m tactical spotlight resolution.",
-  },
-  capella_x: {
-    name: "Capella Space Whitney",
-    operator: "Capella Space",
-    band: "X-Band",
-    centerFreqGhz: 9.65,
-    antennaLengthM: 3.5,
-    antennaWidthM: 0.8,
-    bandwidthMhz: 500,
-    altitudeKm: 500,
-    incidenceAngleDeg: 30,
-    mode: "Spotlight",
-    description: "Commercial deployed mesh reflector optimized for all-weather infrastructure tracking.",
-  },
-  iceye_x: {
-    name: "ICEYE Commercial SmallSat",
-    operator: "ICEYE",
-    band: "X-Band",
-    centerFreqGhz: 9.65,
+  high_res_x_band: {
+    name: "Sub-Meter X-Band Commercial SAR (Stripmap)",
+    band: "X-Band (9.6 GHz)",
+    frequencyGhz: 9.6,
+    orbitAltitudeKm: 515,
+    peakRfPowerW: 3200,
+    dutyCyclePct: 18,
     antennaLengthM: 3.2,
-    antennaWidthM: 0.4,
-    bandwidthMhz: 300,
-    altitudeKm: 570,
-    incidenceAngleDeg: 28,
-    mode: "Stripmap",
-    description: "Compact phased array constellation providing continuous wide-swath persistent monitoring.",
+    antennaWidthM: 0.8,
+    chirpBandwidthMhz: 300,
+    incidenceAngleDeg: 35,
+    noiseFigureDb: 3.5,
+    description: "Compact active phased array radar delivering sub-meter spotlight and stripmap imagery for infrastructure and maritime monitoring.",
   },
-  sentinel1_c: {
-    name: "Sentinel-1 TOPSAR",
-    operator: "ESA / Copernicus",
-    band: "C-Band",
-    centerFreqGhz: 5.405,
-    antennaLengthM: 12.3,
-    antennaWidthM: 0.82,
-    bandwidthMhz: 100,
-    altitudeKm: 693,
-    incidenceAngleDeg: 38,
-    mode: "ScanSAR",
-    description: "Large 12m planar phased array providing 250km interferometric wide swaths.",
-  },
-  nisar_l: {
-    name: "NASA-ISRO NISAR",
-    operator: "NASA / ISRO",
-    band: "L-Band",
-    centerFreqGhz: 1.25,
+  c_band_interferometry: {
+    name: "Sentinel-1 Analogue C-Band InSAR",
+    band: "C-Band (5.4 GHz)",
+    frequencyGhz: 5.4,
+    orbitAltitudeKm: 693,
+    peakRfPowerW: 4500,
+    dutyCyclePct: 12,
     antennaLengthM: 12.0,
-    antennaWidthM: 12.0,
-    bandwidthMhz: 77,
-    altitudeKm: 747,
-    incidenceAngleDeg: 37,
-    mode: "Stripmap",
-    description: "12m deployable mesh reflector for dense forest canopy penetration and ground displacement.",
+    antennaWidthM: 1.3,
+    chirpBandwidthMhz: 100,
+    incidenceAngleDeg: 38,
+    noiseFigureDb: 3.8,
+    description: "Large 12-meter deployable waveguide array optimized for global repeat-pass interferometry (InSAR) and crustal deformation tracking.",
+  },
+  l_band_biomass: {
+    name: "NISAR Analogue L-Band Polarimetric SAR",
+    band: "L-Band (1.25 GHz)",
+    frequencyGhz: 1.25,
+    orbitAltitudeKm: 747,
+    peakRfPowerW: 2800,
+    dutyCyclePct: 10,
+    antennaLengthM: 12.0, // Large reflector aperture
+    antennaWidthM: 3.5,
+    chirpBandwidthMhz: 40,
+    incidenceAngleDeg: 42,
+    noiseFigureDb: 2.8,
+    description: "Penetrating L-band radar capable of measuring forest canopy biomass, sub-surface soil moisture, and polar ice shelf dynamics.",
   },
 }
 
-export default function SARSimulatorPage() {
-  const [selectedPresetKey, setSelectedPresetKey] = useState<string>("umbra_x")
-  const [antennaLengthM, setAntennaLengthM] = useState<number>(1.2)
-  const [bandwidthMhz, setBandwidthMhz] = useState<number>(1200)
-  const [altitudeKm, setAltitudeKm] = useState<number>(520)
-  const [incidenceDeg, setIncidenceDeg] = useState<number>(35)
-  const [mode, setMode] = useState<"Spotlight" | "Stripmap" | "ScanSAR">("Spotlight")
-  const [bandName, setBandName] = useState<string>("X-Band")
+export default function SarPayloadPage() {
+  const [selectedKey, setSelectedKey] = useState<string>("high_res_x_band")
+  const [altitudeKm, setAltitudeKm] = useState<number>(515)
+  const [peakPowerW, setPeakPowerW] = useState<number>(3200)
+  const [dutyCyclePct, setDutyCyclePct] = useState<number>(18)
+  const [antennaLengthM, setAntennaLengthM] = useState<number>(3.2)
+  const [antennaWidthM, setAntennaWidthM] = useState<number>(0.8)
+  const [chirpBandwidthMhz, setChirpBandwidthMhz] = useState<number>(300)
+  const [incidenceAngleDeg, setIncidenceAngleDeg] = useState<number>(35)
 
-  const preset = SAR_PRESETS[selectedPresetKey]
+  const activePreset = SAR_PRESETS[selectedKey]
 
   const applyPreset = (key: string) => {
     const p = SAR_PRESETS[key]
-    setSelectedPresetKey(key)
+    setSelectedKey(key)
+    setAltitudeKm(p.orbitAltitudeKm)
+    setPeakPowerW(p.peakRfPowerW)
+    setDutyCyclePct(p.dutyCyclePct)
     setAntennaLengthM(p.antennaLengthM)
-    setBandwidthMhz(p.bandwidthMhz)
-    setAltitudeKm(p.altitudeKm)
-    setIncidenceDeg(p.incidenceAngleDeg)
-    setMode(p.mode)
-    setBandName(p.band)
+    setAntennaWidthM(p.antennaWidthM)
+    setChirpBandwidthMhz(p.chirpBandwidthMhz)
+    setIncidenceAngleDeg(p.incidenceAngleDeg)
   }
 
-  // SAR Radar Physics Calculations
+  // SAR Radar Equations & Ambiguity Geometry
   const metrics = useMemo(() => {
+    const rEarthKm = 6378.1
+    const mu = 398600.4418
     const c = 299792458
-    const freqGhz = bandName === "X-Band" ? 9.6 : bandName === "C-Band" ? 5.4 : 1.25
-    const wavelengthM = c / (freqGhz * 1e9)
-    const incRad = (incidenceDeg * Math.PI) / 180
+    const kBoltzmann = 1.380649e-23
+    const t0 = 290 // Standard noise temp (K)
 
-    // 1. Slant Range (R0 = altitude / cos(theta))
+    const wavelengthM = c / (activePreset.frequencyGhz * 1e9)
+    const incRad = (incidenceAngleDeg * Math.PI) / 180
+
+    // 1. Orbital Velocity & Slant Range Geometry
+    const rOrbKm = rEarthKm + altitudeKm
+    const vOrbMS = Math.sqrt((mu * 1e9) / (rOrbKm * 1000))
+    const vGroundMS = vOrbMS * (rEarthKm / rOrbKm)
+
+    // Slant range to ground target: R_slant = h / cos(theta_inc)
     const slantRangeKm = altitudeKm / Math.cos(incRad)
     const slantRangeM = slantRangeKm * 1000
 
-    // 2. Slant Range Resolution: delta_r_slant = c / (2 * Bandwidth)
-    const bandwidthHz = bandwidthMhz * 1e6
-    const slantRangeResM = c / (2 * bandwidthHz)
+    // 2. Spatial Resolutions (Azimuth & Ground Range)
+    // Azimuth Resolution in Stripmap SAR: delta_az = L_antenna / 2
+    const azimuthResolutionM = Math.round((antennaLengthM / 2) * 100) / 100
 
-    // 3. Ground Range Resolution: delta_r_ground = delta_r_slant / sin(theta)
-    const groundRangeResM = slantRangeResM / Math.sin(incRad)
+    // Ground Range Resolution: delta_gr = c / (2 * B * sin(theta_inc))
+    const slantRangeResolutionM = c / (2 * (chirpBandwidthMhz * 1e6))
+    const groundRangeResolutionM = Math.round((slantRangeResolutionM / Math.sin(incRad)) * 100) / 100
 
-    // 4. Azimuth Resolution
-    // Stripmap: delta_a = L_a / 2
-    // Spotlight: can focus down to ~0.25 to 0.4 of stripmap limit using beam steering
-    // ScanSAR: degraded by burst duration factor ~3x
-    let azimuthResM = antennaLengthM / 2
-    if (mode === "Spotlight") {
-      azimuthResM = Math.max(0.15, (antennaLengthM / 2) * 0.35)
-    } else if (mode === "ScanSAR") {
-      azimuthResM = (antennaLengthM / 2) * 3.5
-    }
+    // 3. PRF Selection Window (Doppler Centroid & Range Ambiguity Constraints)
+    // Minimum PRF to avoid azimuth Doppler aliasing: PRF_min = 2 * v_ground / L_antenna
+    const minPrfHz = Math.round((2 * vGroundMS) / antennaLengthM)
 
-    // 5. Synthetic Aperture Length: L_syn = lambda * R0 / L_a
-    const synthApertureLengthM = (wavelengthM * slantRangeM) / antennaLengthM
+    // Maximum PRF to avoid range echo overlap across swath:
+    // Swath width approx: W_ground = (lambda * R) / (W_antenna * cos(theta_inc))
+    const swathWidthKm = Math.round(((wavelengthM * slantRangeM) / (antennaWidthM * Math.cos(incRad))) / 1000)
+    const maxPrfHz = Math.round(c / (2 * (swathWidthKm * 1000 * Math.sin(incRad) + 15000))) // Buffer
+    const selectedPrfHz = Math.round((minPrfHz + maxPrfHz) / 2)
+    const prfValid = maxPrfHz > minPrfHz
 
-    // 6. Spacecraft Orbital Velocity (approx 7.6 km/s in LEO)
-    const orbitalVelMs = 7600
-    const dwellTimeSec = synthApertureLengthM / orbitalVelMs
+    // 4. Antenna Gain (Transmit & Receive Phased Array Aperture)
+    // G = (4 * pi * A_phys * eta_ap) / lambda^2
+    const antennaAreaM2 = antennaLengthM * antennaWidthM
+    const etaAperture = 0.65
+    const antennaGainRatio = (4 * Math.PI * antennaAreaM2 * etaAperture) / Math.pow(wavelengthM, 2)
+    const antennaGainDbi = Math.round((10 * Math.log10(antennaGainRatio)) * 10) / 10
 
-    // 7. Swath Width Estimation
-    let swathWidthKm = 0
-    if (mode === "Spotlight") {
-      swathWidthKm = 5.0
-    } else if (mode === "Stripmap") {
-      swathWidthKm = Math.round(((wavelengthM * slantRangeM) / 0.8) / 1000)
-    } else {
-      swathWidthKm = Math.round((slantRangeKm * Math.tan(incRad) * 0.6) + 120)
-    }
+    // 5. Radiometric Noise Equivalent Sigma Zero (NESZ in dB)
+    // Average RF power: P_avg = P_peak * duty_cycle
+    const avgPowerW = peakPowerW * (dutyCyclePct / 100)
+    const totalLossDb = 4.5 // Two-way atmospheric + feedline + processing losses
+    const totalLossRatio = Math.pow(10, totalLossDb / 10)
+    const noiseFigureRatio = Math.pow(10, activePreset.noiseFigureDb / 10)
 
-    // 8. Penetration & Environmental Robustness
-    let penetrationLevel = "SURFACE SCATTERING"
-    let penetrationDesc = "Captures metallic textures, vehicle surfaces, building facades, and rough ocean chop."
-    if (bandName === "C-Band") {
-      penetrationLevel = "LEAF-CANOPY TOPOLOGY"
-      penetrationDesc = "Scatters from tree canopy leaves, sea ice roughness, and agricultural crop growth."
-    } else if (bandName === "L-Band") {
-      penetrationLevel = "SUBSURFACE & FOLIAGE PENETRATING"
-      penetrationDesc = "Penetrates dry sand, snowpack, and thick forest branches down to tree trunks and soil strata."
-    }
+    // NESZ = (4 * (4*pi)^3 * R^4 * k * T0 * F_n * L * v_g * sin(inc)) / (P_avg * G^2 * lambda^3 * c)
+    const numerator = 4 * Math.pow(4 * Math.PI, 3) * Math.pow(slantRangeM, 4) * kBoltzmann * t0 * noiseFigureRatio * totalLossRatio * vGroundMS * Math.sin(incRad)
+    const denominator = avgPowerW * Math.pow(antennaGainRatio, 2) * Math.pow(wavelengthM, 3) * c
+    const neszLinear = numerator / Math.max(1e-12, denominator)
+    const neszDb = Math.round((10 * Math.log10(neszLinear)) * 10) / 10
+
+    // Standard SAR image quality requirement: NESZ <= -20.0 dB
+    const neszPassed = neszDb <= -20.0
 
     return {
-      slantRangeKm: slantRangeKm.toFixed(1),
-      slantRangeResM: slantRangeResM.toFixed(2),
-      groundRangeResM: groundRangeResM.toFixed(2),
-      azimuthResM: azimuthResM.toFixed(2),
-      synthApertureLengthKm: (synthApertureLengthM / 1000).toFixed(2),
-      dwellTimeSec: dwellTimeSec.toFixed(2),
+      vGroundMS: Math.round(vGroundMS),
+      slantRangeKm: Math.round(slantRangeKm),
+      wavelengthCm: Math.round(wavelengthM * 100 * 10) / 10,
+      azimuthResolutionM,
+      groundRangeResolutionM,
       swathWidthKm,
-      wavelengthCm: (wavelengthM * 100).toFixed(1),
-      penetrationLevel,
-      penetrationDesc,
+      minPrfHz,
+      maxPrfHz,
+      selectedPrfHz,
+      prfValid,
+      antennaGainDbi,
+      avgPowerW: Math.round(avgPowerW),
+      neszDb,
+      neszPassed,
     }
-  }, [antennaLengthM, bandwidthMhz, altitudeKm, incidenceDeg, mode, bandName])
+  }, [altitudeKm, peakPowerW, dutyCyclePct, antennaLengthM, antennaWidthM, chirpBandwidthMhz, incidenceAngleDeg, activePreset])
 
   const exportSarCSV = () => {
-    const csv = `Parameter,Value,Unit
-Preset Baseline,${preset.name},
-Radar Band,${bandName},
-Antenna Physical Length,${antennaLengthM},m
-Chirp Bandwidth,${bandwidthMhz},MHz
-Orbital Altitude,${altitudeKm},km
-Incidence Angle,${incidenceDeg},deg
-Imaging Mode,${mode},
-Wavelength,${metrics.wavelengthCm},cm
-Slant Range Distance,${metrics.slantRangeKm},km
-Slant Range Resolution,${metrics.slantRangeResM},m
-Ground Range Resolution,${metrics.groundRangeResM},m
-Azimuth Resolution,${metrics.azimuthResM},m
-Synthetic Aperture Length,${metrics.synthApertureLengthKm},km
-Target Dwell Time,${metrics.dwellTimeSec},s
-Swath Width,${metrics.swathWidthKm},km
-Penetration Regime,${metrics.penetrationLevel},`
+    const csv = `SPACECRAFT SYNTHETIC APERTURE RADAR (SAR) SIZING SPEC
+Instrument Preset,${activePreset.name}
+Radar Operating Band,${activePreset.band} (${activePreset.frequencyGhz} GHz, ${metrics.wavelengthCm} cm)
+Orbit Altitude,${altitudeKm} km (Ground Speed: ${metrics.vGroundMS} m/s)
+Incidence Angle,${incidenceAngleDeg} deg (Slant Range: ${metrics.slantRangeKm} km)
+Transmitter Peak RF Power,${peakPowerW} Watts (Avg RF Power: ${metrics.avgPowerW} W @ ${dutyCyclePct}% duty)
+Antenna Aperture Dimensions,${antennaLengthM}m length x ${antennaWidthM}m width (Gain: +${metrics.antennaGainDbi} dBi)
+Chirp Linear FM Bandwidth,${chirpBandwidthMhz} MHz
+Azimuth Spatial Resolution (Stripmap),${metrics.azimuthResolutionM} meters
+Ground Range Resolution,${metrics.groundRangeResolutionM} meters
+Ground Swath Width,${metrics.swathWidthKm} km
+Operating Pulse Repetition Frequency (PRF),${metrics.selectedPrfHz} Hz (Window: ${metrics.minPrfHz} Hz - ${metrics.maxPrfHz} Hz)
+PRF Timing Validity,${metrics.prfValid ? "VALID (AMBIGUITY FREE WINDOW CLOSED)" : "AMBIGUITY OVERLAP VIOLATION"}
+Noise Equivalent Sigma Zero (NESZ),${metrics.neszDb} dB (Standard Requirement: <= -20.0 dB)
+Radar Image Quality Verdict,${metrics.neszPassed && metrics.prfValid ? "PASS (HIGH-SENSITIVITY SAR PERFORMANCE)" : "FAIL (INSUFFICIENT NESZ OR PRF CONFLICT)"}`
 
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "veroyx-sar-resolution-model.csv"
+    a.download = `veroyx-sar-payload-${selectedKey}.csv`
     a.click()
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-6xl mx-auto space-y-10">
+      <div className="max-w-7xl mx-auto space-y-10">
 
-        {/* Header */}
+        {/* Master Header */}
         <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Scan className="w-3.5 h-3.5 animate-pulse" />
-              Active Microwave Radar & Synthetic Aperture Geometry
+              <Waves className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+              Synthetic Aperture Radar (SAR) Range Equation &amp; Ambiguity Sizing Engine
             </div>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              SYNTHETIC APERTURE RADAR (SAR) SIMULATOR
+              SAR RADAR SIZING
             </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Model all-weather 24/7 radar ground sample resolution, chirp pulse bandwidth scaling, incidence angles, synthetic aperture length, and canopy penetration regimes.
+            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
+              Model Synthetic Aperture Radar (SAR) Noise Equivalent Sigma Zero (NESZ), azimuth/range spatial resolutions, PRF timing exclusion windows, and active phased-array RF power budgets.
             </p>
           </div>
 
@@ -243,7 +231,7 @@ Penetration Regime,${metrics.penetrationLevel},`
               className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              EXPORT SAR SPECS
+              EXPORT SAR SPEC
             </button>
           </div>
         </div>
@@ -254,213 +242,252 @@ Penetration Regime,${metrics.penetrationLevel},`
             <button
               key={k}
               onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap ${
-                selectedPresetKey === k
+              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap text-left ${
+                selectedKey === k
                   ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
                   : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
               }`}
             >
-              {v.name} ({v.band})
+              <div className="font-bold">{v.name}</div>
+              <div className="text-[10px] text-slate-500">{v.band} · {v.orbitAltitudeKm} km</div>
             </button>
           ))}
         </div>
 
-        {/* Simulator Grid */}
+        {/* Primary KPI Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Zap className="w-3 h-3 text-cyan-400" /> SENSITIVITY (NESZ)
+            </div>
+            <div className={`text-3xl font-black ${metrics.neszPassed ? "text-emerald-400" : "text-red-400"}`}>
+              {metrics.neszDb} dB
+            </div>
+            <div className="text-[10px] text-slate-400">Req: &le; -20.0 dB ({metrics.avgPowerW} W Avg RF)</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Maximize2 className="w-3 h-3 text-purple-400" /> RESOLUTION (AZ &times; GR)
+            </div>
+            <div className="text-3xl font-black text-purple-400">
+              {metrics.azimuthResolutionM} &times; {metrics.groundRangeResolutionM} m
+            </div>
+            <div className="text-[10px] text-slate-400">Azimuth L/2 &times; Range Bandwidth</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Waves className="w-3 h-3 text-amber-400" /> SWATH WIDTH
+            </div>
+            <div className="text-3xl font-black text-amber-400">{metrics.swathWidthKm} km</div>
+            <div className="text-[10px] text-slate-400">Slant Range: {metrics.slantRangeKm} km</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Activity className="w-3 h-3 text-white" /> PRF WINDOW
+            </div>
+            <div className={`text-3xl font-black ${metrics.prfValid ? "text-white" : "text-red-400"}`}>
+              {metrics.selectedPrfHz} Hz
+            </div>
+            <div className="text-[10px] text-slate-400">Valid: {metrics.minPrfHz} - {metrics.maxPrfHz} Hz</div>
+          </div>
+        </div>
+
+        {/* Workspace Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
 
-          {/* Controls Form */}
+          {/* Configuration Form */}
           <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
             <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
               <Gauge className="w-4 h-4 text-cyan-400" />
-              Radar Instrument Configuration
+              Radar Sizing Parameters
             </div>
 
-            {/* Operating Band */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">RADAR FREQUENCY BAND</label>
-              <div className="grid grid-cols-3 gap-2">
-                {["X-Band", "C-Band", "L-Band"].map((b) => (
-                  <button
-                    key={b}
-                    onClick={() => setBandName(b)}
-                    className={`py-2 rounded-lg border text-center transition-all ${
-                      bandName === b
-                        ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
-                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {b}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Imaging Mode */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">COLLECTION MODE</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["Spotlight", "Stripmap", "ScanSAR"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMode(m)}
-                    className={`py-2 rounded-lg border text-center transition-all ${
-                      mode === m
-                        ? "bg-purple-950 border-purple-500/50 text-purple-300 font-bold"
-                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Chirp Bandwidth Slider */}
+            {/* Orbit Altitude */}
             <div className="space-y-2">
               <div className="flex justify-between">
-                <label className="text-slate-400">CHIRP PULSE BANDWIDTH (B)</label>
-                <span className="text-cyan-400 font-bold">{bandwidthMhz} MHz</span>
+                <label className="text-slate-400 uppercase font-bold">ORBIT ALTITUDE</label>
+                <span className="text-cyan-400 font-bold">{altitudeKm} KM</span>
               </div>
               <input
                 type="range"
-                min={50}
-                max={1200}
+                min={400}
+                max={850}
                 step={25}
-                value={bandwidthMhz}
-                onChange={(e) => setBandwidthMhz(Number(e.target.value))}
+                value={altitudeKm}
+                onChange={(e) => setAltitudeKm(Number(e.target.value))}
                 className="w-full accent-cyan-400 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-500">
-                <span>50 MHz (Coarse)</span>
-                <span>600 MHz</span>
-                <span>1200 MHz (Tactical)</span>
+                <span>400 km (Low Slant)</span>
+                <span>600 km</span>
+                <span>850 km</span>
               </div>
             </div>
 
-            {/* Antenna Length Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-slate-400">ANTENNA AZIMUTH LENGTH (La)</label>
-                <span className="text-purple-400 font-bold">{antennaLengthM} METERS</span>
-              </div>
-              <input
-                type="range"
-                min={0.8}
-                max={15.0}
-                step={0.1}
-                value={antennaLengthM}
-                onChange={(e) => setAntennaLengthM(Number(e.target.value))}
-                className="w-full accent-purple-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>0.8m (Smallsat)</span>
-                <span>3.5m</span>
-                <span>15.0m (Heavy Phased Array)</span>
-              </div>
-            </div>
-
-            {/* Radar Incidence Angle Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-slate-400">LOOK INCIDENCE ANGLE</label>
-                <span className="text-emerald-400 font-bold">{incidenceDeg}&deg;</span>
-              </div>
-              <input
-                type="range"
-                min={18}
-                max={55}
-                step={1}
-                value={incidenceDeg}
-                onChange={(e) => setIncidenceDeg(Number(e.target.value))}
-                className="w-full accent-emerald-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>18&deg; (Near-Nadir)</span>
-                <span>35&deg; (Nominal)</span>
-                <span>55&deg; (Far Range Grazing)</span>
-              </div>
-            </div>
-
-            {/* Altitude Input */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">ORBITAL ALTITUDE</label>
-              <div className="flex items-center gap-2">
+            {/* RF Power & Duty Cycle */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">PEAK POWER (W)</label>
                 <input
                   type="number"
-                  value={altitudeKm}
-                  onChange={(e) => setAltitudeKm(Math.max(300, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
+                  step={200}
+                  value={peakPowerW}
+                  onChange={(e) => setPeakPowerW(Math.max(500, Number(e.target.value)))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
                 />
-                <span className="text-slate-500">km</span>
               </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">DUTY CYCLE (%)</label>
+                <input
+                  type="number"
+                  step={2}
+                  value={dutyCyclePct}
+                  onChange={(e) => setDutyCyclePct(Math.max(5, Math.min(30, Number(e.target.value))))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+              </div>
+            </div>
+
+            {/* Antenna Dimensions */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">LENGTH (m)</label>
+                <input
+                  type="number"
+                  step={0.2}
+                  value={antennaLengthM}
+                  onChange={(e) => setAntennaLengthM(Math.max(1.0, Number(e.target.value)))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">WIDTH (m)</label>
+                <input
+                  type="number"
+                  step={0.1}
+                  value={antennaWidthM}
+                  onChange={(e) => setAntennaWidthM(Math.max(0.3, Number(e.target.value)))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+              </div>
+            </div>
+
+            {/* Chirp Bandwidth & Incidence Angle */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">CHIRP (MHz)</label>
+                <input
+                  type="number"
+                  step={20}
+                  value={chirpBandwidthMhz}
+                  onChange={(e) => setChirpBandwidthMhz(Math.max(10, Number(e.target.value)))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">INCIDENCE (&deg;)</label>
+                <input
+                  type="number"
+                  step={2}
+                  value={incidenceAngleDeg}
+                  onChange={(e) => setIncidenceAngleDeg(Math.max(20, Math.min(55, Number(e.target.value))))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-sans text-slate-400">
+              <strong className="text-cyan-400 block font-mono">SYNTHETIC APERTURE PRINCIPLE:</strong>
+              Azimuth spatial resolution ({metrics.azimuthResolutionM} m) depends solely on half the physical antenna length ($L_a / 2$), completely independent of orbital altitude.
             </div>
           </div>
 
           {/* Results Telemetry Desk */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Primary KPI Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Crosshair className="w-3 h-3 text-cyan-400" /> GROUND RANGE RES
-                </div>
-                <div className="text-3xl font-black text-cyan-400">{metrics.groundRangeResM} m</div>
-                <div className="text-[10px] text-slate-500">Slant Res: {metrics.slantRangeResM} m</div>
+            {/* Radar Performance Dossier */}
+            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
+                  <Waves className="w-4 h-4 text-cyan-400" />
+                  Spaceborne SAR Performance &amp; Noise Equivalent Sensitivity
+                </span>
+                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded border uppercase ${
+                  metrics.neszPassed && metrics.prfValid
+                    ? "bg-emerald-950 border-emerald-500/40 text-emerald-300"
+                    : "bg-red-950 border-red-500/40 text-red-300"
+                }`}>
+                  {metrics.neszPassed && metrics.prfValid ? "SAR SENSITIVITY CERTIFIED" : "SENSITIVITY / PRF DEFICIT"}
+                </span>
               </div>
 
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Activity className="w-3 h-3 text-purple-400" /> AZIMUTH RESOLUTION
-                </div>
-                <div className="text-3xl font-black text-purple-400">{metrics.azimuthResM} m</div>
-                <div className="text-[10px] text-slate-500">Mode: {mode} Synthesis</div>
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-xs font-sans text-slate-300 leading-relaxed space-y-2">
+                <p>
+                  Operating in <strong className="text-white">{activePreset.band}</strong> ({metrics.wavelengthCm} cm wavelength) at {altitudeKm} km altitude with an incidence angle of {incidenceAngleDeg}&deg; (slant range of <strong className="text-white">{metrics.slantRangeKm} km</strong>).
+                  Transmitting <strong className="text-cyan-400">{peakPowerW} W peak RF power</strong> at a {dutyCyclePct}% duty cycle generates <strong className="text-white">{metrics.avgPowerW} W average microwave power</strong> across an antenna aperture of {antennaLengthM}m &times; {antennaWidthM}m (+{metrics.antennaGainDbi} dBi gain).
+                </p>
+                <p>
+                  The system achieves a Noise Equivalent Sigma Zero of <strong className={metrics.neszPassed ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>{metrics.neszDb} dB</strong> (threshold &le; -20 dB), guaranteeing crisp radar contrast over calm ocean and desert surfaces.
+                  A chirp bandwidth of {chirpBandwidthMhz} MHz yields <strong className="text-purple-400 font-bold">{metrics.groundRangeResolutionM} m ground range resolution</strong> by <strong className="text-purple-400 font-bold">{metrics.azimuthResolutionM} m azimuth resolution</strong> across an unambiguous swath width of <strong className="text-white">{metrics.swathWidthKm} km</strong>.
+                  {!metrics.neszPassed && (
+                    <span className="text-red-400 block mt-1 font-bold">
+                      Sensitivity deficit: NESZ is higher than -20.0 dB. Increase peak RF power, increase transmit duty cycle, or enlarge antenna aperture area to enhance radar gain.
+                    </span>
+                  )}
+                </p>
               </div>
 
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Maximize2 className="w-3 h-3 text-emerald-400" /> SWATH FOOTPRINT
+              {/* Specs Breakdown */}
+              <div className="space-y-2 text-xs pt-2 font-mono">
+                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
+                  <span className="text-slate-400">Antenna Array Phased Gain (G_tx = G_rx)</span>
+                  <span className="text-white font-bold">+{metrics.antennaGainDbi} dBi</span>
                 </div>
-                <div className="text-3xl font-black text-white">{metrics.swathWidthKm} km</div>
-                <div className="text-[10px] text-emerald-400">All-Weather Ground Track</div>
+                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
+                  <span className="text-slate-400">Doppler Azimuth Resolution Limit</span>
+                  <span className="text-purple-400 font-bold">{metrics.azimuthResolutionM} meters (L_a / 2)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
+                  <span className="text-slate-400">Chirp Ground Range Resolution</span>
+                  <span className="text-purple-400 font-bold">{metrics.groundRangeResolutionM} meters (@ {chirpBandwidthMhz} MHz)</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
+                  <span className="text-slate-400">Radar Sensitivity Clearance (NESZ)</span>
+                  <span className={`font-bold ${metrics.neszPassed ? "text-emerald-400" : "text-red-400"}`}>
+                    {metrics.neszPassed ? "PASS (HIGH SENSITIVITY RADAR)" : "FAIL (INSUFFICIENT NESZ MARGIN)"}
+                  </span>
+                </div>
               </div>
             </div>
 
-            {/* Environmental Penetration & Material Physics Card */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <CloudSun className="w-4 h-4 text-cyan-400" />
-                  Electromagnetic Penetration &amp; Phenomenology
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-300">
-                  λ = {metrics.wavelengthCm} CM
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <div className="text-[10px] text-cyan-400 font-bold uppercase">{metrics.penetrationLevel}</div>
-                <p className="text-slate-300 text-xs font-sans leading-relaxed">{metrics.penetrationDesc}</p>
-              </div>
-
-              {/* Synthetic Geometry Breakdown */}
-              <div className="space-y-2 text-xs pt-2">
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Slant Range Distance (R0)</span>
-                  <span className="text-white font-bold">{metrics.slantRangeKm} km</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Synthesized Synthetic Aperture Length (Lsyn)</span>
-                  <span className="text-purple-400 font-bold">{metrics.synthApertureLengthKm} km</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Coherent Target Dwell Time</span>
-                  <span className="text-emerald-400 font-bold">{metrics.dwellTimeSec} seconds</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Day/Night &amp; Cloud Cover Attenuation</span>
-                  <span className="text-cyan-400 font-bold">0.0 dB (Total Atmospheric Penetration)</span>
-                </div>
+            {/* Correlated Engines */}
+            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3 font-mono text-xs">
+              <span className="text-slate-400 font-bold uppercase text-[10px] block">
+                CORRELATED ENGINES:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                <Link href="/optical-payload" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/optical-payload</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/two-phase" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/two-phase (Heat)</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/power" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/power (Load)</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/data-budget" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/data-budget</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
               </div>
             </div>
 
