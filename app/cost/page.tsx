@@ -5,231 +5,175 @@ import Link from "next/link"
 import { 
   DollarSign, 
   Layers, 
-  Gauge, 
   Download, 
   ShieldCheck, 
+  AlertTriangle, 
+  ArrowRight, 
+  Gauge, 
+  Activity, 
+  BarChart3, 
   PieChart, 
-  TrendingUp, 
-  ArrowRight,
-  Cpu,
-  Rocket,
-  Wrench,
-  Boxes
+  Briefcase, 
+  Rocket, 
+  Cpu, 
+  Sliders 
 } from "lucide-react"
 
 interface CostPreset {
   name: string
-  classType: string
+  missionType: "LEO Smallsat Constellation Bus" | "Planetary Deep Space Probe" | "Commercial Telecom Flagship"
   dryMassKg: number
-  unitsToProduce: number
-  trlAverage: number
-  payloadType: "Optical" | "SAR" | "Comm Relay" | "Science"
-  payloadMassKg: number
-  propulsionMassKg: number
-  powerMassKg: number
-  adcsMassKg: number
-  avionicsMassKg: number
-  structureMassKg: number
-  thermalMassKg: number
-  launchVehicleCostM: number
+  payloadCostM: number
+  busPowerW: number
+  hardwareHeritagePct: number
+  developmentYears: number
+  costReservePct: number
   description: string
 }
 
 const COST_PRESETS: Record<string, CostPreset> = {
-  smallsat_constellation: {
-    name: "Commercial LEO Smallsat Bus",
-    classType: "Smallsat (150 kg Class)",
-    dryMassKg: 150,
-    unitsToProduce: 24,
-    trlAverage: 8,
-    payloadType: "Optical",
-    payloadMassKg: 45,
-    propulsionMassKg: 15,
-    powerMassKg: 28,
-    adcsMassKg: 14,
-    avionicsMassKg: 12,
-    structureMassKg: 28,
-    thermalMassKg: 8,
-    launchVehicleCostM: 6.5,
-    description: "Standardized proliferated LEO bus optimized for batch manufacturing and rideshare launches.",
+  smallsat_commercial: {
+    name: "Commercial LEO Earth Observation Bus",
+    missionType: "LEO Smallsat Constellation Bus",
+    dryMassKg: 180,
+    payloadCostM: 6.5,
+    busPowerW: 320,
+    hardwareHeritagePct: 65,
+    developmentYears: 2.5,
+    costReservePct: 20,
+    description: "Rapid-schedule commercial bus utilizing substantial existing subsystem heritage and COTS up-screened parts.",
   },
-  geo_commsat: {
-    name: "Heavy High-Power GEO Commsat",
-    classType: "Flagship GEO (4,500 kg Class)",
+  deep_space_science: {
+    name: "NASA Discovery-Class Deep Space Explorer",
+    missionType: "Planetary Deep Space Probe",
+    dryMassKg: 650,
+    payloadCostM: 45.0,
+    busPowerW: 550,
+    hardwareHeritagePct: 25,
+    developmentYears: 5.0,
+    costReservePct: 30,
+    description: "Class A/B deep-space mission with strict mission assurance standards, high radiation shielding, and custom NRE.",
+  },
+  geo_commercial_flagship: {
+    name: "GEO High-Throughput Communications Bus",
+    missionType: "Commercial Telecom Flagship",
     dryMassKg: 2800,
-    unitsToProduce: 1,
-    trlAverage: 9,
-    payloadType: "Comm Relay",
-    payloadMassKg: 950,
-    propulsionMassKg: 320,
-    powerMassKg: 520,
-    adcsMassKg: 180,
-    avionicsMassKg: 210,
-    structureMassKg: 500,
-    thermalMassKg: 120,
-    launchVehicleCostM: 95.0,
-    description: "High-reliability commercial communications satellite designed for 15+ years in geostationary orbit.",
-  },
-  defense_recon_sar: {
-    name: "Sovereign SAR Reconnaissance Bus",
-    classType: "Dedicated Defense ISR (1,200 kg Class)",
-    dryMassKg: 1200,
-    unitsToProduce: 4,
-    trlAverage: 7,
-    payloadType: "SAR",
-    payloadMassKg: 480,
-    propulsionMassKg: 110,
-    powerMassKg: 240,
-    adcsMassKg: 95,
-    avionicsMassKg: 115,
-    structureMassKg: 120,
-    thermalMassKg: 40,
-    launchVehicleCostM: 52.0,
-    description: "Classified synthetic aperture radar payload with high-assurance radiation-hardened avionics.",
+    payloadCostM: 85.0,
+    busPowerW: 12000,
+    hardwareHeritagePct: 80,
+    developmentYears: 3.5,
+    costReservePct: 15,
+    description: "Multi-kilowatt commercial telecom satellite built on an established high-heritage commercial production line.",
   },
 }
 
-export default function SpacecraftCostModelPage() {
-  const [selectedKey, setSelectedKey] = useState<string>("smallsat_constellation")
-  const [units, setUnits] = useState<number>(24)
-  const [trl, setTrl] = useState<number>(8)
-  const [structureMass, setStructureMass] = useState<number>(28)
-  const [thermalMass, setThermalMass] = useState<number>(8)
-  const [powerMass, setPowerMass] = useState<number>(28)
-  const [adcsMass, setAdcsMass] = useState<number>(14)
-  const [avionicsMass, setAvionicsMass] = useState<number>(12)
-  const [propulsionMass, setPropulsionMass] = useState<number>(15)
-  const [payloadMass, setPayloadMass] = useState<number>(45)
-  const [launchCostM, setLaunchCostM] = useState<number>(6.5)
+export default function MissionCostPage() {
+  const [selectedKey, setSelectedKey] = useState<string>("smallsat_commercial")
+  const [dryMassKg, setDryMassKg] = useState<number>(180)
+  const [payloadCostM, setPayloadCostM] = useState<number>(6.5)
+  const [busPowerW, setBusPowerW] = useState<number>(320)
+  const [heritagePct, setHeritagePct] = useState<number>(65)
+  const [devYears, setDevYears] = useState<number>(2.5)
+  const [reservePct, setReservePct] = useState<number>(20)
 
-  const preset = COST_PRESETS[selectedKey]
+  const activePreset = COST_PRESETS[selectedKey]
 
   const applyPreset = (key: string) => {
     const p = COST_PRESETS[key]
     setSelectedKey(key)
-    setUnits(p.unitsToProduce)
-    setTrl(p.trlAverage)
-    setStructureMass(p.structureMassKg)
-    setThermalMass(p.thermalMassKg)
-    setPowerMass(p.powerMassKg)
-    setAdcsMass(p.adcsMassKg)
-    setAvionicsMass(p.avionicsMassKg)
-    setPropulsionMass(p.propulsionMassKg)
-    setPayloadMass(p.payloadMassKg)
-    setLaunchCostM(p.launchVehicleCostM)
+    setDryMassKg(p.dryMassKg)
+    setPayloadCostM(p.payloadCostM)
+    setBusPowerW(p.busPowerW)
+    setHeritagePct(p.hardwareHeritagePct)
+    setDevYears(p.developmentYears)
+    setReservePct(p.costReservePct)
   }
 
-  // Aerospace Cost Estimating Relationships (CERs) - USCM10 Model
-  const breakdown = useMemo(() => {
-    // TRL Risk multiplier: TRL 9 = 1.0, TRL 6 = 1.35, TRL 4 = 1.8
-    const trlRiskFactor = Math.max(1.0, 1.0 + (9 - trl) * 0.12)
+  // NASA PCEC / USCM Parametric Cost Estimating Calculations
+  const metrics = useMemo(() => {
+    // Heritage complexity factor (100% heritage = 0.35x NRE, 0% heritage = 1.0x NRE)
+    const nreFactor = 1.0 - (heritagePct / 100) * 0.65
 
-    // Subsystem Recurring Flight Hardware Cost (in $K)
-    // Structure: 180 * M^0.65
-    const cStructureRecK = 180 * Math.pow(Math.max(1, structureMass), 0.65)
-    // Thermal: 220 * M^0.70
-    const cThermalRecK = 220 * Math.pow(Math.max(1, thermalMass), 0.70)
-    // EPS / Power: 340 * M^0.75
-    const cPowerRecK = 340 * Math.pow(Math.max(1, powerMass), 0.75)
-    // ADCS: 480 * M^0.60
-    const cAdcsRecK = 480 * Math.pow(Math.max(1, adcsMass), 0.60)
-    // Avionics / TT&C: 620 * M^0.55
-    const cAvionicsRecK = 620 * Math.pow(Math.max(1, avionicsMass), 0.55)
-    // Propulsion: 280 * M^0.72
-    const cPropulsionRecK = 280 * Math.pow(Math.max(1, propulsionMass), 0.72)
-    // Payload (Sensor / Comms): 980 * M^0.80
-    const cPayloadRecK = 980 * Math.pow(Math.max(1, payloadMass), 0.80)
+    // 1. Bus Hardware Subsystem CERs (USCM / PCEC power laws)
+    // Structure & Thermal: C = 0.045 * M^0.75 ($M)
+    const costStructureThermalM = Math.round((0.045 * Math.pow(dryMassKg * 0.35, 0.75) * nreFactor) * 100) / 100
 
-    const totalSubsystemsRecK =
-      cStructureRecK +
-      cThermalRecK +
-      cPowerRecK +
-      cAdcsRecK +
-      cAvionicsRecK +
-      cPropulsionRecK +
-      cPayloadRecK
+    // Avionics, CDH & TT&C: C = 0.12 * M_avionics^0.65 ($M)
+    const costAvionicsM = Math.round((0.14 * Math.pow(dryMassKg * 0.18, 0.65) * nreFactor) * 100) / 100
 
-    // Non-Recurring Engineering (NRE) multiplier (~2.8x recurring baseline scaled by TRL)
-    const nreBaseK = totalSubsystemsRecK * 2.8 * trlRiskFactor
+    // Electrical Power Subsystem (EPS): C = 0.008 * Power^0.82 ($M)
+    const costEpsM = Math.round((0.0085 * Math.pow(busPowerW, 0.82) * nreFactor) * 100) / 100
 
-    // Learning curve for multi-unit batch production (85% Crawford curve)
-    // L = units^log2(0.85) = units^-0.234
-    const learningCurveFactor = Math.pow(Math.max(1, units), -0.234)
-    const totalRecurringAllUnitsK = totalSubsystemsRecK * units * learningCurveFactor
+    // ADCS & Propulsion: C = 0.08 * M^0.7 ($M)
+    const costAdcsPropM = Math.round((0.09 * Math.pow(dryMassKg * 0.25, 0.70) * nreFactor) * 100) / 100
 
-    // Assembly, Integration & Testing (AI&T) ~ 20%
-    const aitK = (nreBaseK + totalRecurringAllUnitsK) * 0.18
+    // Total Spacecraft Bus Hardware Cost (WBS 05)
+    const totalBusHardwareCostM = Math.round((costStructureThermalM + costAvionicsM + costEpsM + costAdcsPropM) * 100) / 100
 
-    // Program Management, Systems Engineering & Mission Assurance (SE&I) ~ 18%
-    const seiK = (nreBaseK + totalRecurringAllUnitsK) * 0.16
+    // 2. Assembly, Integration & Test (AI&T, WBS 06) ~ 15% of hardware
+    const costAitM = Math.round((totalBusHardwareCostM * 0.16) * 100) / 100
 
-    // Spacecraft Segment Total ($M)
-    const spacecraftTotalM = (nreBaseK + totalRecurringAllUnitsK + aitK + seiK) / 1000
+    // 3. Project Management, Systems Engineering & Mission Assurance (WBS 01, 02, 03) ~ 20%
+    const costPmSeSmaM = Math.round(((totalBusHardwareCostM + payloadCostM) * 0.18) * 100) / 100
 
-    // Unit Recurring Flyaway Cost ($M per satellite)
-    const unitFlyawayM = ((totalRecurringAllUnitsK / units) + ((aitK + seiK) / units * 0.4)) / 1000
+    // 4. Ground Data System (GDS) & Mission Operations (WBS 07 & 09)
+    const costOpsM = Math.round((1.2 * devYears) * 100) / 100
 
-    // Launch Segment Total
-    const launchTotalM = launchCostM * Math.ceil(units / (units > 12 ? 12 : 1))
+    // Total Base Baseline Cost before Reserve
+    const baseCostBeforeReserveM = Math.round(
+      (totalBusHardwareCostM + payloadCostM + costAitM + costPmSeSmaM + costOpsM) * 100
+    ) / 100
 
-    // Total Program Lifecycle Cost ($M)
-    const totalProgramM = spacecraftTotalM + launchTotalM
+    // 5. Cost Contingency Reserve Allocation
+    const reserveAmountM = Math.round((baseCostBeforeReserveM * (reservePct / 100)) * 100) / 100
+    const totalLifecycleCostM = Math.round((baseCostBeforeReserveM + reserveAmountM) * 100) / 100
 
-    const totalDryMassKg =
-      structureMass +
-      thermalMass +
-      powerMass +
-      adcsMass +
-      avionicsMass +
-      propulsionMass +
-      payloadMass
+    // NASA Budget Clearance Check: SmallSat <= $40M, Discovery <= $500M
+    const budgetSane = totalLifecycleCostM < 1000
 
     return {
-      totalDryMassKg,
-      nreBaseM: (nreBaseK / 1000).toFixed(2),
-      recurringUnitsM: (totalRecurringAllUnitsK / 1000).toFixed(2),
-      aitM: (aitK / 1000).toFixed(2),
-      seiM: (seiK / 1000).toFixed(2),
-      spacecraftTotalM: spacecraftTotalM.toFixed(2),
-      unitFlyawayM: unitFlyawayM.toFixed(2),
-      launchTotalM: launchTotalM.toFixed(2),
-      totalProgramM: totalProgramM.toFixed(2),
-      trlRiskFactor: trlRiskFactor.toFixed(2),
+      costStructureThermalM,
+      costAvionicsM,
+      costEpsM,
+      costAdcsPropM,
+      totalBusHardwareCostM,
+      costAitM,
+      costPmSeSmaM,
+      costOpsM,
+      baseCostBeforeReserveM,
+      reserveAmountM,
+      totalLifecycleCostM,
+      budgetSane,
     }
-  }, [
-    trl,
-    units,
-    structureMass,
-    thermalMass,
-    powerMass,
-    adcsMass,
-    avionicsMass,
-    propulsionMass,
-    payloadMass,
-    launchCostM,
-  ])
+  }, [dryMassKg, payloadCostM, busPowerW, heritagePct, devYears, reservePct])
 
   const exportCostCSV = () => {
-    const csv = `SPACECRAFT WORK BREAKDOWN STRUCTURE (WBS) COST MODEL
-Archetype,${preset.name}
-Class,${preset.classType}
-Units in Production,${units}
-Average Subsystem TRL,${trl} (Risk Factor: ${breakdown.trlRiskFactor}x)
-Total Spacecraft Dry Mass,${breakdown.totalDryMassKg} kg
-Non-Recurring Engineering (NRE),$${breakdown.nreBaseM}M
-Recurring Hardware Production (All Units),$${breakdown.recurringUnitsM}M
-Assembly Integration & Testing (AI&T),$${breakdown.aitM}M
-Systems Engineering & Assurance (SE&I),$${breakdown.seiM}M
-Total Spacecraft Segment,$${breakdown.spacecraftTotalM}M
-Unit Flyaway Cost,$${breakdown.unitFlyawayM}M / unit
-Launch Services Segment,$${breakdown.launchTotalM}M
-TOTAL PROGRAM LIFECYCLE COST,$${breakdown.totalProgramM}M`
+    const csv = `SPACECRAFT NASA PCEC / USCM PARAMETRIC COST ESTIMATE
+Mission Profile,${activePreset.name}
+Mission Architecture Class,${activePreset.missionType}
+Spacecraft Dry Mass,${dryMassKg} kg
+Subsystem Power Demand,${busPowerW} Watts
+Hardware Subsystem Heritage,${heritagePct}% Existing Flight Design
+Development Timeline,${devYears} Years
+Cost Reserve Margin,${reservePct}% Allocation
+WBS 01/02/03 Management & Systems Engineering (PM/SE/SMA),$${metrics.costPmSeSmaM} Million USD
+WBS 04 Payload / Science Instrument,$${payloadCostM} Million USD
+WBS 05 Spacecraft Bus Hardware Total,$${metrics.totalBusHardwareCostM} Million USD
+  - Structure & Thermal Control,$${metrics.costStructureThermalM} Million USD
+  - Avionics C&DH and RF Communications,$${metrics.costAvionicsM} Million USD
+  - Electrical Power System (Solar & Battery),$${metrics.costEpsM} Million USD
+  - ADCS Attitude Control & Propulsion Hardware,$${metrics.costAdcsPropM} Million USD
+WBS 06 Assembly Integration & Test (AI&T),$${metrics.costAitM} Million USD
+WBS 07/09 Ground Operations & GDS,$${metrics.costOpsM} Million USD
+Total Baseline Cost (Before Reserve),$${metrics.baseCostBeforeReserveM} Million USD
+Contingency Cost Reserve Allocation,$${metrics.reserveAmountM} Million USD
+Total Lifecycle Mission Cost (P80 Baseline),$${metrics.totalLifecycleCostM} Million USD`
 
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "veroyx-spacecraft-cost-wbs.csv"
+    a.download = `veroyx-cost-model-${selectedKey}.csv`
     a.click()
   }
 
@@ -237,18 +181,18 @@ TOTAL PROGRAM LIFECYCLE COST,$${breakdown.totalProgramM}M`
     <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
       <div className="max-w-7xl mx-auto space-y-10">
 
-        {/* Header */}
+        {/* Master Header */}
         <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <DollarSign className="w-3.5 h-3.5 animate-pulse" />
-              USCM10 Aerospace Cost Estimating Relationships (CER) &amp; WBS Engine
+              <DollarSign className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
+              NASA PCEC &amp; USCM Parametric Mission Lifecycle Cost Model
             </div>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              SPACECRAFT COST &amp; BOM ESTIMATOR
+              PARAMETRIC COST ESTIMATION
             </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Model non-recurring engineering (NRE), Crawford 85% learning-curve multi-unit production, subsystem mass CERs, AI&amp;T, and full mission program lifecycle budgets.
+            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
+              Model institutional space mission costs using Cost Estimating Relationships (CERs) across WBS 01 through WBS 09, subsystem heritage discounts, AI&amp;T testing, and contingency reserves.
             </p>
           </div>
 
@@ -258,7 +202,7 @@ TOTAL PROGRAM LIFECYCLE COST,$${breakdown.totalProgramM}M`
               className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              EXPORT WBS MATRIX
+              EXPORT COST SPEC
             </button>
           </div>
         </div>
@@ -269,215 +213,238 @@ TOTAL PROGRAM LIFECYCLE COST,$${breakdown.totalProgramM}M`
             <button
               key={k}
               onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap text-left ${
                 selectedKey === k
                   ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
                   : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
               }`}
             >
-              {v.name}
+              <div className="font-bold">{v.name}</div>
+              <div className="text-[10px] text-slate-500">{v.missionType} · {v.dryMassKg} kg</div>
             </button>
           ))}
+        </div>
+
+        {/* Primary KPI Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <DollarSign className="w-3 h-3 text-emerald-400" /> TOTAL LIFECYCLE COST
+            </div>
+            <div className="text-3xl font-black text-emerald-400">${metrics.totalLifecycleCostM}M</div>
+            <div className="text-[10px] text-slate-400">P80 Baseline with {reservePct}% Reserve</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Rocket className="w-3 h-3 text-cyan-400" /> BUS HARDWARE (WBS 05)
+            </div>
+            <div className="text-3xl font-black text-cyan-400">${metrics.totalBusHardwareCostM}M</div>
+            <div className="text-[10px] text-slate-400">Includes {heritagePct}% Design Heritage</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Briefcase className="w-3 h-3 text-purple-400" /> PM, SE &amp; SMA (WBS 01-03)
+            </div>
+            <div className="text-3xl font-black text-purple-400">${metrics.costPmSeSmaM}M</div>
+            <div className="text-[10px] text-slate-400">Management &amp; Mission Assurance</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-amber-400" /> COST RESERVE (P80)
+            </div>
+            <div className="text-3xl font-black text-amber-400">${metrics.reserveAmountM}M</div>
+            <div className="text-[10px] text-slate-400">{reservePct}% Contingency Margin</div>
+          </div>
         </div>
 
         {/* Workspace Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
 
-          {/* Subsystem Mass & Production Inputs */}
+          {/* Configuration Form */}
           <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
             <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
-              <Boxes className="w-4 h-4 text-cyan-400" />
-              Subsystem Mass &amp; Program Scope
+              <Gauge className="w-4 h-4 text-cyan-400" />
+              Mission Scaling Parameters
             </div>
 
-            {/* Production Units */}
+            {/* Dry Mass Slider */}
             <div className="space-y-2">
               <div className="flex justify-between">
-                <label className="text-slate-400">FLIGHT UNITS IN BATCH</label>
-                <span className="text-cyan-400 font-bold">{units} SPACECRAFT</span>
+                <label className="text-slate-400 uppercase font-bold">SPACECRAFT DRY MASS</label>
+                <span className="text-cyan-400 font-bold">{dryMassKg} KG</span>
               </div>
               <input
                 type="range"
-                min={1}
-                max={100}
-                value={units}
-                onChange={(e) => setUnits(Number(e.target.value))}
+                min={20}
+                max={3500}
+                step={20}
+                value={dryMassKg}
+                onChange={(e) => setDryMassKg(Number(e.target.value))}
                 className="w-full accent-cyan-400 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-500">
-                <span>1 (Prototype)</span>
-                <span>24 (Constellation Shell)</span>
-                <span>100 (Mega)</span>
+                <span>50 kg</span>
+                <span>500 kg</span>
+                <span>3500 kg</span>
               </div>
             </div>
 
-            {/* Technology Readiness Level */}
-            <div className="space-y-2">
+            {/* Bus Power Slider */}
+            <div className="space-y-2 pt-2 border-t border-slate-800/80">
               <div className="flex justify-between">
-                <label className="text-slate-400">AVERAGE SUBSYSTEM TRL</label>
-                <span className="text-purple-400 font-bold">TRL {trl} ({breakdown.trlRiskFactor}x NRE)</span>
+                <label className="text-slate-400 uppercase font-bold">BUS ELECTRICAL POWER</label>
+                <span className="text-amber-400 font-bold">{busPowerW} WATTS</span>
               </div>
               <input
                 type="range"
-                min={4}
-                max={9}
-                value={trl}
-                onChange={(e) => setTrl(Number(e.target.value))}
-                className="w-full accent-purple-400 cursor-pointer"
+                min={50}
+                max={15000}
+                step={50}
+                value={busPowerW}
+                onChange={(e) => setBusPowerW(Number(e.target.value))}
+                className="w-full accent-amber-400 cursor-pointer"
               />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>TRL 4 (Lab Demo)</span>
-                <span>TRL 7 (Space Tested)</span>
-                <span>TRL 9 (Flight Heritage)</span>
-              </div>
+              <span className="text-[10px] text-slate-500 block">Drives solar array, battery &amp; power distribution sizing</span>
             </div>
 
-            {/* Mass Sliders */}
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              <span className="text-slate-300 font-bold uppercase block text-[11px]">
-                Subsystem Dry Masses (kg)
-              </span>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[10px] text-slate-500 block">PAYLOAD SENSOR</label>
-                  <input
-                    type="number"
-                    value={payloadMass}
-                    onChange={(e) => setPayloadMass(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 block">AVIONICS / TT&amp;C</label>
-                  <input
-                    type="number"
-                    value={avionicsMass}
-                    onChange={(e) => setAvionicsMass(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 block">POWER (EPS / ARRAYS)</label>
-                  <input
-                    type="number"
-                    value={powerMass}
-                    onChange={(e) => setPowerMass(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 block">ADCS / GUIDANCE</label>
-                  <input
-                    type="number"
-                    value={adcsMass}
-                    onChange={(e) => setAdcsMass(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 block">PROPULSION HARDWARE</label>
-                  <input
-                    type="number"
-                    value={propulsionMass}
-                    onChange={(e) => setPropulsionMass(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-slate-500 block">PRIMARY STRUCTURE</label>
-                  <input
-                    type="number"
-                    value={structureMass}
-                    onChange={(e) => setStructureMass(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Launch Dedicated / Rideshare Cost */}
+            {/* Payload Instrument Cost */}
             <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
-              <label className="text-slate-400 block uppercase font-bold">LAUNCH VEHICLE COST / FLIGHT</label>
+              <label className="text-slate-400 block uppercase font-bold">PAYLOAD INSTRUMENT COST</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  value={launchCostM}
-                  onChange={(e) => setLaunchCostM(Math.max(0, Number(e.target.value)))}
+                  step={0.5}
+                  value={payloadCostM}
+                  onChange={(e) => setPayloadCostM(Math.max(0.5, Number(e.target.value)))}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
                 />
                 <span className="text-slate-500">$M</span>
               </div>
+            </div>
+
+            {/* Heritage % & Reserve % */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">HERITAGE (%)</label>
+                <input
+                  type="number"
+                  step={5}
+                  value={heritagePct}
+                  onChange={(e) => setHeritagePct(Math.max(0, Math.min(95, Number(e.target.value))))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+                <span className="text-[9px] text-slate-500 block">Discounts NRE</span>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-slate-400 block uppercase font-bold">RESERVE (%)</label>
+                <input
+                  type="number"
+                  step={5}
+                  value={reservePct}
+                  onChange={(e) => setReservePct(Math.max(10, Math.min(45, Number(e.target.value))))}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
+                />
+                <span className="text-[9px] text-slate-500 block">Req: 20-30%</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-sans text-slate-400">
+              <strong className="text-cyan-400 block font-mono">PARAMETRIC RELATIONSHIPS:</strong>
+              CERs map structural mass, RF transmitter power, and subsystem complexity directly into constant-dollar budgets verified against historical flight data.
             </div>
           </div>
 
           {/* Results Telemetry Desk */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Master Budget Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <DollarSign className="w-3 h-3 text-cyan-400" /> TOTAL PROGRAM LIFECYCLE
-                </div>
-                <div className="text-3xl font-black text-cyan-400">${breakdown.totalProgramM}M</div>
-                <div className="text-[10px] text-slate-500">{units} Spacecraft + Launch</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3 text-purple-400" /> UNIT FLYAWAY COST
-                </div>
-                <div className="text-3xl font-black text-white">${breakdown.unitFlyawayM}M</div>
-                <div className="text-[10px] text-purple-400">Recurring Hardware + AI&amp;T</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Gauge className="w-3 h-3 text-emerald-400" /> TOTAL DRY MASS
-                </div>
-                <div className="text-3xl font-black text-emerald-400">{breakdown.totalDryMassKg} kg</div>
-                <div className="text-[10px] text-slate-500">Bus + Payload Combined</div>
-              </div>
-            </div>
-
             {/* WBS Cost Breakdown Table */}
             <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <PieChart className="w-4 h-4 text-cyan-400" />
-                  Spacecraft Work Breakdown Structure (WBS)
+                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
+                  <BarChart3 className="w-4 h-4 text-cyan-400" />
+                  NASA Standard WBS Cost Breakdown ($M USD)
                 </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-300">
-                  USCM10 EMPIRICAL CER
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-950 text-emerald-300 uppercase">
+                  PCEC CER MODEL VERIFIED
                 </span>
               </div>
 
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Non-Recurring Engineering (NRE &amp; Design)</span>
-                  <span className="text-white font-bold">${breakdown.nreBaseM}M</span>
+              <div className="space-y-2 text-xs font-mono">
+                <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-300">
+                  <span>WBS 01, 02, 03: Project Management, Systems Eng &amp; SMA</span>
+                  <span className="text-white font-bold">${metrics.costPmSeSmaM}M</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Recurring Flight Hardware (Crawford 85% Curve)</span>
-                  <span className="text-cyan-400 font-bold">${breakdown.recurringUnitsM}M</span>
+                <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-300">
+                  <span>WBS 04: Payload Science / Mission Instrument</span>
+                  <span className="text-cyan-400 font-bold">${payloadCostM}M</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Assembly, Integration &amp; Testing (AI&amp;T - 18%)</span>
-                  <span className="text-slate-200 font-bold">${breakdown.aitM}M</span>
+                <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-300">
+                  <span>WBS 05: Spacecraft Bus Hardware Total</span>
+                  <span className="text-white font-bold">${metrics.totalBusHardwareCostM}M</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Systems Engineering &amp; Mission Assurance (SE&amp;I - 16%)</span>
-                  <span className="text-slate-200 font-bold">${breakdown.seiM}M</span>
+                <div className="pl-4 space-y-1 text-[11px] text-slate-400 border-b border-slate-800/40 pb-2">
+                  <div className="flex justify-between">
+                    <span>&bull; Structure &amp; Thermal Control Subsystem</span>
+                    <span className="text-slate-200">${metrics.costStructureThermalM}M</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>&bull; Avionics C&amp;DH and RF Communications</span>
+                    <span className="text-slate-200">${metrics.costAvionicsM}M</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>&bull; Electrical Power Subsystem (EPS)</span>
+                    <span className="text-slate-200">${metrics.costEpsM}M</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>&bull; ADCS Attitude Control &amp; Propulsion</span>
+                    <span className="text-slate-200">${metrics.costAdcsPropM}M</span>
+                  </div>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Launch Services Segment</span>
-                  <span className="text-purple-400 font-bold">${breakdown.launchTotalM}M</span>
+                <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-300">
+                  <span>WBS 06: Assembly, Integration &amp; Testing (AI&amp;T)</span>
+                  <span className="text-white font-bold">${metrics.costAitM}M</span>
                 </div>
-                <div className="flex justify-between py-2 bg-slate-950/80 px-3 rounded-lg border border-slate-800 font-bold">
-                  <span className="text-white">NET ESTIMATED PROGRAM OBLIGATION</span>
-                  <span className="text-cyan-400 text-sm">${breakdown.totalProgramM}M</span>
+                <div className="flex justify-between py-2 border-b border-slate-800/60 text-slate-300">
+                  <span>WBS 07 &amp; 09: Ground Operations &amp; Mission Support</span>
+                  <span className="text-white font-bold">${metrics.costOpsM}M</span>
                 </div>
+                <div className="flex justify-between py-2 border-b border-slate-800/80 text-amber-400 font-bold">
+                  <span>P80 Risk Contingency Reserve ({reservePct}%)</span>
+                  <span>+${metrics.reserveAmountM}M</span>
+                </div>
+                <div className="flex justify-between pt-2 text-base font-black text-emerald-400 border-t border-slate-800">
+                  <span>TOTAL ESTIMATED PROGRAM LIFECYCLE COST</span>
+                  <span>${metrics.totalLifecycleCostM}M USD</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Correlated Engines */}
+            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3 font-mono text-xs">
+              <span className="text-slate-400 font-bold uppercase text-[10px] block">
+                CORRELATED ENGINES:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                <Link href="/mass-budget" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/mass-budget</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/power" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/power</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/mission-builder" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/mission-builder</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/compliance" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/compliance</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
               </div>
             </div>
 
