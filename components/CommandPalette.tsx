@@ -31,6 +31,16 @@ interface CommandItem {
 
 const COMMAND_REGISTRY: CommandItem[] = [
   {
+    id: "technologies",
+    title: "Flight Technologies & TRL Registry",
+    subtitle: "Hall-effect thrusters, 1550nm lasercom, GaAs solar cells, and MMOD Whipple shields",
+    href: "/technologies",
+    category: "Architecture",
+    keywords: ["technologies", "trl", "hall effect", "thruster", "lasercom", "gaas", "whipple", "hardware"],
+    badge: "TRL 9"
+  },
+
+  {
     id: "telemetry",
     title: "Flight Telemetry & Orbit Propagation",
     subtitle: "Real-time J2000 state vectors, sub-satellite ground track, and bus diagnostics",

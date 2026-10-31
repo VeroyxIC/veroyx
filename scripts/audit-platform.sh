@@ -39,6 +39,9 @@ check_route "/companies" 200
 check_route "/companies/spacex" 200
 check_route "/companies/rocket-lab" 200
 check_route "/contracts" 200
+check_route "/technologies" 200
+check_route "/technologies/hall-effect-thruster" 200
+check_route "/technologies/1550nm-lasercom" 200
 check_route "/cost" 200
 check_route "/adcs" 200
 check_route "/link" 200
