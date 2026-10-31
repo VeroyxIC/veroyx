@@ -36,15 +36,43 @@ export default function MissionBuilderPage() {
     const mu = 398600.4418
     const rOrbKm = rEarthKm + mission.altitudeKm
     
-    // Orbital mechanics
-    const vOrbKmS = Math.sqrt(mu / rOrbKm)
-    const orbitPeriodMin = (2 * Math.PI * Math.sqrt(Math.pow(rOrbKm, 3) / mu)) / 60
+    // Vis-Viva & True Elliptical Orbital Mechanics
+    const isMolniya = mission.targetOrbit.includes("Molniya")
+    const isGTO = mission.targetOrbit.includes("GEO") || mission.targetOrbit.includes("GTO")
+    const isTLI = mission.targetOrbit.includes("TLI") || mission.targetOrbit.includes("Lunar")
+
+    let rpKm = rEarthKm + mission.altitudeKm
+    let raKm = rpKm
+    let ecc = 0.001
+
+    if (isMolniya) {
+      rpKm = rEarthKm + 600
+      raKm = rEarthKm + 39750
+      ecc = 0.72
+    } else if (isGTO) {
+      rpKm = rEarthKm + 250
+      raKm = rEarthKm + 35786
+      ecc = 0.73
+    } else if (isTLI) {
+      rpKm = rEarthKm + 200
+      raKm = rEarthKm + 384400
+      ecc = 0.97
+    }
+
+    const aKm = (rpKm + raKm) / 2
+    const orbitPeriodSec = 2 * Math.PI * Math.sqrt(Math.pow(aKm, 3) / mu)
+    const orbitPeriodMin = orbitPeriodSec / 60
     
-    // Eclipse geometry (cylindrical shadow model)
-    const asinVal = Math.min(1.0, rEarthKm / rOrbKm)
+    // Vis-viva perigee and apogee speeds
+    const vPerigeeKmS = Math.sqrt(mu * (2 / rpKm - 1 / aKm))
+    const vApogeeKmS = Math.sqrt(mu * (2 / raKm - 1 / aKm))
+    const vOrbKmS = ((vPerigeeKmS + vApogeeKmS) / 2)
+
+    // Eclipse geometry via cylindrical shadow projection
+    const asinVal = Math.min(1.0, rEarthKm / rpKm)
     const eclipseAngleRad = 2 * Math.asin(asinVal)
-    const eclipseFraction = eclipseAngleRad / (2 * Math.PI)
-    const eclipseDurationMin = Math.round(orbitPeriodMin * eclipseFraction * 10) / 10
+    const eclipseFraction = Math.min(0.38, (eclipseAngleRad / (2 * Math.PI)) * (1 - ecc * 0.4))
+    const eclipseDurationMin = Math.round(Math.min(75, orbitPeriodMin * eclipseFraction) * 10) / 10
     const sunlightDurationMin = Math.round((orbitPeriodMin - eclipseDurationMin) * 10) / 10
 
     // Power & Battery Balance
@@ -79,6 +107,9 @@ export default function MissionBuilderPage() {
 
     return {
       vOrbKmS: vOrbKmS.toFixed(2),
+      vPerigeeKmS: vPerigeeKmS.toFixed(2),
+      vApogeeKmS: vApogeeKmS.toFixed(2),
+      eccentricity: ecc.toFixed(3),
       orbitPeriodMin: orbitPeriodMin.toFixed(1),
       eclipseDurationMin,
       sunlightDurationMin,
@@ -266,6 +297,31 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
               >
                 <RotateCw className="w-3 h-3 text-cyan-400" /> RESET
               </button>
+            </div>
+
+                        <div className="space-y-1.5">
+              <label className="text-slate-400 block uppercase font-bold text-[10px]">FLIGHT REGIME ARCHITECTURE</label>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                {[
+                  "LEO / SSO",
+                  "MEO Navigation",
+                  "GEO Telecom",
+                  "Lunar Gateway / TLI"
+                ].map((reg) => (
+                  <button
+                    key={reg}
+                    type="button"
+                    onClick={() => updateMission({ targetOrbit: reg as any })}
+                    className={`p-2 rounded border text-left transition-all cursor-pointer ${
+                      mission.targetOrbit === reg
+                        ? "bg-cyan-950 border-cyan-500 text-cyan-300 font-bold"
+                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {reg}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-1.5">

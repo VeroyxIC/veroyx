@@ -50,6 +50,9 @@ export default function Navbar() {
             <Link href="/visualizer" className="hover:text-cyan-400 transition-colors">
               3D VISUALIZER
             </Link>
+            <Link href="/contracts" className="hover:text-cyan-400 transition-colors text-slate-300">
+              CONTRACTS
+            </Link>
             <Link href="/launches" className="hover:text-cyan-400 transition-colors">
               RADAR
             </Link>
