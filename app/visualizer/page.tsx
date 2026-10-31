@@ -2,790 +2,746 @@
 
 import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
+import { useMission } from "@/lib/missionStore"
+import * as THREE from "three"
 import { 
-  Orbit, 
-  Sun, 
-  Globe, 
-  Compass, 
-  RotateCw, 
-  Activity, 
-  Crosshair, 
   Play, 
   Pause, 
-  ZoomIn, 
-  ZoomOut, 
-  Rocket, 
+  RotateCcw, 
   Radio, 
-  Sliders, 
-  Download,
-  Flame,
-  Layers,
-  ShieldAlert
+  Activity, 
+  Compass, 
+  Globe, 
+  Crosshair, 
+  Eye, 
+  ShieldAlert, 
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+  Target,
+  Video
 } from "lucide-react"
 
-// Enhanced continental vector coordinates [lat, lon]
-const CONTINENTS: [number, number][][] = [
-  // North America & Greenland
-  [[83, -30], [75, -20], [60, -45], [60, -65], [47, -53], [44, -64], [30, -81], [25, -80], [29, -95], [26, -97], [18, -96], [15, -88], [9, -78], [17, -100], [32, -117], [38, -123], [48, -125], [58, -137], [64, -165], [71, -156], [71, -128], [69, -98], [76, -82], [83, -30]],
-  // South America
-  [[12, -72], [10, -62], [5, -52], [-5, -35], [-23, -42], [-35, -57], [-53, -68], [-55, -73], [-42, -74], [-18, -70], [-5, -81], [5, -77], [12, -72]],
-  // Europe & British Isles
-  [[71, 28], [60, 28], [54, 14], [44, 9], [36, -5], [43, -9], [48, -5], [54, 6], [58, 6], [70, 20], [71, 28]],
-  [[58, -6], [50, -5], [51, 1], [58, -3], [58, -6]],
-  // Africa
-  [[37, 10], [32, 32], [22, 37], [12, 51], [2, 45], [-12, 40], [-26, 33], [-34, 20], [-34, 18], [-18, 12], [-5, 12], [4, 7], [5, -2], [14, -17], [28, -13], [36, -6], [37, 10]],
-  // Asia
-  [[77, 105], [72, 140], [65, 178], [55, 162], [43, 145], [38, 120], [22, 114], [10, 104], [13, 80], [25, 68], [25, 57], [15, 44], [30, 34], [40, 27], [55, 38], [60, 60], [70, 75], [77, 105]],
-  // Australia
-  [[-11, 142], [-16, 146], [-28, 153], [-37, 150], [-39, 144], [-35, 117], [-22, 114], [-14, 129], [-11, 142]]
+const TARGET_PRESETS = [
+  { name: "ISS (ZARYA)", altKm: 418, incDeg: 51.6, color: "#38bdf8", type: "STATION" },
+  { name: "COSMOS 1408 DEBRIS", altKm: 485, incDeg: 82.5, color: "#ef4444", type: "DEBRIS" },
+  { name: "CAPE CANAVERAL SLC-40", lat: 28.56, lon: -80.57, color: "#10b981", type: "GROUND" }
 ]
 
-// Night-side major city light coordinate clusters [lat, lon, intensity]
-const CITY_LIGHTS: [number, number, number][] = [
-  [40.7, -74.0, 1.0], [34.0, -118.2, 0.9], [41.8, -87.6, 0.8], [29.7, -95.3, 0.7],
-  [51.5, -0.1, 1.0], [48.8, 2.3, 0.9], [52.5, 13.4, 0.8], [41.9, 12.5, 0.7],
-  [35.6, 139.6, 1.0], [31.2, 121.4, 0.9], [22.3, 114.1, 0.8], [37.5, 126.9, 0.8],
-  [19.0, 72.8, 0.8], [28.6, 77.2, 0.8], [-23.5, -46.6, 0.8], [-34.6, -58.3, 0.7],
-  [-33.8, 151.2, 0.8], [1.3, 103.8, 0.8], [25.2, 55.2, 0.8], [55.7, 37.6, 0.8]
-]
+export default function VisualizerPage() {
+  const { mission } = useMission()
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-export default function MissionVisualizerPage() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const [altitudeKm, setAltitudeKm] = useState<number>(550)
-  const [inclinationDeg, setInclinationDeg] = useState<number>(51.64) // ISS nominal inclination
-  const [targetType, setTargetType] = useState<"ISS Rendezvous" | "Orbital Debris" | "Cape Canaveral SLC-40">("ISS Rendezvous")
-  const [pointingMode, setPointingMode] = useState<"Nadir Pointing" | "Target Track" | "Sun Pointing">("Target Track")
-  const [showGraticule, setShowGraticule] = useState<boolean>(true)
-  const [showAtmosphere, setShowAtmosphere] = useState<boolean>(true)
-  const [simSpeed, setSimSpeed] = useState<number>(1.0)
+  // Simulation timeline & controls
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
-  const [zoomFactor, setZoomFactor] = useState<number>(1.1)
+  const [timeScale, setTimeScale] = useState<number>(10)
+  const [selectedTarget, setSelectedTarget] = useState<number>(0)
+  const [cameraMode, setCameraMode] = useState<"GLOBAL" | "CHASE" | "INTERCEPT">("GLOBAL")
+  
+  // Real-time animation refs (Decoupled 60fps)
+  const simStateRef = useRef({
+    isPlaying: true,
+    timeScale: 10,
+    simTimeSec: 0,
+    cameraMode: "GLOBAL" as "GLOBAL" | "CHASE" | "INTERCEPT",
+    yaw: 0.7,
+    pitch: 0.35,
+    targetYaw: 0.7,
+    targetPitch: 0.35,
+    distance: 6.2,
+    targetDistance: 6.2,
+    isDragging: false,
+    prevMouse: { x: 0, y: 0 }
+  })
 
-  // 3D Orbit Camera Angles
-  const [camYaw, setCamYaw] = useState<number>(0.95)
-  const [camPitch, setCamPitch] = useState<number>(0.38)
-  const isDraggingRef = useRef(false)
-  const lastMousePos = useRef({ x: 0, y: 0 })
+  // Throttled UI Telemetry (4 Hz)
+  const [telemetryUI, setTelemetryUI] = useState({
+    simTimeSec: 0,
+    altitudeKm: 550,
+    velocityKmS: "7.59",
+    trueAnomalyDeg: 12,
+    rangeKm: 2840,
+    rangeRateKmS: "-0.45",
+    collisionProb: "3.2e-6",
+    isEclipse: false
+  })
 
-  // Simulation time angles
-  const satAngleRef = useRef<number>(0.2)
-  const targetAngleRef = useRef<number>(0.75)
-  const earthSpinRef = useRef<number>(0)
-  const debrisTumbleRef = useRef<number>(0)
-
-  // Flight Dynamics Telemetry
-  const telemetry = useMemo(() => {
-    const rEarthKm = 6378.137
-    const mu = 398600.4418
-    const rSat = rEarthKm + altitudeKm
-    const vSat = Math.sqrt(mu / rSat)
-    const periodMin = (2 * Math.PI * Math.sqrt(Math.pow(rSat, 3) / mu)) / 60
-
-    const targetAlt = targetType === "ISS Rendezvous" ? 420 : targetType === "Orbital Debris" ? 640 : 0
-    const rTgt = rEarthKm + targetAlt
-    const vTgt = targetType === "Cape Canaveral SLC-40" ? 0.465 : Math.sqrt(mu / rTgt)
-
-    // Range vector calculation
-    const dTheta = Math.abs(satAngleRef.current - targetAngleRef.current)
-    const rangeKm = Math.round(
-      Math.sqrt(Math.pow(rSat, 2) + Math.pow(rTgt, 2) - 2 * rSat * rTgt * Math.cos(dTheta))
-    )
-    const rangeRateKmS = ((vSat - vTgt * Math.cos(dTheta)) * Math.sin(dTheta)).toFixed(2)
-
-    return {
-      vSat: vSat.toFixed(2),
-      periodMin: periodMin.toFixed(1),
-      rangeKm,
-      rangeRateKmS,
-      trueAnomalyDeg: Math.round(((satAngleRef.current * 180) / Math.PI) % 360)
-    }
-  }, [altitudeKm, targetType])
+  const [rangeHistory, setRangeHistory] = useState<number[]>(Array(24).fill(2800))
 
   useEffect(() => {
+    simStateRef.current.isPlaying = isPlaying
+    simStateRef.current.timeScale = timeScale
+    simStateRef.current.cameraMode = cameraMode
+  }, [isPlaying, timeScale, cameraMode])
+
+  // Orbital Mechanics Core
+  const orbit = useMemo(() => {
+    const mu = 398600.4418
+    const rEarthKm = 6378.137
+    const a = rEarthKm + mission.altitudeKm
+    const incRad = (mission.inclinationDeg * Math.PI) / 180
+    const n = Math.sqrt(mu / Math.pow(a, 3))
+    const periodSec = (2 * Math.PI) / n
+    const j2 = 0.00108263
+    const dRaanDt = -1.5 * ((j2 * Math.sqrt(mu) * Math.pow(rEarthKm, 2)) / Math.pow(a, 3.5)) * Math.cos(incRad)
+    const velocityKmS = Math.sqrt(mu / a)
+
+    return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
+  }, [mission.altitudeKm, mission.inclinationDeg])
+
+  // Three.js High-Fidelity Scene Setup
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
+
+    const width = container.clientWidth
+    const height = container.clientHeight
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#020617")
+
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
+    camera.position.set(0, 2.8, 6.2)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.3
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    // Deep Starfield
+    const starCount = 2000
+    const starGeo = new THREE.BufferGeometry()
+    const starPos = new Float32Array(starCount * 3)
+    for (let i = 0; i < starCount * 3; i += 3) {
+      starPos[i] = (Math.random() - 0.5) * 150
+      starPos[i + 1] = (Math.random() - 0.5) * 150
+      starPos[i + 2] = (Math.random() - 0.5) * 150
+    }
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
+    const starMat = new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.12, transparent: true, opacity: 0.85 })
+    scene.add(new THREE.Points(starGeo, starMat))
+
+    // Directional Sunlight (Sun Vector along +X/+Z)
+    const sunDir = new THREE.Vector3(9, 3, 7).normalize()
+    const sunLight = new THREE.DirectionalLight(0xffffff, 2.8)
+    sunLight.position.copy(sunDir.clone().multiplyScalar(15))
+    scene.add(sunLight)
+
+    const ambientLight = new THREE.AmbientLight(0x0e1726, 0.6)
+    scene.add(ambientLight)
+
+    const earthRadius = 1.75
+    const textureLoader = new THREE.TextureLoader()
+
+    // 1. PHOTOREALISTIC BLUE/BLACK MARBLE SPHERE
+    const dayTexture = textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
+      () => renderer.render(scene, camera)
+    )
+    dayTexture.colorSpace = THREE.SRGBColorSpace
+
+    const nightTexture = textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-night.jpg",
+      () => renderer.render(scene, camera)
+    )
+    nightTexture.colorSpace = THREE.SRGBColorSpace
+
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 64)
+    const earthShaderMat = new THREE.ShaderMaterial({
+      uniforms: {
+        dayTexture: { value: dayTexture },
+        nightTexture: { value: nightTexture },
+        sunDirection: { value: sunDir }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vSunDir;
+        uniform vec3 sunDirection;
+
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayTexture;
+        uniform sampler2D nightTexture;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vSunDir;
+
+        void main() {
+          vec4 dayColor = texture2D(dayTexture, vUv);
+          vec4 nightColor = texture2D(nightTexture, vUv);
+
+          float cosTheta = dot(vNormal, vSunDir);
+          float dayFactor = clamp(cosTheta * 2.8, 0.0, 1.0);
+
+          vec3 finalColor = mix(nightColor.rgb * 1.5, dayColor.rgb, dayFactor);
+
+          if (dayColor.b > dayColor.r * 1.15 && cosTheta > 0.0) {
+            vec3 viewDir = vec3(0.0, 0.0, 1.0);
+            vec3 halfDir = normalize(vSunDir + viewDir);
+            float spec = pow(max(dot(vNormal, halfDir), 0.0), 30.0);
+            finalColor += vec3(0.35, 0.65, 0.95) * spec * dayFactor;
+          }
+
+          gl_FragColor = vec4(finalColor, 1.0);
+        }
+      `
+    })
+
+    const earthGroup = new THREE.Group()
+    earthGroup.rotation.z = (23.44 * Math.PI) / 180
+    scene.add(earthGroup)
+
+    const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
+    earthGroup.add(earthMesh)
+
+    // Tropospheric Cloud Layer
+    const cloudsTexture = textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-clouds.png",
+      () => renderer.render(scene, camera)
+    )
+    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.008, 64, 64)
+    const cloudsMat = new THREE.MeshStandardMaterial({
+      map: cloudsTexture,
+      transparent: true,
+      opacity: 0.36,
+      blending: THREE.AdditiveBlending
+    })
+    const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
+    earthGroup.add(cloudsMesh)
+
+    // Atmospheric Rayleigh Glow Limb
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.032, 64, 64)
+    const atmosMat = new THREE.ShaderMaterial({
+      transparent: true,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.6);
+          gl_FragColor = vec4(0.14, 0.72, 1.0, 1.0) * intensity * 1.7;
+        }
+      `
+    })
+    earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
+
+    // 2. 3D VOLUMETRIC UMBRA SHADOW CYLINDER (Deep Space Eclipse Cone)
+    const shadowConeGeo = new THREE.CylinderGeometry(earthRadius, earthRadius * 1.3, 14, 32, 1, true)
+    const shadowConeMat = new THREE.MeshBasicMaterial({
+      color: 0x010309,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending
+    })
+    const shadowConeMesh = new THREE.Mesh(shadowConeGeo, shadowConeMat)
+    // Align cylinder opposite to sunlight vector
+    const shadowDir = sunDir.clone().negate()
+    shadowConeMesh.position.copy(shadowDir.clone().multiplyScalar(7))
+    shadowConeMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), shadowDir)
+    scene.add(shadowConeMesh)
+
+    // 3. PRIMARY SPACECRAFT MODEL
+    const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
+    const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
+    const orbitPoints = orbitCurve.getPoints(180)
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.95, linewidth: 2 })
+    const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat)
+    orbitLine.rotation.x = orbit.incRad
+    scene.add(orbitLine)
+
+    const satGroup = new THREE.Group()
+
+    const busMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.09, 0.09, 0.13),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.9 })
+    )
+    satGroup.add(busMesh)
+
+    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.85 })
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
+    leftWing.position.set(0.18, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
+    rightWing.position.set(-0.18, 0, 0)
+    satGroup.add(leftWing)
+    satGroup.add(rightWing)
+
+    const beaconMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+    )
+    satGroup.add(beaconMesh)
+    scene.add(satGroup)
+
+    // 4. INTERCEPT TARGET (ISS / DEBRIS / LAUNCH SITE)
+    const targetPreset = TARGET_PRESETS[selectedTarget]
+    const targetOrbitRadius = earthRadius * ((6378.137 + (targetPreset.altKm || 400)) / 6378.137)
+
+    const targetGroup = new THREE.Group()
+    const targetMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.08, 0.08),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(targetPreset.color), roughness: 0.3 })
+    )
+    targetGroup.add(targetMesh)
+
+    // 3D Covariance Collision Ellipsoid (1-Sigma & 3-Sigma Foster Uncertainty Sphere)
+    const covGeo = new THREE.SphereGeometry(0.14, 16, 16)
+    covGeo.scale(1.8, 0.7, 0.9) // B-Plane covariance dispersion
+    const covMat = new THREE.MeshBasicMaterial({
+      color: 0xef4444,
+      transparent: true,
+      opacity: 0.22,
+      wireframe: true
+    })
+    const covMesh = new THREE.Mesh(covGeo, covMat)
+    targetGroup.add(covMesh)
+    scene.add(targetGroup)
+
+    // Target Trajectory Ring
+    const targetCurve = new THREE.EllipseCurve(0, 0, targetOrbitRadius, targetOrbitRadius, 0, 2 * Math.PI, false, 0)
+    const targetOrbitGeo = new THREE.BufferGeometry().setFromPoints(targetCurve.getPoints(140).map(p => new THREE.Vector3(p.x, 0, p.y)))
+    const targetOrbitMat = new THREE.LineBasicMaterial({ color: new THREE.Color(targetPreset.color), transparent: true, opacity: 0.5, linewidth: 1.5 })
+    const targetOrbitLine = new THREE.LineLoop(targetOrbitGeo, targetOrbitMat)
+    targetOrbitLine.rotation.x = (targetPreset.incDeg || 51.6) * (Math.PI / 180)
+    scene.add(targetOrbitLine)
+
+    // 5. INTER-VEHICLE RANGEFINDER LASER VECTOR (Chaser -> Target)
+    const rangefinderGeo = new THREE.BufferGeometry()
+    rangefinderGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
+    const rangefinderMat = new THREE.LineDashedMaterial({ color: 0xef4444, dashSize: 0.1, gapSize: 0.05, transparent: true, opacity: 0.95 })
+    const rangefinderLine = new THREE.Line(rangefinderGeo, rangefinderMat)
+    scene.add(rangefinderLine)
+
+    // Nadir Swath Laser (Chaser -> Earth)
+    const nadirGeo = new THREE.BufferGeometry()
+    nadirGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
+    const nadirMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.08, gapSize: 0.04, transparent: true, opacity: 0.8 })
+    const nadirLine = new THREE.Line(nadirGeo, nadirMat)
+    scene.add(nadirLine)
+
+    // Mouse Interaction
+    const onMouseDown = (e: MouseEvent) => {
+      simStateRef.current.isDragging = true
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!simStateRef.current.isDragging) return
+      const dx = e.clientX - simStateRef.current.prevMouse.x
+      const dy = e.clientY - simStateRef.current.prevMouse.y
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+
+      simStateRef.current.targetYaw += dx * 0.005
+      simStateRef.current.targetPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetPitch + dy * 0.005))
+    }
+
+    const onMouseUp = () => {
+      simStateRef.current.isDragging = false
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const zoomDelta = e.deltaY * 0.003
+      simStateRef.current.targetDistance = Math.max(2.4, Math.min(18.0, simStateRef.current.targetDistance + zoomDelta))
+    }
+
+    const dom = renderer.domElement
+    dom.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    dom.addEventListener("wheel", onWheel, { passive: false })
+
+    // Decoupled 60fps Loop
     let animId: number
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
+    let lastTime = performance.now()
+    let lastUiSync = performance.now()
 
-    const handleResize = () => {
-      canvas.width = canvas.parentElement?.clientWidth || 1000
-      canvas.height = Math.min(720, window.innerHeight * 0.75)
-    }
-    handleResize()
-    window.addEventListener("resize", handleResize)
+    const animate = (now: number) => {
+      animId = requestAnimationFrame(animate)
+      const dt = Math.min((now - lastTime) / 1000, 0.1)
+      lastTime = now
 
-    // Realistic Starfield with magnitude distribution
-    const stars: { x: number; y: number; r: number; b: number; pulse: number }[] = []
-    for (let i = 0; i < 160; i++) {
-      stars.push({
-        x: Math.sin(i * 13.7) * 0.5 + 0.5,
-        y: Math.cos(i * 41.3) * 0.5 + 0.5,
-        r: (i % 5 === 0) ? 1.6 : (i % 2 === 0) ? 1.0 : 0.6,
-        b: 0.3 + (i % 7) * 0.1,
-        pulse: (i % 3) * 0.05
-      })
-    }
-
-    const render = () => {
-      if (isPlaying) {
-        satAngleRef.current += 0.011 * simSpeed
-        targetAngleRef.current += 0.0095 * simSpeed
-        earthSpinRef.current += 0.0012 * simSpeed
-        debrisTumbleRef.current += 0.035 * simSpeed
+      if (simStateRef.current.isPlaying) {
+        simStateRef.current.simTimeSec += dt * simStateRef.current.timeScale
       }
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      const cx = canvas.width / 2
-      const cy = canvas.height / 2
-      const rBase = Math.min(canvas.width, canvas.height) * 0.29 * zoomFactor
+      const t = simStateRef.current.simTimeSec
 
-      // 3D Matrix Projection Transform
-      const project = (x: number, y: number, z: number) => {
-        // Yaw (Y rotation)
-        const x1 = x * Math.cos(camYaw) - z * Math.sin(camYaw)
-        const z1 = x * Math.sin(camYaw) + z * Math.cos(camYaw)
-        // Pitch (X rotation)
-        const y2 = y * Math.cos(camPitch) - z1 * Math.sin(camPitch)
-        const z2 = y * Math.sin(camPitch) + z1 * Math.cos(camPitch)
+      // Rotate Earth & Clouds
+      earthMesh.rotation.y = t * 0.015
+      cloudsMesh.rotation.y = t * 0.018
 
-        const fov = 900
-        const pz = fov / (fov + z2 * rBase)
-        return {
-          px: cx + x1 * rBase * pz,
-          py: cy + y2 * rBase * pz,
-          depth: z2,
-          scale: pz
-        }
+      // Propagate Primary Spacecraft
+      const u = (orbit.n * t) % (2 * Math.PI)
+      const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
+
+      const xOrb = orbitRadius * Math.cos(u)
+      const zOrb = orbitRadius * Math.sin(u)
+
+      const xE = xOrb * Math.cos(raan) - zOrb * Math.cos(orbit.incRad) * Math.sin(raan)
+      const zE = xOrb * Math.sin(raan) + zOrb * Math.cos(orbit.incRad) * Math.cos(raan)
+      const yE = zOrb * Math.sin(orbit.incRad)
+
+      satGroup.position.set(xE, yE, zE)
+      satGroup.lookAt(0, 0, 0)
+
+      // Propagate Target Object
+      const targetSpeed = 0.065
+      const uTarg = (t * targetSpeed + 0.8) % (2 * Math.PI)
+      const xTOrb = targetOrbitRadius * Math.cos(uTarg)
+      const zTOrb = targetOrbitRadius * Math.sin(uTarg)
+      const targIncRad = (targetPreset.incDeg || 51.6) * (Math.PI / 180)
+
+      const xTE = xTOrb
+      const zTE = zTOrb * Math.cos(targIncRad)
+      const yTE = zTOrb * Math.sin(targIncRad)
+
+      targetGroup.position.set(xTE, yTE, zTE)
+
+      // Update Rangefinder Laser (Sat -> Target)
+      const rfPos = rangefinderGeo.attributes.position as THREE.BufferAttribute
+      rfPos.setXYZ(0, xE, yE, zE)
+      rfPos.setXYZ(1, xTE, yTE, zTE)
+      rfPos.needsUpdate = true
+      rangefinderLine.computeLineDistances()
+
+      // Update Nadir Vector (Sat -> Earth Surface)
+      const norm = new THREE.Vector3(xE, yE, zE).normalize()
+      const surf = norm.clone().multiplyScalar(earthRadius * 1.002)
+      const nadirPos = nadirGeo.attributes.position as THREE.BufferAttribute
+      nadirPos.setXYZ(0, xE, yE, zE)
+      nadirPos.setXYZ(1, surf.x, surf.y, surf.z)
+      nadirPos.needsUpdate = true
+      nadirLine.computeLineDistances()
+
+      // Camera Modes Handling
+      if (simStateRef.current.cameraMode === "CHASE") {
+        // Locked Chase Camera: positioned directly behind spacecraft
+        const forward = new THREE.Vector3(-Math.sin(u), 0, Math.cos(u)).normalize()
+        const camPos = satGroup.position.clone().add(forward.clone().multiplyScalar(-0.6)).add(new THREE.Vector3(0, 0.35, 0))
+        camera.position.lerp(camPos, 0.1)
+        camera.lookAt(satGroup.position.clone().add(forward.clone().multiplyScalar(2.0)))
+      } else if (simStateRef.current.cameraMode === "INTERCEPT") {
+        // Intercept Framing: Midpoint between Chaser & Target
+        const midPoint = satGroup.position.clone().add(targetGroup.position).multiplyScalar(0.5)
+        const camPos = midPoint.clone().add(new THREE.Vector3(0, 1.2, 2.2))
+        camera.position.lerp(camPos, 0.1)
+        camera.lookAt(midPoint)
+      } else {
+        // Global Orbit View with Damping
+        simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.1
+        simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.1
+        simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.1
+
+        const curDist = simStateRef.current.distance
+        camera.position.x = curDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+        camera.position.y = curDist * Math.sin(simStateRef.current.pitch)
+        camera.position.z = curDist * Math.cos(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+        camera.lookAt(0, 0, 0)
       }
 
-      // 1. Deep Space Starfield Background
-      ctx.fillStyle = "#01040f"
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      stars.forEach(s => {
-        ctx.fillStyle = `rgba(224, 242, 254, ${s.b})`
-        ctx.fillRect(s.x * canvas.width, s.y * canvas.height, s.r, s.r)
-      })
+      renderer.render(scene, camera)
 
-      // 2. Solar Vector Light Source (Fixed Sun Vector in ECI)
-      const sunV = { x: -0.707, y: -0.4, z: -0.58 }
-      const sunP = project(sunV.x * 2.6, sunV.y * 2.6, sunV.z * 2.6)
-      ctx.strokeStyle = "rgba(251, 191, 36, 0.45)"
-      ctx.setLineDash([3, 4])
-      ctx.beginPath()
-      ctx.moveTo(sunP.px, sunP.py)
-      ctx.lineTo(cx, cy)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = "#fbbf24"
-      ctx.font = "10px monospace"
-      ctx.fillText("☀️ SOLAR RADIATION VECTOR (1361 W/m²)", sunP.px - 60, sunP.py - 12)
+      // UI Dispatch (4 Hz = 250ms)
+      if (now - lastUiSync > 250) {
+        lastUiSync = now
 
-      // 3. Occluded Far-Side Orbit Trajectories (Drawn BEHIND the Earth)
-      const rOrb = (6378.137 + altitudeKm) / 6378.137
-      const incRad = (inclinationDeg * Math.PI) / 180
-      const tgtAlt = targetType === "ISS Rendezvous" ? 420 : targetType === "Orbital Debris" ? 640 : 0
-      const rTgtOrb = (6378.137 + tgtAlt) / 6378.137
-      const tgtIncRad = targetType === "ISS Rendezvous" ? incRad : incRad * 0.85
+        const satVec = new THREE.Vector3(xE, yE, zE)
+        const targVec = new THREE.Vector3(xTE, yTE, zTE)
+        const distKm = Math.round(satVec.distanceTo(targVec) * (orbit.rEarthKm / earthRadius))
 
-      // Helper to draw orbit track in 2 passes (back-half dim, front-half bright)
-      const drawOrbitSegments = (rRadius: number, inclination: number, isFarSide: boolean, strokeColor: string) => {
-        ctx.beginPath()
-        ctx.strokeStyle = strokeColor
-        ctx.lineWidth = isFarSide ? 1.0 : 1.8
-        let started = false
+        // Range-rate (relative radial velocity)
+        const prevDist = rangeHistory[rangeHistory.length - 1] || distKm
+        const rangeRate = (((distKm - prevDist) / 0.25) * 0.001).toFixed(2)
 
-        for (let theta = 0; theta <= Math.PI * 2 + 0.05; theta += 0.04) {
-          const ox = Math.cos(theta) * rRadius
-          const oy = Math.sin(theta) * rRadius * Math.sin(inclination)
-          const oz = Math.sin(theta) * rRadius * Math.cos(inclination)
-          const pt = project(ox, oy, oz)
+        const isEclipse = satVec.dot(sunDir) < 0 && new THREE.Vector2(satVec.y, satVec.z).length() < earthRadius
 
-          const inBack = pt.depth < 0
-          if (inBack === isFarSide) {
-            if (!started) {
-              ctx.moveTo(pt.px, pt.py)
-              started = true
-            } else {
-              ctx.lineTo(pt.px, pt.py)
-            }
-          } else {
-            started = false
-          }
-        }
-        ctx.stroke()
-      }
-
-      // Draw far-side orbits
-      drawOrbitSegments(rOrb, incRad, true, "rgba(6, 182, 212, 0.15)")
-      if (targetType !== "Cape Canaveral SLC-40") {
-        drawOrbitSegments(rTgtOrb, tgtIncRad, true, targetType === "Orbital Debris" ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)")
-      }
-
-      // 4. Volumetric Atmospheric Limb Haze (Rayleigh Gradient)
-      const rEarth = 1.0
-      if (showAtmosphere) {
-        const atmoGrad = ctx.createRadialGradient(cx, cy, rEarth * rBase * 0.96, cx, cy, rEarth * rBase * 1.28)
-        atmoGrad.addColorStop(0, "rgba(56, 189, 248, 0.45)")
-        atmoGrad.addColorStop(0.25, "rgba(14, 165, 233, 0.22)")
-        atmoGrad.addColorStop(0.65, "rgba(2, 132, 199, 0.06)")
-        atmoGrad.addColorStop(1, "rgba(1, 4, 15, 0)")
-        ctx.fillStyle = atmoGrad
-        ctx.beginPath()
-        ctx.arc(cx, cy, rEarth * rBase * 1.28, 0, Math.PI * 2)
-        ctx.fill()
-      }
-
-      // 5. Earth Sphere Body & Geography
-      ctx.save()
-      ctx.beginPath()
-      ctx.arc(cx, cy, rEarth * rBase, 0, Math.PI * 2)
-      ctx.clip()
-
-      // Ocean Base Lighting
-      const oceanGrad = ctx.createRadialGradient(
-        cx - rBase * 0.42, cy - rBase * 0.42, 25,
-        cx, cy, rEarth * rBase
-      )
-      oceanGrad.addColorStop(0, "#2563eb")
-      oceanGrad.addColorStop(0.35, "#1d4ed8")
-      oceanGrad.addColorStop(0.75, "#0f172a")
-      oceanGrad.addColorStop(1, "#020617")
-      ctx.fillStyle = oceanGrad
-      ctx.fillRect(cx - rBase, cy - rBase, rBase * 2, rBase * 2)
-
-      // Latitude/Longitude Graticule Lines
-      if (showGraticule) {
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.12)"
-        ctx.lineWidth = 0.8
-        // Parallels (-60 to +60 in 30 deg steps)
-        for (let lat = -60; lat <= 60; lat += 30) {
-          ctx.beginPath()
-          const latR = (lat * Math.PI) / 180
-          const rLat = Math.cos(latR)
-          const yLat = Math.sin(latR)
-          for (let lon = 0; lon <= 360; lon += 5) {
-            const lonR = ((lon + (earthSpinRef.current * 180) / Math.PI) * Math.PI) / 180
-            const pt = project(Math.cos(lonR) * rLat, yLat, Math.sin(lonR) * rLat)
-            if (pt.depth > -0.15) {
-              if (lon === 0) ctx.moveTo(pt.px, pt.py)
-              else ctx.lineTo(pt.px, pt.py)
-            }
-          }
-          ctx.stroke()
-        }
-      }
-
-      // Detailed Vector Landmasses
-      CONTINENTS.forEach(poly => {
-        ctx.beginPath()
-        let started = false
-        poly.forEach(([lat, lon]) => {
-          const latR = (lat * Math.PI) / 180
-          const lonR = ((lon + (earthSpinRef.current * 180) / Math.PI) * Math.PI) / 180
-          const ex = Math.cos(latR) * Math.cos(lonR)
-          const ey = Math.sin(latR)
-          const ez = Math.cos(latR) * Math.sin(lonR)
-          const pt = project(ex, ey, ez)
-
-          if (pt.depth > -0.15) {
-            if (!started) {
-              ctx.moveTo(pt.px, pt.py)
-              started = true
-            } else {
-              ctx.lineTo(pt.px, pt.py)
-            }
-          }
+        setTelemetryUI({
+          simTimeSec: Math.round(t),
+          altitudeKm: mission.altitudeKm,
+          velocityKmS: orbit.velocityKmS.toFixed(2),
+          trueAnomalyDeg: Math.round((u * 180) / Math.PI),
+          rangeKm: distKm,
+          rangeRateKmS: rangeRate,
+          collisionProb: distKm < 500 ? "4.1e-4" : distKm < 2000 ? "8.2e-6" : "< 1e-8",
+          isEclipse
         })
-        ctx.closePath()
-        ctx.fillStyle = "rgba(34, 197, 94, 0.38)"
-        ctx.fill()
-        ctx.strokeStyle = "rgba(74, 222, 128, 0.65)"
-        ctx.lineWidth = 1.0
-        ctx.stroke()
-      })
 
-      // Night-Side City Lights (Yellow/Amber Glow on Dark Hemisphere)
-      CITY_LIGHTS.forEach(([lat, lon, intensity]) => {
-        const latR = (lat * Math.PI) / 180
-        const lonR = ((lon + (earthSpinRef.current * 180) / Math.PI) * Math.PI) / 180
-        const ex = Math.cos(latR) * Math.cos(lonR)
-        const ey = Math.sin(latR)
-        const ez = Math.cos(latR) * Math.sin(lonR)
-        const pt = project(ex, ey, ez)
-
-        // Only illuminate on night side (sun dot product < 0) and facing camera
-        const sunDot = ex * sunV.x + ey * sunV.y + ez * sunV.z
-        if (pt.depth > 0 && sunDot < 0.2) {
-          const alpha = Math.min(1.0, (0.2 - sunDot) * 1.5) * intensity
-          ctx.fillStyle = `rgba(251, 191, 36, ${alpha})`
-          ctx.beginPath()
-          ctx.arc(pt.px, pt.py, 1.4, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      })
-
-      // Day/Night Terminator Shadow Gradient
-      const termGrad = ctx.createLinearGradient(
-        cx - rBase * 0.7, cy - rBase * 0.7,
-        cx + rBase * 0.7, cy + rBase * 0.7
-      )
-      termGrad.addColorStop(0, "rgba(0, 0, 0, 0)")
-      termGrad.addColorStop(0.48, "rgba(2, 6, 23, 0.32)")
-      termGrad.addColorStop(1, "rgba(1, 4, 15, 0.95)")
-      ctx.fillStyle = termGrad
-      ctx.fillRect(cx - rBase, cy - rBase, rBase * 2, rBase * 2)
-
-      ctx.restore()
-
-      // Atmospheric Rim Crisp Highlight
-      ctx.beginPath()
-      ctx.arc(cx, cy, rEarth * rBase, 0, Math.PI * 2)
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.75)"
-      ctx.lineWidth = 1.8
-      ctx.stroke()
-
-      // 6. Near-Side Orbit Trajectories (Foreground Glow)
-      drawOrbitSegments(rOrb, incRad, false, "rgba(6, 182, 212, 0.75)")
-      if (targetType !== "Cape Canaveral SLC-40") {
-        drawOrbitSegments(rTgtOrb, tgtIncRad, false, targetType === "Orbital Debris" ? "rgba(239, 68, 68, 0.75)" : "rgba(16, 185, 129, 0.75)")
+        setRangeHistory(prev => [...prev.slice(1), distKm])
       }
-
-      // 7. Calculate 3D Ephemeris Positions
-      // Primary Spacecraft
-      const satTh = satAngleRef.current
-      const satX = Math.cos(satTh) * rOrb
-      const satY = Math.sin(satTh) * rOrb * Math.sin(incRad)
-      const satZ = Math.sin(satTh) * rOrb * Math.cos(incRad)
-      const satPt = project(satX, satY, satZ)
-
-      // Target Object Position
-      let tgtX = 0, tgtY = 0, tgtZ = 0
-      if (targetType === "Cape Canaveral SLC-40") {
-        const capeLatR = (28.5 * Math.PI) / 180
-        const capeLonR = ((-80.5 + (earthSpinRef.current * 180) / Math.PI) * Math.PI) / 180
-        tgtX = Math.cos(capeLatR) * Math.cos(capeLonR)
-        tgtY = Math.sin(capeLatR)
-        tgtZ = Math.cos(capeLatR) * Math.sin(capeLonR)
-      } else {
-        const tgtTh = targetAngleRef.current
-        tgtX = Math.cos(tgtTh) * rTgtOrb
-        tgtY = Math.sin(tgtTh) * rTgtOrb * Math.sin(tgtIncRad)
-        tgtZ = Math.sin(tgtTh) * rTgtOrb * Math.cos(tgtIncRad)
-      }
-      const tgtPt = project(tgtX, tgtY, tgtZ)
-
-      // 8. Intercept Laser Ranging & Targeting Vector
-      ctx.beginPath()
-      ctx.strokeStyle = targetType === "Orbital Debris" ? "rgba(239, 68, 68, 0.85)" : "rgba(34, 197, 94, 0.85)"
-      ctx.lineWidth = 1.6
-      ctx.setLineDash([3, 3])
-      ctx.moveTo(satPt.px, satPt.py)
-      ctx.lineTo(tgtPt.px, tgtPt.py)
-      ctx.stroke()
-      ctx.setLineDash([])
-
-      // Clean Non-Overlapping Intercept Ranging Tag
-      const midPx = (satPt.px + tgtPt.px) / 2
-      const midPy = (satPt.py + tgtPt.py) / 2
-      ctx.fillStyle = targetType === "Orbital Debris" ? "#ef4444" : "#22c55e"
-      ctx.font = "10px monospace"
-      ctx.fillText(`RANGE: ${telemetry.rangeKm} km [${telemetry.rangeRateKmS} km/s]`, midPx + 12, midPy - 8)
-
-      // 9. True-to-Life Render: TARGET OBJECT
-      ctx.save()
-      ctx.translate(tgtPt.px, tgtPt.py)
-
-      if (targetType === "ISS Rendezvous") {
-        // High-Fidelity 3D International Space Station (ISS) Model
-        const issScale = 1.0 * zoomFactor
-
-        // Main Integrated Truss Structure (Transverse silver girder)
-        ctx.strokeStyle = "#94a3b8"
-        ctx.lineWidth = 2.5 * issScale
-        ctx.beginPath()
-        ctx.moveTo(-32 * issScale, 0)
-        ctx.lineTo(32 * issScale, 0)
-        ctx.stroke()
-
-        // 8 Massive Solar Array Wings (Photovoltaic Gold-Copper matrix)
-        const drawIssWing = (wx: number, wy: number) => {
-          ctx.fillStyle = "#b45309"
-          ctx.strokeStyle = "#f59e0b"
-          ctx.lineWidth = 0.8
-          ctx.fillRect(wx, wy, 8 * issScale, 18 * issScale)
-          ctx.strokeRect(wx, wy, 8 * issScale, 18 * issScale)
-          // Cell line grid
-          ctx.beginPath()
-          ctx.strokeStyle = "rgba(251, 191, 36, 0.4)"
-          ctx.moveTo(wx, wy + 6 * issScale)
-          ctx.lineTo(wx + 8 * issScale, wy + 6 * issScale)
-          ctx.moveTo(wx, wy + 12 * issScale)
-          ctx.lineTo(wx + 8 * issScale, wy + 12 * issScale)
-          ctx.stroke()
-        }
-
-        // Port & Starboard solar array pairs
-        drawIssWing(-32 * issScale, -22 * issScale)
-        drawIssWing(-32 * issScale, 4 * issScale)
-        drawIssWing(-20 * issScale, -22 * issScale)
-        drawIssWing(-20 * issScale, 4 * issScale)
-
-        drawIssWing(12 * issScale, -22 * issScale)
-        drawIssWing(12 * issScale, 4 * issScale)
-        drawIssWing(24 * issScale, -22 * issScale)
-        drawIssWing(24 * issScale, 4 * issScale)
-
-        // Pressurized Module Cluster (Destiny, Unity, Zarya, Zvezda cylinders)
-        ctx.fillStyle = "#e2e8f0"
-        ctx.fillRect(-5 * issScale, -10 * issScale, 10 * issScale, 20 * issScale)
-        ctx.strokeStyle = "#64748b"
-        ctx.lineWidth = 1.2
-        ctx.strokeRect(-5 * issScale, -10 * issScale, 10 * issScale, 20 * issScale)
-
-        // Thermal Radiator Panels (White rectangular heat rejection)
-        ctx.fillStyle = "#ffffff"
-        ctx.fillRect(-12 * issScale, -8 * issScale, 6 * issScale, 16 * issScale)
-        ctx.fillRect(6 * issScale, -8 * issScale, 6 * issScale, 16 * issScale)
-
-      } else if (targetType === "Orbital Debris") {
-        // Tumbling Multi-Faceted Debris Shrapnel
-        ctx.rotate(debrisTumbleRef.current)
-        ctx.fillStyle = "#ef4444"
-        ctx.strokeStyle = "#f87171"
-        ctx.lineWidth = 1.2
-        ctx.beginPath()
-        ctx.moveTo(-7 * zoomFactor, -5 * zoomFactor)
-        ctx.lineTo(6 * zoomFactor, -8 * zoomFactor)
-        ctx.lineTo(8 * zoomFactor, 3 * zoomFactor)
-        ctx.lineTo(1 * zoomFactor, 7 * zoomFactor)
-        ctx.lineTo(-6 * zoomFactor, 4 * zoomFactor)
-        ctx.closePath()
-        ctx.fill()
-        ctx.stroke()
-
-      } else {
-        // Ground Spaceport Launchpad Target (SLC-40)
-        ctx.fillStyle = "#f97316"
-        ctx.beginPath()
-        ctx.arc(0, 0, 4.5, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.strokeStyle = "#fdba74"
-        ctx.strokeRect(-6, -6, 12, 12)
-      }
-      ctx.restore()
-
-      // Target Label
-      ctx.fillStyle = targetType === "Orbital Debris" ? "#ef4444" : "#38bdf8"
-      ctx.font = "10px monospace"
-      ctx.fillText(`TARGET: ${targetType}`, tgtPt.px + 24, tgtPt.py + 4)
-
-      // 10. True-to-Life Render: VEROYX-SAT-1 SPACECRAFT
-      ctx.save()
-      ctx.translate(satPt.px, satPt.py)
-      const satScale = 1.1 * zoomFactor
-
-      // Dual Gallium-Arsenide Solar Array Wings
-      const drawSatWing = (wx: number) => {
-        ctx.fillStyle = "#0284c7"
-        ctx.strokeStyle = "#38bdf8"
-        ctx.lineWidth = 1.2
-        ctx.fillRect(wx, -6 * satScale, 24 * satScale, 12 * satScale)
-        ctx.strokeRect(wx, -6 * satScale, 24 * satScale, 12 * satScale)
-        // Sub-panel divide lines
-        ctx.beginPath()
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.5)"
-        ctx.moveTo(wx + 8 * satScale, -6 * satScale)
-        ctx.lineTo(wx + 8 * satScale, 6 * satScale)
-        ctx.moveTo(wx + 16 * satScale, -6 * satScale)
-        ctx.lineTo(wx + 16 * satScale, 6 * satScale)
-        ctx.stroke()
-      }
-      // Port & Starboard wings
-      drawSatWing(-34 * satScale)
-      drawSatWing(10 * satScale)
-
-      // Gold MLI-Wrapped Main Satellite Bus Core
-      ctx.fillStyle = "#fbbf24"
-      ctx.strokeStyle = "#d97706"
-      ctx.lineWidth = 1.5
-      ctx.fillRect(-10 * satScale, -10 * satScale, 20 * satScale, 20 * satScale)
-      ctx.strokeRect(-10 * satScale, -10 * satScale, 20 * satScale, 20 * satScale)
-
-      // Parabolic High-Gain Antenna (HGA) Reflector Dish
-      ctx.beginPath()
-      ctx.strokeStyle = "#e2e8f0"
-      ctx.lineWidth = 2.0
-      ctx.arc(0, -12 * satScale, 8 * satScale, Math.PI * 0.9, Math.PI * 2.1)
-      ctx.stroke()
-      // Feed horn
-      ctx.beginPath()
-      ctx.strokeStyle = "#94a3b8"
-      ctx.lineWidth = 1.2
-      ctx.moveTo(0, -12 * satScale)
-      ctx.lineTo(0, -16 * satScale)
-      ctx.stroke()
-
-      // Nadir Optical Sensor Barrel (Pointing downward to Earth)
-      ctx.fillStyle = "#06b6d4"
-      ctx.beginPath()
-      ctx.arc(0, 8 * satScale, 4 * satScale, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = "#22d3ee"
-      ctx.stroke()
-
-      ctx.restore()
-
-      // Primary Spacecraft Label Tag (Offset cleanly to avoid overlap)
-      ctx.fillStyle = "#38bdf8"
-      ctx.font = "11px monospace"
-      ctx.fillText(`VEROYX-SAT-1 (${altitudeKm}km)`, satPt.px + 28, satPt.py - 16)
-
-      animId = requestAnimationFrame(render)
     }
 
-    render()
+    animId = requestAnimationFrame(animate)
+
+    const onResize = () => {
+      if (!container) return
+      const w = container.clientWidth
+      const h = container.clientHeight
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      renderer.setSize(w, h)
+    }
+    window.addEventListener("resize", onResize)
 
     return () => {
       cancelAnimationFrame(animId)
-      window.removeEventListener("resize", handleResize)
+      window.removeEventListener("resize", onResize)
+      dom.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      dom.removeEventListener("wheel", onWheel)
+      renderer.dispose()
     }
-  }, [altitudeKm, inclinationDeg, targetType, pointingMode, showGraticule, showAtmosphere, simSpeed, isPlaying, zoomFactor, camYaw, camPitch, telemetry])
-
-  // Mouse drag handlers
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isDraggingRef.current = true
-    lastMousePos.current = { x: e.clientX, y: e.clientY }
-  }
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current) return
-    const dx = e.clientX - lastMousePos.current.x
-    const dy = e.clientY - lastMousePos.current.y
-    setCamYaw(prev => prev + dx * 0.007)
-    setCamPitch(prev => Math.max(-1.3, Math.min(1.3, prev + dy * 0.007)))
-    lastMousePos.current = { x: e.clientX, y: e.clientY }
-  }
-
-  const handleMouseUp = () => {
-    isDraggingRef.current = false
-  }
+  }, [orbit, mission, selectedTarget])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 pt-20 pb-12 px-4 sm:px-8 font-sans selection:bg-cyan-500 selection:text-slate-950 select-none">
+      <div className="max-w-[1720px] mx-auto space-y-4">
 
-        {/* Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        {/* Master Console Header */}
+        <div className="border-b border-slate-800 pb-3 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Crosshair className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
-              NASA-Grade Orbital Ephemeris &amp; Vehicle Intercept Engine
+            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-1">
+              <Crosshair className="w-3.5 h-3.5 text-cyan-400 animate-spin" style={{ animationDuration: "20s" }} />
+              NASA GSFC FDF &middot; ORBITAL RENDEZVOUS &amp; INTERCEPT ENGINE
             </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
+            <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white font-mono uppercase">
               3D MISSION &amp; TARGET VISUALIZER
             </h1>
-            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
-              High-fidelity 3D Earth globe rendering depth-occluded Keplerian orbits, photorealistic ISS structure with photovoltaic wings, gold-MLI satellite with HGA dish, night-side city lights, and real-time rangefinder vectors.
-            </p>
           </div>
 
-          <div className="flex items-center gap-2 font-mono text-xs">
+          {/* Time & Camera Mode Controls */}
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs bg-slate-900/60 p-1.5 rounded-xl border border-slate-800">
+            {/* Camera View Switcher */}
+            <div className="flex items-center bg-slate-800 rounded-lg p-0.5 mr-2">
+              <button
+                onClick={() => setCameraMode("GLOBAL")}
+                className={`px-2.5 py-1 rounded cursor-pointer transition-all ${cameraMode === "GLOBAL" ? "bg-cyan-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"}`}
+              >
+                GLOBAL 3D
+              </button>
+              <button
+                onClick={() => setCameraMode("CHASE")}
+                className={`px-2.5 py-1 rounded cursor-pointer transition-all ${cameraMode === "CHASE" ? "bg-cyan-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"}`}
+              >
+                CHASE POV
+              </button>
+              <button
+                onClick={() => setCameraMode("INTERCEPT")}
+                className={`px-2.5 py-1 rounded cursor-pointer transition-all ${cameraMode === "INTERCEPT" ? "bg-cyan-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"}`}
+              >
+                RPO CORRIDOR
+              </button>
+            </div>
+
             <button
               onClick={() => setIsPlaying(!isPlaying)}
-              className="px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-white font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer transition-all"
             >
               {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
-              {isPlaying ? "PAUSE" : "RESUME"}
+              <span>{isPlaying ? "PAUSE" : "RESUME"}</span>
             </button>
+
+            {[1, 5, 25, 100].map(scale => (
+              <button
+                key={scale}
+                onClick={() => setTimeScale(scale)}
+                className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                  timeScale === scale 
+                    ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20" 
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                {scale}x
+              </button>
+            ))}
+
             <button
-              onClick={() => { setCamYaw(0.95); setCamPitch(0.38); setZoomFactor(1.1) }}
-              className="px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              onClick={() => { simStateRef.current.simTimeSec = 0 }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+              title="Reset Orbit Epoch"
             >
-              <RotateCw className="w-3.5 h-3.5 text-cyan-400" />
-              RESET CAMERA
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* 3D Viewport Screen */}
-        <div className="relative rounded-2xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl">
-          <canvas
-            ref={canvasRef}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            className="w-full cursor-grab active:cursor-grabbing block"
-          />
+        {/* 3-COLUMN UNIFIED MISSION CONTROL FLIGHT DECK */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
 
-          {/* NASA Flight Telemetry HUD */}
-          <div className="absolute top-4 left-4 p-4 rounded-xl bg-slate-950/90 border border-slate-800 font-mono text-[11px] backdrop-blur-md space-y-1.5 shadow-xl">
-            <div className="text-cyan-400 font-bold flex items-center gap-1.5 border-b border-slate-800 pb-1.5">
-              <Activity className="w-3.5 h-3.5" /> FLIGHT EPHEMERIS TELEMETRY
-            </div>
-            <div className="text-slate-300">Spacecraft Altitude: <strong className="text-white">{altitudeKm} km</strong></div>
-            <div className="text-slate-300">Orbital Velocity: <strong className="text-white">{telemetry.vSat} km/s</strong></div>
-            <div className="text-slate-300">Orbit Period: <strong className="text-white">{telemetry.periodMin} min</strong></div>
-            <div className="text-slate-300">True Anomaly (&nu;): <strong className="text-white">{telemetry.trueAnomalyDeg}&deg;</strong></div>
-            <div className="text-slate-300 border-t border-slate-800 pt-1.5">
-              Tracked Target: <strong className="text-cyan-400">{targetType}</strong>
-            </div>
-            <div className="text-slate-300">
-              Inter-Vehicle Range (&rho;): <strong className={targetType === "Orbital Debris" ? "text-red-400 font-bold" : "text-emerald-400 font-bold"}>{telemetry.rangeKm} km</strong>
-            </div>
-            <div className="text-slate-300">
-              Range Rate (&rho;&#775;): <strong className="text-white">{telemetry.rangeRateKmS} km/s</strong>
-            </div>
-            <div className="text-slate-500 text-[9px] pt-1 border-t border-slate-800">
-              Drag mouse to orbit camera &middot; Real-time depth sorted
-            </div>
-          </div>
+          {/* LEFT RAIL: KINEMATICS & PROXIMITY TELEMETRY */}
+          <div className="lg:col-span-3 space-y-4 font-mono text-xs flex flex-col justify-between">
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
+              <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+                <span className="font-bold text-white uppercase flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  FLIGHT KINEMATICS
+                </span>
+                <span className="text-[10px] text-cyan-400">J2000 ECI</span>
+              </div>
 
-          {/* Zoom Overlay Pill */}
-          <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-950/85 border border-slate-800 rounded-lg p-1 backdrop-blur-md">
-            <button
-              onClick={() => setZoomFactor(prev => Math.min(2.5, prev + 0.15))}
-              className="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer"
-              title="Zoom In"
-            >
-              <ZoomIn className="w-4 h-4 text-cyan-400" />
-            </button>
-            <button
-              onClick={() => setZoomFactor(prev => Math.max(0.6, prev - 0.15))}
-              className="p-1.5 rounded hover:bg-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer"
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-4 h-4 text-cyan-400" />
-            </button>
-          </div>
-
-          {/* Bottom Interactive HUD Bar */}
-          <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-950/90 border border-slate-800 font-mono text-xs backdrop-blur-md">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400 text-[10px] uppercase font-bold">TARGET OBJECT:</span>
-              {(["ISS Rendezvous", "Orbital Debris", "Cape Canaveral SLC-40"] as const).map(tgt => (
-                <button
-                  key={tgt}
-                  onClick={() => setTargetType(tgt)}
-                  className={`px-3 py-1 rounded text-[10px] font-bold border transition-all cursor-pointer ${
-                    targetType === tgt
-                      ? "bg-cyan-950 border-cyan-500 text-cyan-300 shadow-md shadow-cyan-950/40"
-                      : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {tgt}
-                </button>
-              ))}
+              <div className="space-y-1.5">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
+                  <span className="text-slate-500">ALTITUDE</span>
+                  <span className="text-white font-bold">{telemetryUI.altitudeKm} km</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
+                  <span className="text-slate-500">ORBITAL VELOCITY</span>
+                  <span className="text-cyan-400 font-bold">{telemetryUI.velocityKmS} km/s</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
+                  <span className="text-slate-500">TRUE ANOMALY (ν)</span>
+                  <span className="text-white font-bold">{telemetryUI.trueAnomalyDeg}&deg;</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
+                  <span className="text-slate-500">ORBITAL PERIOD</span>
+                  <span className="text-white font-bold">{Math.round(orbit.periodSec / 60)} min</span>
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 text-[11px]">
-              <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={showGraticule}
-                  onChange={e => setShowGraticule(e.target.checked)}
-                  className="accent-cyan-400 cursor-pointer"
-                />
-                Graticule Grid
-              </label>
+            {/* Inter-Vehicle RPO Telemetry */}
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2.5">
+              <div className="border-b border-slate-800 pb-2 text-white font-bold uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-200">
+                  <Target className="w-4 h-4 text-amber-400" />
+                  INTER-VEHICLE RPO
+                </span>
+                <span className="text-[10px] text-amber-400">HILL'S LVLH</span>
+              </div>
 
-              <label className="flex items-center gap-1.5 cursor-pointer text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={showAtmosphere}
-                  onChange={e => setShowAtmosphere(e.target.checked)}
-                  className="accent-cyan-400 cursor-pointer"
-                />
-                Rayleigh Haze
-              </label>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">TRACKED TARGET</span>
+                  <span className="text-white font-bold">{TARGET_PRESETS[selectedTarget].name}</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">RANGE (ρ)</span>
+                  <span className="text-amber-400 font-bold">{telemetryUI.rangeKm.toLocaleString()} km</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">RANGE-RATE (ρ̇)</span>
+                  <span className="text-white font-bold">{telemetryUI.rangeRateKmS} km/s</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">COLLISION PROB (Pc)</span>
+                  <span className="text-rose-400 font-bold">{telemetryUI.collisionProb}</span>
+                </div>
+              </div>
 
-              <div className="flex items-center gap-1.5 pl-2 border-l border-slate-800">
-                <span className="text-slate-400 text-[10px]">TIME WARP</span>
-                <input
-                  type="range"
-                  min={0.2}
-                  max={3.0}
-                  step={0.2}
-                  value={simSpeed}
-                  onChange={e => setSimSpeed(Number(e.target.value))}
-                  className="w-16 accent-cyan-400 cursor-pointer"
-                />
+              {/* Range Profile Trend Sparkline */}
+              <div className="pt-1.5">
+                <div className="text-[10px] text-slate-500 mb-1 flex justify-between">
+                  <span>RANGE CLOSURE TREND</span>
+                  <span className="text-amber-400 font-bold">{telemetryUI.rangeKm} km</span>
+                </div>
+                <div className="h-8 w-full bg-slate-950 rounded border border-slate-800 flex items-end px-1 gap-0.5 overflow-hidden">
+                  {rangeHistory.map((val, idx) => {
+                    const hPercent = Math.max(10, Math.min(100, (val / 5000) * 100))
+                    return (
+                      <div
+                        key={idx}
+                        className="flex-1 bg-amber-400/80 rounded-t-sm"
+                        style={{ height: `${hPercent}%` }}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Target Selectors */}
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2">
+              <div className="border-b border-slate-800 pb-1.5 text-white font-bold uppercase text-[11px]">
+                SELECT TRACKING TARGET
+              </div>
+
+              <div className="space-y-1">
+                {TARGET_PRESETS.map((targ, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedTarget(idx)}
+                    className={`w-full px-2.5 py-1.5 rounded text-left transition-all cursor-pointer flex items-center justify-between text-xs ${
+                      selectedTarget === idx 
+                        ? "bg-cyan-950 border border-cyan-500/60 text-white font-bold shadow-md shadow-cyan-500/20" 
+                        : "bg-slate-900/40 border border-slate-800 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span>{targ.name}</span>
+                    <span className="text-[10px] text-slate-500">{targ.type}</span>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Orbit Tuning Configuration Desk */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
-          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="text-slate-300 font-bold uppercase flex items-center gap-1.5">
-                <Orbit className="w-4 h-4 text-cyan-400" /> Orbit Altitude
-              </span>
-              <span className="text-cyan-400 font-bold">{altitudeKm} KM</span>
+          {/* CENTER: 3D PHOTOREALISTIC INTERCEPT ENGINE WITH COVARIANCE & SHADOW CONE */}
+          <div className="lg:col-span-9 relative rounded-2xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl flex flex-col">
+            
+            {/* Top Status Overlay */}
+            <div className="absolute top-0 left-0 right-0 z-10 px-5 py-3 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-none">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                <span className="text-white font-bold uppercase tracking-wider">
+                  CLOHESSY-WILTSHIRE RELATIVE ORBIT ENGINE
+                </span>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">| CAMERA: {cameraMode}</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
+                  telemetryUI.isEclipse 
+                    ? "bg-purple-950 border border-purple-500/40 text-purple-300"
+                    : "bg-amber-950 border border-amber-500/40 text-amber-300"
+                }`}>
+                  {telemetryUI.isEclipse ? "ECLIPSE PASS (UMBRA)" : "SUNLIT PASS"}
+                </span>
+              </div>
             </div>
-            <input
-              type="range"
-              min={300}
-              max={1200}
-              step={25}
-              value={altitudeKm}
-              onChange={e => setAltitudeKm(Number(e.target.value))}
-              className="w-full accent-cyan-400 cursor-pointer"
+
+            {/* Three.js Mounting Container */}
+            <div
+              ref={mountRef}
+              className="w-full h-[620px] block cursor-grab active:cursor-grabbing"
+              title="Drag to orbit camera in 3D space"
             />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>300 km (VLEO)</span>
-              <span>420 km (ISS Co-Orbit)</span>
-              <span>1200 km</span>
+
+            {/* Bottom Contact & Control Overlay */}
+            <div className="absolute bottom-0 left-0 right-0 z-10 px-5 py-3 bg-slate-950/85 backdrop-blur-md border-t border-slate-800/80 flex flex-wrap items-center justify-between font-mono text-xs gap-3 pointer-events-none">
+              <div className="flex items-center gap-2">
+                <Radio className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-slate-400">RANGEFINDER LIDAR:</span>
+                <span className="text-amber-400 font-bold">LOCKED &middot; {telemetryUI.rangeKm} km</span>
+              </div>
+
+              <div className="text-[10px] text-slate-400 flex items-center gap-3">
+                <span>RED CONE = 3D VOLUMETRIC UMBRA SHADOW</span>
+                <span className="text-slate-600">|</span>
+                <span>EPOCH: <strong className="text-white">{telemetryUI.simTimeSec}s</strong></span>
+              </div>
             </div>
+
           </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="text-slate-300 font-bold uppercase flex items-center gap-1.5">
-                <Compass className="w-4 h-4 text-purple-400" /> Inclination Angle
-              </span>
-              <span className="text-purple-400 font-bold">{inclinationDeg}&deg;</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={0.5}
-              value={inclinationDeg}
-              onChange={e => setInclinationDeg(Number(e.target.value))}
-              className="w-full accent-purple-400 cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>28.5&deg; (Cape)</span>
-              <span>51.64&deg; (ISS Orbit)</span>
-              <span>98&deg; (Sun-Sync)</span>
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-              <span className="text-slate-300 font-bold uppercase flex items-center gap-1.5">
-                <Sliders className="w-4 h-4 text-emerald-400" /> Correlated Flight Engines
-              </span>
-              <span className="text-emerald-400 font-bold">CONNECTED</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 text-[9px]">
-              <Link href="/docking" className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300">
-                /docking (C-W)
-              </Link>
-              <Link href="/conjunction" className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300">
-                /conjunction (CAM)
-              </Link>
-              <Link href="/pass-schedule" className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300">
-                /pass-schedule
-              </Link>
-              <Link href="/compliance" className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300">
-                /compliance
-              </Link>
-            </div>
-          </div>
         </div>
 
       </div>
