@@ -132,7 +132,7 @@ export default function DevelopersPage() {
 import json
 
 # Veroyx Institutional API - ${activeEndpoint.title}
-ENDPOINT = "https://veroyx.com${activeEndpoint.path}"
+ENDPOINT = "https://www.veroyx.com${activeEndpoint.path}"
 HEADERS = {
     "Content-Type": "application/json",
     "Authorization": "Bearer VEROYX_INSTITUTIONAL_KEY"
@@ -149,7 +149,7 @@ print(json.dumps(data, indent=2))`
 
     if (activeCodeLang === "matlab") {
       return `% Veroyx Institutional API - MATLAB / Octave Automation
-url = 'https://veroyx.com${activeEndpoint.path}';
+url = 'https://www.veroyx.com${activeEndpoint.path}';
 options = weboptions('MediaType', 'application/json', ...
                      'HeaderFields', {'Authorization', 'Bearer VEROYX_INSTITUTIONAL_KEY'});
 
@@ -163,7 +163,7 @@ response = webwrite(url, payload, options);
 disp(response);`
     }
 
-    return `curl -X POST https://veroyx.com${activeEndpoint.path} \\
+    return `curl -X POST https://www.veroyx.com${activeEndpoint.path} \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer VEROYX_INSTITUTIONAL_KEY" \\
   -d '${JSON.stringify(activeEndpoint.sampleRequest)}'`
