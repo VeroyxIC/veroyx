@@ -1,44 +1,65 @@
-import Link from 'next/link'
-import CommandBar from '@/components/CommandBar'
+"use client"
+
+import Link from "next/link"
+import { Search } from "lucide-react"
+import CommandPalette from "@/components/CommandPalette"
 
 export default function Navbar() {
-  return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto flex h-16 items-center justify-between px-6 sm:px-12">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center font-mono font-black text-white text-lg group-hover:scale-105 transition-transform">
-              V
-            </div>
-            <span className="font-mono text-xl font-bold tracking-wider text-white">
-              VEROYX<span className="text-cyan-400">.</span>
-            </span>
-          </Link>
-          <CommandBar />
-        </div>
+  const triggerPalette = () => {
+    const event = new KeyboardEvent("keydown", { key: "k", metaKey: true })
+    window.dispatchEvent(event)
+  }
 
-        <nav className="flex items-center gap-6 text-sm font-mono text-slate-400">
-          <Link href="/companies" className="hover:text-cyan-400 transition-colors">
-            COMPANIES
-          </Link>
-          <Link href="/technologies" className="hover:text-cyan-400 transition-colors">
-            TECH
-          </Link>
-          <Link href="/grants" className="hover:text-cyan-400 transition-colors">
-            CONTRACTS
-          </Link>
-          <Link href="/launches" className="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
-            LAUNCHES
-          </Link>
-          <Link href="/compare" className="hover:text-cyan-400 transition-colors">
-            COMPARE
-          </Link>
-          <Link href="/analytics" className="text-white hover:text-cyan-400 transition-colors px-3 py-1.5 rounded-md bg-slate-900 border border-slate-800 hover:border-cyan-500/50">
-            RADAR
-          </Link>
-        </nav>
-      </div>
-    </header>
+  return (
+    <>
+      <CommandPalette />
+      <header className="fixed top-0 left-0 right-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          
+          {/* Typographic Brand + Palette Trigger */}
+          <div className="flex items-center gap-4">
+            <Link href="/" className="flex items-center gap-2 group">
+              <span className="font-mono font-black text-xl tracking-widest text-white group-hover:text-cyan-400 transition-colors">
+                VEROYX<span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-400 ml-1 animate-pulse" />
+              </span>
+              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border border-cyan-500/30 bg-cyan-950/60 text-cyan-300 font-bold hidden sm:inline-block">
+                FLIGHT OS
+              </span>
+            </Link>
+
+            <button
+              onClick={triggerPalette}
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-cyan-500 text-slate-400 hover:text-white text-xs font-mono transition-all cursor-pointer"
+            >
+              <Search className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Search index...</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-950 text-[10px] border border-slate-700 text-slate-500">
+                ⌘K
+              </kbd>
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="flex items-center gap-6 font-mono text-xs text-slate-300">
+            <Link href="/mission-builder" className="hover:text-cyan-400 transition-colors">
+              MISSION BUILDER
+            </Link>
+            <Link href="/visualizer" className="hover:text-cyan-400 transition-colors">
+              3D VISUALIZER
+            </Link>
+            <Link href="/launches" className="hover:text-cyan-400 transition-colors">
+              RADAR
+            </Link>
+            <Link href="/compliance" className="hover:text-cyan-400 transition-colors">
+              COMPLIANCE
+            </Link>
+            <Link href="/developers" className="hover:text-cyan-400 transition-colors">
+              API
+            </Link>
+          </nav>
+
+        </div>
+      </header>
+    </>
   )
 }

@@ -1,308 +1,501 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { 
   Search, 
-  Building2, 
-  Cpu, 
   Rocket, 
-  Radio, 
-  FileText, 
-  ShieldCheck, 
   Orbit, 
+  Radio, 
+  Zap, 
+  ShieldCheck, 
+  Cpu, 
+  Layers, 
+  Terminal, 
+  Flame, 
+  DollarSign, 
   ArrowRight,
-  Compass,
-  X
+  ExternalLink,
+  BookOpen
 } from "lucide-react"
 
-interface SearchItem {
+interface CommandItem {
   id: string
-  category: "TOOL" | "COMPANY" | "CONTRACT" | "TECH" | "STATION" | "LAUNCH"
   title: string
   subtitle: string
-  badge?: string
   href: string
+  category: "Architecture" | "Dynamics & Orbits" | "Comms & Payloads" | "Power & Thermal" | "Structures & Safety" | "Environment & Operations" | "Standards"
+  keywords: string[]
+  badge?: string
 }
 
-const STATIC_PLATFORM_TOOLS: SearchItem[] = [
-  { id: "tool-scenarios", category: "TOOL", title: "Mission Architecture Scenario Builder", subtitle: "Unified Launch, Power, RF & Thermal Synthesizer", href: "/scenarios", badge: "ENGINE" },
-  { id: "tool-contracts", category: "TOOL", title: "Defense Contracts & Flow-Down Radar", subtitle: "DoD Prime Awards & Subcontractor Distributions", href: "/contracts", badge: "DEFENSE" },
-  { id: "tool-ground", category: "TOOL", title: "Ground Station Topology & Contact Scheduler", subtitle: "Global Earth Stations, Bands & Contact Passes", href: "/ground-stations", badge: "NETWORK" },
-  { id: "tool-thermal", category: "TOOL", title: "Thermal Management & Cryo Boil-Off", subtitle: "Stefan-Boltzmann Radiation & MLI Insulation", href: "/thermal", badge: "PHYSICS" },
-  { id: "tool-isam", category: "TOOL", title: "ISAM & Rendezvous (RPO) Simulator", subtitle: "Clohessy-Wiltshire Dynamics & V-bar/R-bar Gates", href: "/isam", badge: "PHYSICS" },
-  { id: "tool-payload", category: "TOOL", title: "Fairing & Payload Trade Engine", subtitle: "Usable Envelope Clearance & Mass-to-Orbit Margins", href: "/payload", badge: "ENGINE" },
-  { id: "tool-sar", category: "TOOL", title: "Synthetic Aperture Radar (SAR) Simulator", subtitle: "All-Weather Ground Resolution & Chirp Bandwidth", href: "/sar", badge: "SENSOR" },
-  { id: "tool-optical", category: "TOOL", title: "Optical Sensor & GSD Simulator", subtitle: "Ground Sample Distance, Diffraction Limit & NIIRS", href: "/optical", badge: "SENSOR" },
-  { id: "tool-rf", category: "TOOL", title: "RF Downlink Budget Calculator", subtitle: "Friis Path Loss, Dish Gain & Eb/N0 Margin", href: "/rf", badge: "TELEMETRY" },
-  { id: "tool-power", category: "TOOL", title: "Spacecraft Power & Radiation Simulator", subtitle: "Solar Cell Degradation & Battery Sizing", href: "/power", badge: "PHYSICS" },
-  { id: "tool-propulsion", category: "TOOL", title: "Propulsion Specific Impulse Matrix", subtitle: "Chamber Pressure, Isp & Thermodynamics", href: "/propulsion", badge: "PROPULSION" },
-  { id: "tool-ssa", category: "TOOL", title: "Space Situational Awareness (3D Radar)", subtitle: "Orbital Debris Shells & Close Conjunctions", href: "/ssa", badge: "RADAR" },
-  { id: "tool-passes", category: "TOOL", title: "Satellite Pass Predictor", subtitle: "Keplerian Ground-Track & Overflight Windows", href: "/passes", badge: "FLIGHT" },
-  { id: "tool-trajectory", category: "TOOL", title: "Orbital Trajectory & Delta-V Simulator", subtitle: "Hohmann Transfers & Orbital Mechanics", href: "/trajectory", badge: "PHYSICS" },
-  { id: "tool-launches", category: "TOOL", title: "Live Launch Manifest Radar", subtitle: "Real-Time Manifests & Countdown Tracking", href: "/launches", badge: "OPERATIONS" },
-  { id: "tool-analytics", category: "TOOL", title: "Macro Spending & Capital Trends", subtitle: "Global Aerospace Procurement Insights", href: "/analytics", badge: "MACRO" },
+const COMMAND_REGISTRY: CommandItem[] = [
+  // Architecture & Integrators
+  {
+    id: "mission-builder",
+    title: "Unified Mission Architecture",
+    subtitle: "Coupled concurrent engineering: orbit, mass, power, battery DoD, and delta-V",
+    href: "/mission-builder",
+    category: "Architecture",
+    keywords: ["concurrent", "mission", "integrator", "state", "architecture", "trade study", "phase a", "phase b"],
+    badge: "Core"
+  },
+  {
+    id: "compliance",
+    title: "Flight Compliance & VCRM Matrix",
+    subtitle: "NASA, ECSS, AIAA, and FCC standards verification traceability matrix",
+    href: "/compliance",
+    category: "Standards",
+    keywords: ["compliance", "vcrm", "standards", "nasa-std-5001b", "8719.14", "gevs", "ecss", "fcc"],
+    badge: "VCRM"
+  },
+  {
+    id: "visualizer",
+    title: "3D Mission & Intercept Visualizer",
+    subtitle: "High-fidelity 3D Earth, ISS rendezvous, debris intercept, and rangefinder",
+    href: "/visualizer",
+    category: "Architecture",
+    keywords: ["visualizer", "3d", "globe", "iss", "rendezvous", "intercept", "target", "earth"],
+    badge: "3D"
+  },
+  {
+    id: "launches",
+    title: "Orbital Launch Radar",
+    subtitle: "Global spaceport grid tracking active launch azimuth corridors and booster recovery",
+    href: "/launches",
+    category: "Architecture",
+    keywords: ["launches", "radar", "spaceport", "cape canaveral", "vandenberg", "manifest", "countdown"],
+    badge: "Radar"
+  },
+  {
+    id: "cost",
+    title: "Parametric Cost Estimator",
+    subtitle: "NASA PCEC & USCM cost estimating relationships (CERs) across WBS 01-09",
+    href: "/cost",
+    category: "Architecture",
+    keywords: ["cost", "pcec", "wbs", "budget", "parametric", "cer", "reserve", "p80"],
+    badge: "NASA PCEC"
+  },
+  {
+    id: "developers",
+    title: "Developer REST API & Python SDK",
+    subtitle: "Headless calculation endpoints supporting J2000 ECI and CCSDS schemas",
+    href: "/developers",
+    category: "Architecture",
+    keywords: ["api", "sdk", "python", "matlab", "rest", "j2000", "eci", "developer"],
+    badge: "API"
+  },
+  {
+    id: "reliability",
+    title: "System Reliability & MTBF Sizing",
+    subtitle: "MIL-HDBK-217F parts-count failure rates (FIT) and k-out-of-n redundancy",
+    href: "/reliability",
+    category: "Architecture",
+    keywords: ["reliability", "mtbf", "fit", "failure rate", "redundancy", "mil-hdbk-217f"],
+    badge: "Reliability"
+  },
+
+  // Dynamics & Orbits
+  {
+    id: "conjunction",
+    title: "Conjunction Assessment (CAM)",
+    subtitle: "2D B-plane covariance ellipsoids, Foster collision probability (Pc), and CAM burns",
+    href: "/conjunction",
+    category: "Dynamics & Orbits",
+    keywords: ["conjunction", "cam", "collision", "foster", "b-plane", "debris", "cdm", "8719.66"],
+    badge: "NASA CARA"
+  },
+  {
+    id: "pass-schedule",
+    title: "Pass Schedule & Tracking Windows",
+    subtitle: "Topocentric Az/El antenna steering timelines and contact pass durations",
+    href: "/pass-schedule",
+    category: "Dynamics & Orbits",
+    keywords: ["pass schedule", "tracking", "azimuth", "elevation", "aos", "los", "ground pass", "sgp4"],
+    badge: "SGP4"
+  },
+  {
+    id: "trajectory",
+    title: "Interplanetary Trajectory Sizing",
+    subtitle: "Lambert solver, orbital transfers, patched conics, and delta-V requirements",
+    href: "/trajectory",
+    category: "Dynamics & Orbits",
+    keywords: ["trajectory", "lambert", "delta-v", "transfer", "hohmann", "patched conics"],
+    badge: "Trajectory"
+  },
+  {
+    id: "swath",
+    title: "Sensor Swath & Constellation Revisit",
+    subtitle: "Ground track access geometry, swath widths, and orbital revisit periods",
+    href: "/swath",
+    category: "Dynamics & Orbits",
+    keywords: ["swath", "coverage", "revisit", "constellation", "ground track", "fov"],
+    badge: "Coverage"
+  },
+  {
+    id: "docking",
+    title: "Rendezvous & Soft Docking",
+    subtitle: "Clohessy-Wiltshire (C-W) relative motion equations and approach corridors",
+    href: "/docking",
+    category: "Dynamics & Orbits",
+    keywords: ["docking", "rendezvous", "clohessy-wiltshire", "c-w", "relative motion", "idss"],
+    badge: "NASA IDSS"
+  },
+  {
+    id: "disturbance",
+    title: "Orbital Environmental Disturbances",
+    subtitle: "Gravity gradient, aerodynamic drag, solar radiation pressure (SRP), and magnetic torques",
+    href: "/disturbance",
+    category: "Dynamics & Orbits",
+    keywords: ["disturbance", "torque", "gravity gradient", "srp", "solar pressure", "aerodynamic drag"],
+    badge: "Torques"
+  },
+
+  // Comms & Payloads
+  {
+    id: "link",
+    title: "RF Link Budget Closure",
+    subtitle: "CCSDS 401.0-B free-space path loss, rain attenuation, G/T, and Eb/N0 margin",
+    href: "/link",
+    category: "Comms & Payloads",
+    keywords: ["link", "rf", "link budget", "path loss", "eb/n0", "margin", "ccsds 401.0-b"],
+    badge: "CCSDS"
+  },
+  {
+    id: "optical-payload",
+    title: "Optical Sensor Sizing & GSD",
+    subtitle: "Ground Sample Distance (GSD), Nyquist Q-factor, cascaded MTF, and radiometric SNR",
+    href: "/optical-payload",
+    category: "Comms & Payloads",
+    keywords: ["optical", "payload", "camera", "gsd", "mtf", "snr", "nyquist", "telescope"],
+    badge: "Optics"
+  },
+  {
+    id: "sar",
+    title: "Synthetic Aperture Radar (SAR)",
+    subtitle: "Noise equivalent sigma zero (NESZ), azimuth/range resolutions, and PRF diamond windows",
+    href: "/sar",
+    category: "Comms & Payloads",
+    keywords: ["sar", "radar", "nesz", "chirp", "prf", "azimuth resolution", "synthetic aperture"],
+    badge: "Radar"
+  },
+  {
+    id: "lasercom",
+    title: "Optical Intersatellite Link (OISL)",
+    subtitle: "1550nm free-space lasercom crosslinks, beam divergence, and PAT jitter penalties",
+    href: "/lasercom",
+    category: "Comms & Payloads",
+    keywords: ["lasercom", "oisl", "optical link", "pointing jitter", "1550nm", "crosslink"],
+    badge: "Laser"
+  },
+  {
+    id: "ew",
+    title: "Electronic Warfare & Anti-Jamming",
+    subtitle: "Jammer-to-signal (J/S) power ratios, burn-through ranges, and DSSS processing gain",
+    href: "/ew",
+    category: "Comms & Payloads",
+    keywords: ["ew", "jamming", "anti-jam", "j/s", "dsss", "electronic warfare"],
+    badge: "Anti-Jam"
+  },
+
+  // Power & Thermal
+  {
+    id: "eps",
+    title: "EPS Bus Regulation & MPPT",
+    subtitle: "ECSS-E-ST-20C 28V/100V regulated vs. DET bus topologies, solar array I-V, and recharge C-rates",
+    href: "/eps",
+    category: "Power & Thermal",
+    keywords: ["eps", "mppt", "bus regulation", "i-v curve", "recharge", "det", "ecss-e-st-20c"],
+    badge: "EPS"
+  },
+  {
+    id: "power",
+    title: "Solar Array Power & Fluence",
+    subtitle: "Triple-junction GaAs cell degradation, particle radiation fluence, and temp deratings",
+    href: "/power",
+    category: "Power & Thermal",
+    keywords: ["power", "solar array", "gaas", "fluence", "radiation degradation", "solar cells"],
+    badge: "Solar"
+  },
+  {
+    id: "battery",
+    title: "Battery Cycle Life & Depth of Discharge",
+    subtitle: "Lithium-ion eclipse capacity sizing, DoD limits, and cycle life degradation curves",
+    href: "/battery",
+    category: "Power & Thermal",
+    keywords: ["battery", "dod", "depth of discharge", "lithium-ion", "eclipse capacity"],
+    badge: "Battery"
+  },
+  {
+    id: "thermal",
+    title: "Spacecraft Thermal Nodal Equilibrium",
+    subtitle: "Internal heat dissipation, solar absorption, Earth albedo/IR balances, and temps",
+    href: "/thermal",
+    category: "Power & Thermal",
+    keywords: ["thermal", "heat", "nodal", "albedo", "emissivity", "absorptivity", "temperature"],
+    badge: "Thermal"
+  },
+  {
+    id: "two-phase",
+    title: "Two-Phase Heat Pipes & CCHP",
+    subtitle: "Capillary pumping limits, sonic/entrainment thresholds, and radiator condenser sizing",
+    href: "/two-phase",
+    category: "Power & Thermal",
+    keywords: ["heat pipe", "two-phase", "cchp", "capillary limit", "radiator", "cooling"],
+    badge: "Two-Phase"
+  },
+  {
+    id: "cryo",
+    title: "Cryogenic Boil-Off & MLI Sizing",
+    subtitle: "Multi-layer insulation (MLI) heat leaks, boil-off mass loss rates, and cryocooler loads",
+    href: "/cryo",
+    category: "Power & Thermal",
+    keywords: ["cryo", "boil-off", "mli", "insulation", "liquid oxygen", "liquid hydrogen"],
+    badge: "Cryo"
+  },
+
+  // Structures & Safety
+  {
+    id: "launch-vehicle",
+    title: "Launch Vehicle Ascent Staging & Fitment",
+    subtitle: "Booster lift performance, fairing stay-out clearance envelopes, and staging sequences",
+    href: "/launch-vehicle",
+    category: "Structures & Safety",
+    keywords: ["launch vehicle", "falcon 9", "electron", "ariane 6", "fairing", "ascent", "staging"],
+    badge: "Launcher"
+  },
+  {
+    id: "mass-budget",
+    title: "Mass Budget & Inertia Matrix",
+    subtitle: "AIAA S-120-2015 Mass Growth Allowance (MGA), center-of-gravity, and 3x3 inertia tensors",
+    href: "/mass-budget",
+    category: "Structures & Safety",
+    keywords: ["mass", "mga", "inertia", "center of gravity", "mass budget", "aiaa s-120-2015"],
+    badge: "Mass"
+  },
+  {
+    id: "vibe",
+    title: "Vibration & Launch Loads",
+    subtitle: "NASA GEVS quasi-static limit loads, random vibration PSD, and shock response spectra",
+    href: "/vibe",
+    category: "Structures & Safety",
+    keywords: ["vibe", "vibration", "psd", "gevs", "random vibration", "shock", "miles equation"],
+    badge: "NASA GEVS"
+  },
+  {
+    id: "prop-tank",
+    title: "COPV Propellant Tank Sizing",
+    subtitle: "Composite overwrapped pressure vessels, hoop stress, burst safety factors, and blowdown",
+    href: "/prop-tank",
+    category: "Structures & Safety",
+    keywords: ["copv", "propellant tank", "pressure vessel", "burst factor", "hoop stress", "blowdown"],
+    badge: "COPV"
+  },
+  {
+    id: "mmod",
+    title: "MMOD Hypervelocity Shielding",
+    subtitle: "Whipple bumper shielding, Cour-Palais ballistic limit equations (BLE), and impact risk",
+    href: "/mmod",
+    category: "Structures & Safety",
+    keywords: ["mmod", "micrometeoroid", "whipple", "ballistic limit", "shielding", "debris impact"],
+    badge: "MMOD"
+  },
+  {
+    id: "jitter",
+    title: "Micro-Vibration & Line-of-Sight Jitter",
+    subtitle: "Reaction wheel dynamic unbalance, structural resonant amplification, and LOS smear",
+    href: "/jitter",
+    category: "Structures & Safety",
+    keywords: ["jitter", "reaction wheel", "micro-vibration", "unbalance", "los smear", "harmonics"],
+    badge: "Jitter"
+  },
+
+  // Environment & Disposal
+  {
+    id: "reentry-footprint",
+    title: "Re-Entry Footprint & Disposal",
+    subtitle: "Targeted ocean disposal (Point Nemo SPOUA), 3-sigma dispersion ellipses, and casualty Ec",
+    href: "/reentry-footprint",
+    category: "Environment & Operations",
+    keywords: ["reentry", "footprint", "point nemo", "spoua", "casualty risk", "dispersion", "8719.14"],
+    badge: "Point Nemo"
+  },
+  {
+    id: "decay",
+    title: "Orbital Decay & 5-Year Compliance",
+    subtitle: "Thermospheric drag decay timelines, ISO 24113 compliance, and de-orbit delta-V",
+    href: "/decay",
+    category: "Environment & Operations",
+    keywords: ["decay", "fcc 5-year", "orbital lifetime", "de-orbit", "atmospheric drag", "iso 24113"],
+    badge: "FCC 5-Yr"
+  },
+  {
+    id: "space-weather",
+    title: "Space Weather Operations Desk",
+    subtitle: "Solar flux F10.7, geomagnetic Kp index, proton storm radiation, and density inflation",
+    href: "/space-weather",
+    category: "Environment & Operations",
+    keywords: ["space weather", "f10.7", "kp index", "geomagnetic storm", "noaa", "solar flare"],
+    badge: "NOAA"
+  },
+  {
+    id: "rad",
+    title: "Radiation Dose & Total Ionizing Dose (TID)",
+    subtitle: "Trapped electron/proton belts, cosmic rays, and aluminum shielding attenuation",
+    href: "/rad",
+    category: "Environment & Operations",
+    keywords: ["radiation", "tid", "shielding", "trapped belts", "single event", "rad-hard"],
+    badge: "Radiation"
+  }
 ]
 
 export default function CommandPalette() {
-  const [open, setOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const [results, setResults] = useState<SearchItem[]>([])
-  const [loading, setLoading] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const router = useRouter()
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
-  // Listen for Cmd+K / Ctrl+K keyboard shortcut
+  // Keyboard shortcut listener: Cmd+K or Ctrl+K
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
-        setOpen((prev) => !prev)
-      } else if (e.key === "Escape") {
-        setOpen(false)
+        setIsOpen((prev) => !prev)
+      } else if (e.key === "Escape" && isOpen) {
+        e.preventDefault()
+        setIsOpen(false)
       }
     }
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+  }, [isOpen])
 
-  // Live Multi-Domain Search Query
+  // Focus input upon open
   useEffect(() => {
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-
-    const trimmed = query.trim().toLowerCase()
-
-    if (!trimmed) {
-      setResults(STATIC_PLATFORM_TOOLS.slice(0, 8))
+    if (isOpen) {
+      setTimeout(() => inputRef.current?.focus(), 50)
+      setQuery("")
       setSelectedIndex(0)
-      return
     }
+  }, [isOpen])
 
-    // First match static platform tools
-    const matchedTools = STATIC_PLATFORM_TOOLS.filter(
-      (t) =>
-        t.title.toLowerCase().includes(trimmed) ||
-        t.subtitle.toLowerCase().includes(trimmed) ||
-        t.badge?.toLowerCase().includes(trimmed)
-    )
+  // Filter commands
+  const filteredItems = useMemo(() => {
+    if (!query.trim()) return COMMAND_REGISTRY.slice(0, 8)
 
-    if (trimmed.length < 2) {
-      setResults(matchedTools)
-      setSelectedIndex(0)
-      return
-    }
-
-    setLoading(true)
-
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
-        const data = await res.json()
-
-        const dynamicItems: SearchItem[] = []
-
-        // Companies
-        data.companies?.forEach((c: any) => {
-          dynamicItems.push({
-            id: `comp-${c.id}`,
-            category: "COMPANY",
-            title: c.name,
-            subtitle: `${c.sector || "Aerospace"} • ${c.country || "Global"}`,
-            badge: c.tier || "ENTERPRISE",
-            href: `/companies/${c.slug}`,
-          })
-        })
-
-        // Defense Contracts
-        data.contracts?.forEach((ct: any) => {
-          dynamicItems.push({
-            id: `contract-${ct.id}`,
-            category: "CONTRACT",
-            title: ct.program_name,
-            subtitle: `Prime: ${ct.prime_contractor} • ${ct.command_agency}`,
-            badge: `$${Number(ct.obligation_value_m).toLocaleString()}M`,
-            href: "/contracts",
-          })
-        })
-
-        // Ground Stations
-        data.groundStations?.forEach((gs: any) => {
-          dynamicItems.push({
-            id: `gs-${gs.id}`,
-            category: "STATION",
-            title: `${gs.name} (${gs.code})`,
-            subtitle: `Operator: ${gs.operator} • ${gs.country}`,
-            badge: gs.supported_bands?.[0] || "GATEWAY",
-            href: "/ground-stations",
-          })
-        })
-
-        // Technologies
-        data.technologies?.forEach((t: any) => {
-          dynamicItems.push({
-            id: `tech-${t.id}`,
-            category: "TECH",
-            title: t.name,
-            subtitle: t.category,
-            badge: `TRL ${t.trl || "9"}`,
-            href: `/technologies/${t.slug}`,
-          })
-        })
-
-        // Launches
-        data.launches?.forEach((l: any) => {
-          dynamicItems.push({
-            id: `launch-${l.id}`,
-            category: "LAUNCH",
-            title: l.mission_name,
-            subtitle: `${l.vehicle} • ${l.operator} (${l.orbit})`,
-            badge: l.status,
-            href: "/launches",
-          })
-        })
-
-        setResults([...matchedTools, ...dynamicItems])
-        setSelectedIndex(0)
-      } catch (err) {
-        setResults(matchedTools)
-      } finally {
-        setLoading(false)
-      }
-    }, 200)
-
-    return () => {
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-    }
+    const q = query.toLowerCase()
+    return COMMAND_REGISTRY.filter((item) => {
+      const matchTitle = item.title.toLowerCase().includes(q)
+      const matchSub = item.subtitle.toLowerCase().includes(q)
+      const matchCategory = item.category.toLowerCase().includes(q)
+      const matchKeywords = item.keywords.some((k) => k.includes(q))
+      return matchTitle || matchSub || matchCategory || matchKeywords
+    }).slice(0, 10)
   }, [query])
 
-  const navigateTo = (href: string) => {
-    setOpen(false)
-    router.push(href)
-  }
-
-  // Keyboard navigation inside modal
-  const handleKeyNavigation = (e: React.KeyboardEvent) => {
+  // Key navigation within results
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault()
-      setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0))
+      setSelectedIndex((prev) => (prev + 1) % Math.max(1, filteredItems.length))
     } else if (e.key === "ArrowUp") {
       e.preventDefault()
-      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1))
-    } else if (e.key === "Enter" && results[selectedIndex]) {
+      setSelectedIndex((prev) => (prev - 1 + filteredItems.length) % Math.max(1, filteredItems.length))
+    } else if (e.key === "Enter" && filteredItems[selectedIndex]) {
       e.preventDefault()
-      navigateTo(results[selectedIndex].href)
+      router.push(filteredItems[selectedIndex].href)
+      setIsOpen(false)
     }
   }
 
-  if (!open) return null
+  if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-start justify-center pt-20 px-4 sm:px-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-slate-950/80 backdrop-blur-md animate-fade-in font-sans">
       <div 
-        className="w-full max-w-2xl bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden font-mono text-xs flex flex-col max-h-[75vh]"
-        onKeyDown={handleKeyNavigation}
+        className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl overflow-hidden font-mono"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Search Bar Input */}
-        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-800 bg-slate-900/40">
-          <Search className="w-4 h-4 text-cyan-400 shrink-0" />
+        {/* Search Input Bar */}
+        <div className="flex items-center px-4 py-3.5 border-b border-slate-800 bg-slate-950/70">
+          <Search className="w-4 h-4 text-cyan-400 mr-3 shrink-0" />
           <input
-            autoFocus
+            ref={inputRef}
             type="text"
-            placeholder="Search programs, contracts, ground stations, companies, or physics engines..."
+            placeholder="Search 34 engineering engines, NASA standards, or formulations..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-transparent text-white placeholder-slate-500 focus:outline-none text-sm font-sans"
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setSelectedIndex(0)
+            }}
+            onKeyDown={handleInputKeyDown}
+            className="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
           />
-          {query && (
-            <button
-              onClick={() => setQuery("")}
-              className="text-slate-500 hover:text-white p-1"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
-          <span className="hidden sm:inline-block px-1.5 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400">
+          <kbd className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 border border-slate-700">
             ESC
-          </span>
+          </kbd>
         </div>
 
         {/* Results List */}
-        <div className="overflow-y-auto p-2 space-y-1 flex-1">
-          {loading && (
-            <div className="py-2 px-4 text-slate-500 text-[11px] animate-pulse">
-              QUERYING SUPABASE RELATIONAL CORES...
+        <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-800/40 p-2 text-xs">
+          {filteredItems.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs">
+              No matching aerospace engine or standard found for "{query}".
             </div>
-          )}
-
-          {results.length === 0 && !loading && (
-            <div className="py-12 text-center text-slate-500 text-xs">
-              NO AEROSPACE RECORDS IDENTIFIED FOR &quot;{query}&quot;
-            </div>
-          )}
-
-          {results.map((item, idx) => {
-            const isSelected = idx === selectedIndex
-
-            return (
-              <div
-                key={item.id}
-                onClick={() => navigateTo(item.href)}
-                onMouseEnter={() => setSelectedIndex(idx)}
-                className={`p-3 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                  isSelected
-                    ? "bg-cyan-950/40 border border-cyan-500/30 text-white"
-                    : "hover:bg-slate-900/60 text-slate-300 border border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 shrink-0">
-                    {item.category === "TOOL" && <Compass className="w-3.5 h-3.5 text-cyan-400" />}
-                    {item.category === "COMPANY" && <Building2 className="w-3.5 h-3.5 text-emerald-400" />}
-                    {item.category === "CONTRACT" && <FileText className="w-3.5 h-3.5 text-purple-400" />}
-                    {item.category === "STATION" && <Radio className="w-3.5 h-3.5 text-amber-400" />}
-                    {item.category === "TECH" && <Cpu className="w-3.5 h-3.5 text-cyan-400" />}
-                    {item.category === "LAUNCH" && <Rocket className="w-3.5 h-3.5 text-rose-400" />}
-                  </div>
-
-                  <div className="min-w-0">
+          ) : (
+            filteredItems.map((item, idx) => {
+              const isSelected = idx === selectedIndex
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    router.push(item.href)
+                    setIsOpen(false)
+                  }}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={`w-full p-3 rounded-xl flex items-center justify-between text-left transition-all cursor-pointer ${
+                    isSelected 
+                      ? "bg-cyan-950/70 border border-cyan-500/40 text-white shadow-md shadow-cyan-950/30" 
+                      : "text-slate-300 hover:bg-slate-800/40 border border-transparent"
+                  }`}
+                >
+                  <div className="space-y-0.5 pr-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-white text-xs truncate font-sans">
-                        {item.title}
-                      </span>
+                      <span className="font-bold text-white text-xs">{item.title}</span>
                       {item.badge && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-950 text-cyan-400 border border-slate-800">
                           {item.badge}
                         </span>
                       )}
                     </div>
-                    <div className="text-[11px] text-slate-400 truncate font-sans">
+                    <div className="text-[11px] text-slate-400 font-sans line-clamp-1">
                       {item.subtitle}
                     </div>
                   </div>
-                </div>
 
-                <div className="shrink-0 flex items-center gap-2 text-slate-500">
-                  <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
-                    {item.category}
-                  </span>
-                  <ArrowRight className={`w-3.5 h-3.5 ${isSelected ? "text-cyan-400" : "text-transparent"}`} />
-                </div>
-              </div>
-            )
-          })}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-slate-500 uppercase">{item.category}</span>
+                    <ArrowRight className={`w-3.5 h-3.5 transition-transform ${isSelected ? "text-cyan-400 translate-x-1" : "text-slate-600"}`} />
+                  </div>
+                </button>
+              )
+            })
+          )}
         </div>
 
-        {/* Footer Hints */}
-        <div className="px-4 py-2 border-t border-slate-800/80 bg-slate-900/40 flex items-center justify-between text-[10px] text-slate-500">
+        {/* Footer Navigation Hints */}
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-800 bg-slate-950/90 text-[10px] text-slate-500">
           <div className="flex items-center gap-3">
-            <span>↑↓ Navigate</span>
-            <span>↵ Select</span>
-            <span>ESC Close</span>
+            <span>&uarr;&darr; Navigate</span>
+            <span>&crarr; Open Engine</span>
           </div>
-          <span>CROSS-DOMAIN INTELLIGENCE HUD</span>
+          <div>
+            34 INSTITUTIONAL AEROSPACE ENGINES
+          </div>
         </div>
+
       </div>
     </div>
   )
