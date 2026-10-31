@@ -17,8 +17,10 @@ import {
   Layers,
   ZoomIn,
   ZoomOut,
-  Target,
-  ShieldAlert
+  ShieldAlert,
+  Flame,
+  Magnet,
+  Radar
 } from "lucide-react"
 
 const GROUND_STATIONS = [
@@ -29,7 +31,6 @@ const GROUND_STATIONS = [
   { name: "Wallops GS (VA)", lon: -75.46, lat: 37.94 }
 ]
 
-// Prominent Resident Space Objects (RSOs) for SSA situational awareness
 const CATALOGED_OBJECTS = [
   { name: "ISS (ZARYA)", altKm: 418, incDeg: 51.6, type: "STATION", color: "#38bdf8" },
   { name: "TIANGONG (CSS)", altKm: 390, incDeg: 41.5, type: "STATION", color: "#f43f5e" },
@@ -47,12 +48,34 @@ export default function TelemetryPage() {
   const { mission } = useMission()
   const mountRef = useRef<HTMLDivElement | null>(null)
 
+  // Simulation controls state
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [timeScale, setTimeScale] = useState<number>(10)
-  const [showDebrisCloud, setShowDebrisCloud] = useState<boolean>(true)
-  const [cameraMode, setCameraMode] = useState<"ORBIT" | "TARGET">("ORBIT")
+
+  // Visual Layer Toggles
+  const [showMagneticField, setShowMagneticField] = useState<boolean>(true)
+  const [showVanAllen, setShowVanAllen] = useState<boolean>(true)
+  const [showAtmosLayers, setShowAtmosLayers] = useState<boolean>(true)
+  const [showRsoCloud, setShowRsoCloud] = useState<boolean>(true)
   
-  // High-performance animation ref with zoom and damping
+  // References for live toggles
+  const layerTogglesRef = useRef({
+    magnetic: true,
+    vanAllen: true,
+    atmos: true,
+    rso: true
+  })
+
+  useEffect(() => {
+    layerTogglesRef.current = {
+      magnetic: showMagneticField,
+      vanAllen: showVanAllen,
+      atmos: showAtmosLayers,
+      rso: showRsoCloud
+    }
+  }, [showMagneticField, showVanAllen, showAtmosLayers, showRsoCloud])
+
+  // High-performance animation ref with camera damping
   const simStateRef = useRef({
     isPlaying: true,
     timeScale: 10,
@@ -81,11 +104,14 @@ export default function TelemetryPage() {
     isEclipse: false,
     lockedStation: null as string | null,
     minRangeKm: 0,
-    currentPowerW: 0
+    currentPowerW: 0,
+    bFieldTotalNt: 31200,
+    radDoseRateRadHr: 0.04
   })
 
   const [powerHistory, setPowerHistory] = useState<number[]>(Array(24).fill(280))
 
+  // Astrodynamics core
   const orbit = useMemo(() => {
     const mu = 398600.4418
     const rEarthKm = 6378.137
@@ -123,61 +149,35 @@ export default function TelemetryPage() {
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.25
+    renderer.toneMappingExposure = 1.3
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
     // Deep Starfield
-    const starCount = 2000
+    const starCount = 2200
     const starGeo = new THREE.BufferGeometry()
     const starPos = new Float32Array(starCount * 3)
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 140
-      starPos[i + 1] = (Math.random() - 0.5) * 140
-      starPos[i + 2] = (Math.random() - 0.5) * 140
+      starPos[i] = (Math.random() - 0.5) * 160
+      starPos[i + 1] = (Math.random() - 0.5) * 160
+      starPos[i + 2] = (Math.random() - 0.5) * 160
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
     const starMat = new THREE.PointsMaterial({ color: 0xe2e8f0, size: 0.12, transparent: true, opacity: 0.85 })
     scene.add(new THREE.Points(starGeo, starMat))
 
-    // High-Resolution Resident Space Object (RSO) Debris Cloud (500 cataloged background fragments)
-    const rsoCount = 500
-    const rsoGeo = new THREE.BufferGeometry()
-    const rsoPos = new Float32Array(rsoCount * 3)
-    const earthRadius = 1.75
-    
-    // Store orbital parameters for animated background RSOs
-    const rsoOrbits: { r: number; inc: number; raan: number; speed: number; u0: number }[] = []
-    for (let i = 0; i < rsoCount; i++) {
-      const altKm = 300 + Math.random() * 900 // LEO cluster
-      const r = earthRadius * ((6378.137 + altKm) / 6378.137)
-      const inc = (Math.random() * 110) * (Math.PI / 180)
-      const raan = Math.random() * Math.PI * 2
-      const speed = (0.6 + Math.random() * 0.8) * 0.05
-      const u0 = Math.random() * Math.PI * 2
-      rsoOrbits.push({ r, inc, raan, speed, u0 })
-    }
-    rsoGeo.setAttribute("position", new THREE.BufferAttribute(rsoPos, 3))
-    const rsoMat = new THREE.PointsMaterial({ 
-      color: 0x64748b, 
-      size: 0.045, 
-      transparent: true, 
-      opacity: 0.65 
-    })
-    const rsoPoints = new THREE.Points(rsoGeo, rsoMat)
-    scene.add(rsoPoints)
-
-    // Lighting Configuration
-    const sunLight = new THREE.DirectionalLight(0xffffff, 2.7)
+    // Sunlight & Deep Sky Lighting
+    const sunLight = new THREE.DirectionalLight(0xffffff, 2.8)
     sunLight.position.set(9, 4, 8)
     scene.add(sunLight)
 
-    const ambientLight = new THREE.AmbientLight(0x0f172a, 0.6)
+    const ambientLight = new THREE.AmbientLight(0x0f172a, 0.65)
     scene.add(ambientLight)
 
-    // Earth Setup
+    const earthRadius = 1.75
     const textureLoader = new THREE.TextureLoader()
 
+    // 1. EARTH SURFACE WITH SATELLITE TEXTURES (Blue/Black Marble)
     const dayTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
       () => renderer.render(scene, camera)
@@ -226,7 +226,6 @@ export default function TelemetryPage() {
 
           vec3 finalColor = mix(nightColor.rgb * 1.5, dayColor.rgb, dayFactor);
 
-          // Specular water sheen
           if (dayColor.b > dayColor.r * 1.15 && cosTheta > 0.0) {
             vec3 viewDir = vec3(0.0, 0.0, 1.0);
             vec3 halfDir = normalize(vSunDir + viewDir);
@@ -246,7 +245,7 @@ export default function TelemetryPage() {
     const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
     earthGroup.add(earthMesh)
 
-    // Atmospheric Cloud Layer
+    // Tropospheric Cloud Layer
     const cloudsTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-clouds.png",
       () => renderer.render(scene, camera)
@@ -261,9 +260,13 @@ export default function TelemetryPage() {
     const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
     earthGroup.add(cloudsMesh)
 
-    // Rayleigh Scattering Atmospheric Glow
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.032, 64, 64)
-    const atmosMat = new THREE.ShaderMaterial({
+    // 2. LAYER: ATMOSPHERIC STRATIFICATION SHELLS (Ionosphere + Exosphere)
+    const atmosGroup = new THREE.Group()
+    earthGroup.add(atmosGroup)
+
+    // A. Troposphere/Stratosphere Rim
+    const tropoGeo = new THREE.SphereGeometry(earthRadius * 1.018, 64, 64)
+    const tropoMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
@@ -277,14 +280,123 @@ export default function TelemetryPage() {
       fragmentShader: `
         varying vec3 vNormal;
         void main() {
-          float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.6);
-          gl_FragColor = vec4(0.14, 0.72, 1.0, 1.0) * intensity * 1.7;
+          float intensity = pow(0.72 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.8);
+          gl_FragColor = vec4(0.25, 0.75, 1.0, 1.0) * intensity * 2.2;
         }
       `
     })
-    earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
+    atmosGroup.add(new THREE.Mesh(tropoGeo, tropoMat))
 
-    // Ground Station Surface Nodes
+    // B. High-Altitude Ionospheric Plasma & Polar Aurora Ring
+    const ionoGeo = new THREE.SphereGeometry(earthRadius * 1.045, 64, 64)
+    const ionoMat = new THREE.ShaderMaterial({
+      transparent: true,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        void main() {
+          float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 3.2);
+          gl_FragColor = vec4(0.15, 0.95, 0.55, 1.0) * intensity * 1.4;
+        }
+      `
+    })
+    atmosGroup.add(new THREE.Mesh(ionoGeo, ionoMat))
+
+    // 3. LAYER: GEOMAGNETIC DIPOLE FIELD LOOPS (IGRF Field Lines)
+    const bFieldGroup = new THREE.Group()
+    earthGroup.add(bFieldGroup)
+
+    // Construct realistic 3D dipole loops: r = L * sin^2(theta)
+    const fieldLineCount = 16
+    for (let i = 0; i < fieldLineCount; i++) {
+      const az = (i / fieldLineCount) * Math.PI * 2
+      const L_shells = [2.2, 2.7, 3.2]
+
+      L_shells.forEach(L_val => {
+        const points: THREE.Vector3[] = []
+        const steps = 40
+        for (let s = 1; s < steps; s++) {
+          const theta = (s / steps) * Math.PI // 0 = North, PI = South
+          const r = earthRadius * L_val * Math.sin(theta) ** 2
+          if (r >= earthRadius * 0.98) {
+            const x = r * Math.sin(theta) * Math.cos(az)
+            const z = r * Math.sin(theta) * Math.sin(az)
+            const y = r * Math.cos(theta)
+            points.push(new THREE.Vector3(x, y, z))
+          }
+        }
+        if (points.length > 2) {
+          const lineGeo = new THREE.BufferGeometry().setFromPoints(points)
+          const lineMat = new THREE.LineBasicMaterial({
+            color: 0x38bdf8,
+            transparent: true,
+            opacity: 0.22,
+            blending: THREE.AdditiveBlending
+          })
+          bFieldGroup.add(new THREE.Line(lineGeo, lineMat))
+        }
+      })
+    }
+
+    // 4. LAYER: VAN ALLEN RADIATION BELTS (Inner Proton & Outer Electron Toroids)
+    const vanAllenGroup = new THREE.Group()
+    earthGroup.add(vanAllenGroup)
+
+    // Inner Radiation Belt Torus (1,000 - 6,000 km)
+    const innerBeltGeo = new THREE.TorusGeometry(earthRadius * 1.5, 0.22, 16, 48)
+    const innerBeltMat = new THREE.MeshBasicMaterial({
+      color: 0xf59e0b,
+      transparent: true,
+      opacity: 0.12,
+      wireframe: true,
+      blending: THREE.AdditiveBlending
+    })
+    const innerBeltMesh = new THREE.Mesh(innerBeltGeo, innerBeltMat)
+    innerBeltMesh.rotation.x = Math.PI / 2
+    vanAllenGroup.add(innerBeltMesh)
+
+    // Outer Radiation Belt Torus (13,000 - 25,000 km)
+    const outerBeltGeo = new THREE.TorusGeometry(earthRadius * 2.4, 0.45, 16, 48)
+    const outerBeltMat = new THREE.MeshBasicMaterial({
+      color: 0x8b5cf6,
+      transparent: true,
+      opacity: 0.08,
+      wireframe: true,
+      blending: THREE.AdditiveBlending
+    })
+    const outerBeltMesh = new THREE.Mesh(outerBeltGeo, outerBeltMat)
+    outerBeltMesh.rotation.x = Math.PI / 2
+    vanAllenGroup.add(outerBeltMesh)
+
+    // 5. LAYER: BACKGROUND RESIDENT SPACE OBJECTS (RSO Cloud)
+    const rsoCount = 500
+    const rsoGeo = new THREE.BufferGeometry()
+    const rsoPos = new Float32Array(rsoCount * 3)
+    const rsoOrbits: { r: number; inc: number; raan: number; speed: number; u0: number }[] = []
+
+    for (let i = 0; i < rsoCount; i++) {
+      const altKm = 300 + Math.random() * 950
+      const r = earthRadius * ((6378.137 + altKm) / 6378.137)
+      const inc = (Math.random() * 110) * (Math.PI / 180)
+      const raan = Math.random() * Math.PI * 2
+      const speed = (0.6 + Math.random() * 0.8) * 0.05
+      const u0 = Math.random() * Math.PI * 2
+      rsoOrbits.push({ r, inc, raan, speed, u0 })
+    }
+    rsoGeo.setAttribute("position", new THREE.BufferAttribute(rsoPos, 3))
+    const rsoMat = new THREE.PointsMaterial({ color: 0x64748b, size: 0.045, transparent: true, opacity: 0.65 })
+    const rsoPoints = new THREE.Points(rsoGeo, rsoMat)
+    scene.add(rsoPoints)
+
+    // 6. GROUND STATIONS
     GROUND_STATIONS.forEach(gs => {
       const phi = (90 - gs.lat) * (Math.PI / 180)
       const theta = (gs.lon + 180) * (Math.PI / 180)
@@ -308,7 +420,7 @@ export default function TelemetryPage() {
       earthMesh.add(ringMesh)
     })
 
-    // Prominent Resident Space Objects (ISS, Tiangong, Hubble, Starlink)
+    // Prominent High-Priority RSOs
     const rsoMeshes: THREE.Mesh[] = []
     CATALOGED_OBJECTS.forEach(obj => {
       const objMesh = new THREE.Mesh(
@@ -319,7 +431,7 @@ export default function TelemetryPage() {
       rsoMeshes.push(objMesh)
     })
 
-    // Primary Mission Orbital Trajectory Ring
+    // Primary Mission Orbit Ring
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
     const orbitPoints = orbitCurve.getPoints(180)
@@ -329,7 +441,7 @@ export default function TelemetryPage() {
     orbitLine.rotation.x = orbit.incRad
     scene.add(orbitLine)
 
-    // Primary Spacecraft Vehicle
+    // Primary Spacecraft Assembly
     const satGroup = new THREE.Group()
 
     const busMesh = new THREE.Mesh(
@@ -353,14 +465,20 @@ export default function TelemetryPage() {
     satGroup.add(beaconMesh)
     scene.add(satGroup)
 
-    // Volumetric Nadir Vector Line
+    // Volumetric Sensor Cone (Nadir Swath Footprint)
     const nadirGeo = new THREE.BufferGeometry()
     nadirGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
     const nadirMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.08, gapSize: 0.04, transparent: true, opacity: 0.9 })
     const nadirLine = new THREE.Line(nadirGeo, nadirMat)
     scene.add(nadirLine)
 
-    // Mouse Interaction: Click Drag + Wheel Zoom
+    // Sensor Footprint Surface Circle on Earth
+    const swathRingGeo = new THREE.RingGeometry(0.08, 0.14, 32)
+    const swathRingMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.45 })
+    const swathRingMesh = new THREE.Mesh(swathRingGeo, swathRingMat)
+    scene.add(swathRingMesh)
+
+    // Mouse Interaction
     const onMouseDown = (e: MouseEvent) => {
       simStateRef.current.isDragging = true
       simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
@@ -392,7 +510,7 @@ export default function TelemetryPage() {
     window.addEventListener("mouseup", onMouseUp)
     dom.addEventListener("wheel", onWheel, { passive: false })
 
-    // Decoupled 60fps Animation Loop
+    // Decoupled 60fps Loop
     let animId: number
     let lastTime = performance.now()
     let lastUiSync = performance.now()
@@ -402,7 +520,13 @@ export default function TelemetryPage() {
       const dt = Math.min((now - lastTime) / 1000, 0.1)
       lastTime = now
 
-      // Smooth camera interpolation (Damping for rotation & zoom)
+      // Apply dynamic visual layer toggles
+      bFieldGroup.visible = layerTogglesRef.current.magnetic
+      vanAllenGroup.visible = layerTogglesRef.current.vanAllen
+      atmosGroup.visible = layerTogglesRef.current.atmos
+      rsoPoints.visible = layerTogglesRef.current.rso
+
+      // Camera Damping
       simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.1
       simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.1
       simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.1
@@ -419,11 +543,11 @@ export default function TelemetryPage() {
 
       const t = simStateRef.current.simTimeSec
 
-      // Rotate Earth & Clouds
+      // Rotation
       earthMesh.rotation.y = t * 0.015
       cloudsMesh.rotation.y = t * 0.018
 
-      // Propagate Primary Mission Vehicle
+      // Propagate Primary Spacecraft
       const u = (orbit.n * t) % (2 * Math.PI)
       const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
 
@@ -437,16 +561,19 @@ export default function TelemetryPage() {
       satGroup.position.set(xE, yE, zE)
       satGroup.lookAt(0, 0, 0)
 
-      // Update Nadir Vector Line
+      // Update Nadir Vector and Swath Footprint
       const norm = new THREE.Vector3(xE, yE, zE).normalize()
-      const surf = norm.clone().multiplyScalar(earthRadius)
+      const surf = norm.clone().multiplyScalar(earthRadius * 1.002)
       const posAttr = nadirGeo.attributes.position as THREE.BufferAttribute
       posAttr.setXYZ(0, xE, yE, zE)
       posAttr.setXYZ(1, surf.x, surf.y, surf.z)
       posAttr.needsUpdate = true
       nadirLine.computeLineDistances()
 
-      // Propagate Cataloged RSOs (ISS, Starlink, Debris)
+      swathRingMesh.position.set(surf.x, surf.y, surf.z)
+      swathRingMesh.lookAt(surf.x * 2, surf.y * 2, surf.z * 2)
+
+      // Propagate Highlighted RSOs
       CATALOGED_OBJECTS.forEach((obj, idx) => {
         const objMesh = rsoMeshes[idx]
         if (!objMesh) return
@@ -468,20 +595,22 @@ export default function TelemetryPage() {
       })
 
       // Animate Background RSO Debris Cloud Points
-      const rsoPositions = rsoGeo.attributes.position as THREE.BufferAttribute
-      for (let i = 0; i < rsoCount; i++) {
-        const orb = rsoOrbits[i]
-        const uCurrent = (orb.u0 + t * orb.speed) % (Math.PI * 2)
-        const xo = orb.r * Math.cos(uCurrent)
-        const zo = orb.r * Math.sin(uCurrent)
+      if (layerTogglesRef.current.rso) {
+        const rsoPositions = rsoGeo.attributes.position as THREE.BufferAttribute
+        for (let i = 0; i < rsoCount; i++) {
+          const orb = rsoOrbits[i]
+          const uCurrent = (orb.u0 + t * orb.speed) % (Math.PI * 2)
+          const xo = orb.r * Math.cos(uCurrent)
+          const zo = orb.r * Math.sin(uCurrent)
 
-        const xe = xo * Math.cos(orb.raan) - zo * Math.cos(orb.inc) * Math.sin(orb.raan)
-        const ze = xo * Math.sin(orb.raan) + zo * Math.cos(orb.inc) * Math.cos(orb.raan)
-        const ye = zo * Math.sin(orb.inc)
+          const xe = xo * Math.cos(orb.raan) - zo * Math.cos(orb.inc) * Math.sin(orb.raan)
+          const ze = xo * Math.sin(orb.raan) + zo * Math.cos(orb.inc) * Math.cos(orb.raan)
+          const ye = zo * Math.sin(orb.inc)
 
-        rsoPositions.setXYZ(i, xe, ye, ze)
+          rsoPositions.setXYZ(i, xe, ye, ze)
+        }
+        rsoPositions.needsUpdate = true
       }
-      rsoPositions.needsUpdate = true
 
       renderer.render(scene, camera)
 
@@ -525,6 +654,16 @@ export default function TelemetryPage() {
 
         const pwr = isEclipse ? 0 : mission.busPowerW + mission.payloadPowerW
 
+        // Geomagnetic Dipole calculation at current altitude (IGRF model approximation)
+        const b0 = 31200 // nT at Earth equator
+        const rRatio = 6378.137 / orbit.a
+        const bFieldTotal = Math.round(b0 * Math.pow(rRatio, 3) * Math.sqrt(1 + 3 * Math.sin(latR) ** 2))
+
+        // Van Allen belt radiation dose approximation
+        let doseRate = 0.02
+        if (mission.altitudeKm > 1000 && mission.altitudeKm < 6000) doseRate = 1.45
+        else if (mission.altitudeKm >= 6000) doseRate = 3.20
+
         setTelemetryUI({
           simTimeSec: Math.round(t),
           xEci: Math.round(xEciKm),
@@ -538,7 +677,9 @@ export default function TelemetryPage() {
           isEclipse,
           lockedStation,
           minRangeKm,
-          currentPowerW: pwr
+          currentPowerW: pwr,
+          bFieldTotalNt: bFieldTotal,
+          radDoseRateRadHr: doseRate
         })
 
         setPowerHistory(prev => [...prev.slice(1), pwr])
@@ -580,19 +721,19 @@ export default function TelemetryPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100 pt-20 pb-12 px-4 sm:px-8 font-sans selection:bg-cyan-500 selection:text-slate-950 select-none">
       <div className="max-w-[1720px] mx-auto space-y-4">
 
-        {/* Console Header */}
+        {/* Master Console Header */}
         <div className="border-b border-slate-800 pb-3 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-1">
               <Globe className="w-3.5 h-3.5 text-cyan-400 animate-spin" style={{ animationDuration: "20s" }} />
-              USSPACECOM 18TH SDS &middot; SPACE DOMAIN AWARENESS (SDA) TELEMETRY DECK
+              NASA GSFC FDF &middot; HELIOPHYSICS &amp; SPACE ENVIRONMENT KERNEL
             </div>
             <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white font-mono uppercase">
-              FLIGHT TELEMETRY &middot; J2 PROPAGATION
+              FLIGHT TELEMETRY &middot; J2 &amp; SPACE FIELDS
             </h1>
           </div>
 
-          {/* Time & Camera Controls */}
+          {/* Time Controls */}
           <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/60 p-1.5 rounded-xl border border-slate-800">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
@@ -629,7 +770,7 @@ export default function TelemetryPage() {
         {/* 3-COLUMN UNIFIED MISSION CONTROL FLIGHT DECK */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
 
-          {/* LEFT RAIL: J2000 STATE VECTORS & RSO CATALOG */}
+          {/* LEFT RAIL: J2000 STATE VECTORS & RSO PROXIMITY */}
           <div className="lg:col-span-3 space-y-4 font-mono text-xs flex flex-col justify-between">
             <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
               <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
@@ -671,31 +812,59 @@ export default function TelemetryPage() {
               </div>
             </div>
 
-            {/* Resident Space Objects (RSOs) Live Radar List */}
+            {/* Space Environment: Magnetosphere & Radiation */}
             <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2.5">
               <div className="border-b border-slate-800 pb-2 text-white font-bold uppercase flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-slate-200">
-                  <ShieldAlert className="w-4 h-4 text-emerald-400" />
-                  SDA OBJECT PROXIMITY
+                  <Magnet className="w-4 h-4 text-sky-400" />
+                  GEO-ENVIRONMENT
                 </span>
-                <span className="text-[10px] text-slate-400">510 TRACKED</span>
+                <span className="text-[10px] text-cyan-400">IGRF &middot; AP8/AE8</span>
               </div>
 
-              <div className="space-y-1.5 max-h-[170px] overflow-y-auto pr-1">
-                {CATALOGED_OBJECTS.map((obj, i) => (
-                  <div key={i} className="flex items-center justify-between text-[11px] py-1 border-b border-slate-800/40">
+              <div className="space-y-1.5 text-xs">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">B-FIELD (nT)</span>
+                  <span className="text-sky-300 font-bold">{telemetryUI.bFieldTotalNt.toLocaleString()} nT</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">RAD DOSE RATE</span>
+                  <span className="text-amber-400 font-bold">{telemetryUI.radDoseRateRadHr} rad/hr</span>
+                </div>
+                <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+                  <span className="text-slate-500">ATMOSPHERIC REGIME</span>
+                  <span className="text-emerald-400 font-bold">
+                    {mission.altitudeKm < 100 ? "STRATOSPHERE" : mission.altitudeKm < 500 ? "THERMOSPHERE" : "EXOSPHERE"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Cataloged RSOs Proximity List */}
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2">
+              <div className="border-b border-slate-800 pb-1.5 text-white font-bold uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-300">
+                  <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
+                  SDA RADAR PROXIMITY
+                </span>
+                <span className="text-[10px] text-slate-500">510 OBJECTS</span>
+              </div>
+
+              <div className="space-y-1 max-h-[140px] overflow-y-auto pr-1">
+                {CATALOGED_OBJECTS.slice(0, 5).map((obj, i) => (
+                  <div key={i} className="flex items-center justify-between text-[11px] py-0.5 border-b border-slate-800/30">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: obj.color }} />
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: obj.color }} />
                       <span className="text-slate-300 font-bold">{obj.name}</span>
                     </div>
-                    <span className="text-slate-500">{obj.altKm}km &middot; {obj.incDeg}&deg;</span>
+                    <span className="text-slate-500">{obj.altKm}km</span>
                   </div>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* CENTER: FULL-DEPTH 3D INTERACTIVE WEBGL GLOBE WITH ZOOM & RSO CLOUD */}
+          {/* CENTER: FULL-DEPTH 3D ENVIRONMENT GLOBE WITH FIELDS & LAYERS */}
           <div className="lg:col-span-6 relative rounded-2xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl flex flex-col">
             
             {/* Top Status Overlay */}
@@ -703,9 +872,9 @@ export default function TelemetryPage() {
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 <span className="text-white font-bold uppercase tracking-wider">
-                  SPACE DOMAIN AWARENESS ENGINE
+                  SPACE ENVIRONMENT SIMULATOR
                 </span>
-                <span className="text-[10px] text-slate-500 hidden sm:inline">| AXIAL TILT 23.44&deg;</span>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">| IGRF DIPOLE + VAN ALLEN</span>
               </div>
 
               <div className="flex items-center gap-3">
@@ -719,8 +888,59 @@ export default function TelemetryPage() {
               </div>
             </div>
 
+            {/* Layer Toggles Floating HUD (Top Left inside canvas) */}
+            <div className="absolute left-4 top-14 z-10 flex flex-wrap gap-1.5 font-mono text-[10px]">
+              <button
+                onClick={() => setShowMagneticField(!showMagneticField)}
+                className={`px-2 py-1 rounded border transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
+                  showMagneticField 
+                    ? "bg-sky-950/80 border-sky-500/60 text-sky-300 font-bold shadow-md shadow-sky-500/20" 
+                    : "bg-slate-900/60 border-slate-800 text-slate-500"
+                }`}
+              >
+                <Magnet className="w-3 h-3" />
+                B-FIELD LOOPS
+              </button>
+
+              <button
+                onClick={() => setShowVanAllen(!showVanAllen)}
+                className={`px-2 py-1 rounded border transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
+                  showVanAllen 
+                    ? "bg-amber-950/80 border-amber-500/60 text-amber-300 font-bold shadow-md shadow-amber-500/20" 
+                    : "bg-slate-900/60 border-slate-800 text-slate-500"
+                }`}
+              >
+                <Flame className="w-3 h-3" />
+                VAN ALLEN BELTS
+              </button>
+
+              <button
+                onClick={() => setShowAtmosLayers(!showAtmosLayers)}
+                className={`px-2 py-1 rounded border transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
+                  showAtmosLayers 
+                    ? "bg-emerald-950/80 border-emerald-500/60 text-emerald-300 font-bold shadow-md shadow-emerald-500/20" 
+                    : "bg-slate-900/60 border-slate-800 text-slate-500"
+                }`}
+              >
+                <Layers className="w-3 h-3" />
+                IONOSPHERE
+              </button>
+
+              <button
+                onClick={() => setShowRsoCloud(!showRsoCloud)}
+                className={`px-2 py-1 rounded border transition-all cursor-pointer flex items-center gap-1 backdrop-blur-md ${
+                  showRsoCloud 
+                    ? "bg-purple-950/80 border-purple-500/60 text-purple-300 font-bold shadow-md shadow-purple-500/20" 
+                    : "bg-slate-900/60 border-slate-800 text-slate-500"
+                }`}
+              >
+                <Radar className="w-3 h-3" />
+                RSO DEBRIS
+              </button>
+            </div>
+
             {/* Interactive Zoom Overlay Controls */}
-            <div className="absolute right-4 top-16 z-10 flex flex-col gap-1.5 font-mono">
+            <div className="absolute right-4 top-14 z-10 flex flex-col gap-1.5 font-mono">
               <button
                 onClick={() => handleZoom("IN")}
                 className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer backdrop-blur-md"
