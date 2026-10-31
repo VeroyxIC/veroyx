@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import Navbar from "@/components/Navbar"
+import { MissionProvider } from "@/lib/missionStore"
 import CommandPalette from "@/components/CommandPalette"
 import "./globals.css"
 
@@ -20,9 +21,11 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${inter.variable} ${mono.variable} min-h-screen bg-[#05070a] font-sans antialiased text-neutral-100`}>
-        <Navbar />
+        <MissionProvider>
+          <Navbar />
         <CommandPalette />
         {children}
+        </MissionProvider>
       </body>
     </html>
   )
