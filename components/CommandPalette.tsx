@@ -30,6 +30,16 @@ interface CommandItem {
 }
 
 const COMMAND_REGISTRY: CommandItem[] = [
+  {
+    id: "briefing",
+    title: "Executive Briefing Dossier",
+    subtitle: "NASA review board technical memorandum, validation benchmarks, and heritage matrix",
+    href: "/briefing",
+    category: "Standards",
+    keywords: ["briefing", "memo", "dossier", "validation", "benchmark", "gmat", "nasa", "jpl"],
+    badge: "Executive"
+  },
+
   // Architecture & Integrators
   {
     id: "mission-builder",
