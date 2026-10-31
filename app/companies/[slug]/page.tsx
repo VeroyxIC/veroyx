@@ -1,207 +1,191 @@
-import { notFound } from "next/navigation"
+"use client"
+
+import { use } from "react"
 import Link from "next/link"
-import { supabase } from "@/lib/supabase"
-import SupplyChainGraph from "@/components/SupplyChainGraph"
-import ExportButton from "@/components/ExportButton"
-import WatchlistButton from "@/components/WatchlistButton"
-import { ArrowLeft, ExternalLink, DollarSign, MapPin, Building, Shield, Cpu, Calendar, FileText } from "lucide-react"
+import { notFound, useRouter } from "next/navigation"
+import { AEROSPACE_COMPANIES } from "@/lib/companyData"
+import { useMission } from "@/lib/missionStore"
+import { 
+  Building2, 
+  Rocket, 
+  Award, 
+  DollarSign, 
+  ExternalLink, 
+  ArrowLeft, 
+  Play, 
+  ShieldCheck, 
+  Layers,
+  ChevronRight
+} from "lucide-react"
 
-export const dynamic = "force-dynamic"
+export default function CompanyDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const resolvedParams = use(params)
+  const company = AEROSPACE_COMPANIES[resolvedParams.slug]
+  const { updateMission } = useMission()
+  const router = useRouter()
 
-export default async function CompanyDetailPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>
-}) {
-  const { slug } = await params
+  if (!company) {
+    notFound()
+  }
 
-  const { data: company } = await supabase
-    .from("companies")
-    .select("*")
-    .eq("slug", slug)
-    .single()
-
-  if (!company) return notFound()
-
-  const [{ data: technologies }, { data: grants }] = await Promise.all([
-    supabase.from("technologies").select("*").eq("company_id", company.id),
-    supabase.from("grants").select("*").eq("company_id", company.id),
-  ])
+  // Inject company spacecraft baseline into Mission Builder
+  const loadPreset = () => {
+    updateMission(company.veroyxSimulationPreset)
+    router.push("/mission-builder")
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans">
-      <div className="max-w-6xl mx-auto space-y-12">
-        <Link
-          href="/companies"
-          className="inline-flex items-center gap-2 text-sm font-mono text-cyan-400 hover:text-cyan-300 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          BACK TO DIRECTORY
-        </Link>
+    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
+      <div className="max-w-7xl mx-auto space-y-10">
 
-        {/* Header Block */}
+        {/* Back Link */}
+        <div>
+          <Link
+            href="/companies"
+            className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> BACK TO REGISTRY
+          </Link>
+        </div>
+
+        {/* Master Profile Header */}
         <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="px-2.5 py-1 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-400 font-mono text-xs uppercase tracking-wider">
-                {company.sector || "Commercial Prime"}
-              </span>
-              {company.hq_location && (
-                <span className="flex items-center gap-1 text-slate-400 text-xs font-mono">
-                  <MapPin className="w-3.5 h-3.5" />
-                  {company.hq_location}
-                </span>
-              )}
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest">
+              <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+              {company.tier}
             </div>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
               {company.name}
             </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              {company.description || "Active aerospace contractor and orbital system manufacturer."}
+            <div className="text-xs text-slate-400 font-mono flex flex-wrap gap-3">
+              <span>HQ: {company.hq}</span>
+              <span>&middot;</span>
+              <span>Founded: {company.founded}</span>
+              {company.ticker && (
+                <>
+                  <span>&middot;</span>
+                  <span className="text-cyan-400 font-bold">{company.ticker}</span>
+                </>
+              )}
+              <span>&middot;</span>
+              <span>Market Cap / Valuation: {company.valuationOrCap}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 font-mono text-xs">
+            <button
+              onClick={loadPreset}
+              className="px-4 py-2.5 rounded-lg bg-cyan-500 text-slate-950 font-black hover:bg-cyan-400 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              SIMULATE {company.veroyxSimulationPreset.missionName}
+            </button>
+          </div>
+        </div>
+
+        {/* Overview Box */}
+        <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 font-sans text-sm text-slate-300 leading-relaxed">
+          {company.summary}
+        </div>
+
+        {/* Flight Platforms Dossier */}
+        <div className="space-y-4 font-mono text-xs">
+          <div className="text-white font-bold text-sm uppercase tracking-wider flex items-center gap-2">
+            <Rocket className="w-4 h-4 text-cyan-400" /> Primary Flight Vehicles &amp; Spacecraft Lines
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {company.primaryPlatforms.map((p, idx) => (
+              <div key={idx} className="p-5 rounded-xl bg-slate-900/30 border border-slate-800 space-y-2.5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-base font-bold text-white">{p.name}</h3>
+                    <div className="text-[10px] text-cyan-400 mt-0.5">{p.type}</div>
+                  </div>
+                  {p.heritageFlights && (
+                    <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-950 border border-emerald-500/40 text-emerald-300 font-bold">
+                      {p.heritageFlights} FLIGHTS
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs font-sans text-slate-400 leading-relaxed">
+                  {p.description}
+                </p>
+
+                <div className="pt-2 border-t border-slate-800/60 flex gap-4 text-[10px] text-slate-400">
+                  {p.payloadToLeoKg && <div>LEO PAYLOAD: <strong className="text-white">{p.payloadToLeoKg.toLocaleString()} kg</strong></div>}
+                  {p.dryMassKg && <div>DRY MASS: <strong className="text-white">{p.dryMassKg} kg</strong></div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Active Defense & Institutional Programs */}
+        <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4 font-mono text-xs">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Award className="w-4 h-4 text-amber-400" />
+              Active Government &amp; Defense Contract Manifest
+            </span>
+            <span className="text-[10px] text-slate-500">PRIME &amp; SUBCONTRACT AWARDS</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase">
+                  <th className="py-2.5 px-3">Procuring Agency</th>
+                  <th className="py-2.5 px-3">Program / Mission Scope</th>
+                  <th className="py-2.5 px-3">Award Total</th>
+                  <th className="py-2.5 px-3 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {company.defenseContracts.map((cnt, idx) => (
+                  <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
+                    <td className="py-3 px-3 font-bold text-cyan-400">
+                      {cnt.agency}
+                    </td>
+                    <td className="py-3 px-3 text-white">
+                      {cnt.program}
+                    </td>
+                    <td className="py-3 px-3 text-amber-300 font-bold">
+                      {cnt.awardValue}
+                    </td>
+                    <td className="py-3 px-3 text-right">
+                      <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300 uppercase">
+                        {cnt.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Direct Simulation CTA */}
+        <div className="p-6 rounded-2xl bg-cyan-950/20 border border-cyan-500/40 flex flex-col md:flex-row items-center justify-between gap-4 font-mono text-xs">
+          <div className="space-y-1">
+            <div className="text-white font-bold flex items-center gap-2">
+              <Layers className="w-4 h-4 text-cyan-400" />
+              Simulate {company.name} Flight Baselines
+            </div>
+            <p className="text-[11px] text-slate-400 font-sans">
+              Inject the {company.veroyxSimulationPreset.missionName} ({company.veroyxSimulationPreset.altitudeKm}km / {company.veroyxSimulationPreset.dryMassKg}kg) profile directly into the concurrent mission state bus.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <a
-              href={`/companies/${company.slug}/briefing`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-4 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-mono text-xs font-bold flex items-center gap-2 transition-all shrink-0"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              DEFENSE BRIEFING (PDF)
-            </a>
-            {company.website && (
-              <a
-                href={company.website}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-white font-mono text-xs flex items-center gap-2 transition-all"
-              >
-                VISIT PRIME <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            )}
-            <WatchlistButton entityType="company" entityId={company.id} entityName={company.name} entitySlug={company.slug} />
-            <ExportButton
-              data={[{ ...company, technologies, grants }]}
-              filename={`${company.slug}-dossier`}
-            />
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 font-mono">
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800">
-            <div className="text-xs text-slate-500 flex items-center gap-2 mb-1">
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-              TOTAL CAPITAL RAISED
-            </div>
-            <div className="text-2xl font-bold text-white">
-              {company.funding_total || "Confidential"}
-            </div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800">
-            <div className="text-xs text-slate-500 flex items-center gap-2 mb-1">
-              <Cpu className="w-4 h-4 text-purple-400" />
-              PROPRIETARY HARDWARE
-            </div>
-            <div className="text-2xl font-bold text-purple-400">
-              {technologies?.length || 0} SYSTEMS
-            </div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800">
-            <div className="text-xs text-slate-500 flex items-center gap-2 mb-1">
-              <Shield className="w-4 h-4 text-cyan-400" />
-              DEFENSE & PUBLIC AWARDS
-            </div>
-            <div className="text-2xl font-bold text-cyan-400">
-              {grants?.length || 0} ACTIVE
-            </div>
-          </div>
-        </div>
-
-        {/* Interactive Supply Chain & Subsystem Topology */}
-        <SupplyChainGraph
-          companyName={company.name}
-          technologies={technologies || []}
-          grants={grants || []}
-        />
-
-        {/* Relational Columns: Hardware Systems & Defense Grants */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Subsystems */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between font-mono">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wider">
-                <Cpu className="w-4 h-4 text-purple-400" /> Hardware Platforms
-              </h3>
-              <span className="text-xs text-slate-500">{technologies?.length || 0} INDEXED</span>
-            </div>
-
-            <div className="space-y-3 font-mono text-xs">
-              {(technologies || []).map((t) => (
-                <Link
-                  key={t.id}
-                  href={`/technologies/${t.slug}`}
-                  className="p-4 rounded-xl bg-slate-900/30 border border-slate-800 hover:border-purple-500/40 block transition-all group"
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-white group-hover:text-purple-400 transition-colors">
-                      {t.name}
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950/80 border border-purple-500/30 text-purple-300">
-                      TRL {t.trl || 7}
-                    </span>
-                  </div>
-                  <div className="text-slate-400 text-[11px] truncate">{t.description || "Subsystem telemetry active."}</div>
-                </Link>
-              ))}
-              {(!technologies || technologies.length === 0) && (
-                <div className="p-6 rounded-xl border border-slate-800/60 text-center text-slate-500 text-xs">
-                  No proprietary flight hardware indexed yet.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Federal Awards */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between font-mono">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wider">
-                <Shield className="w-4 h-4 text-cyan-400" /> Procurement Contracts
-              </h3>
-              <span className="text-xs text-slate-500">{grants?.length || 0} OBLIGATED</span>
-            </div>
-
-            <div className="space-y-3 font-mono text-xs">
-              {(grants || []).map((g) => (
-                <Link
-                  key={g.id}
-                  href={`/grants/${g.slug}`}
-                  className="p-4 rounded-xl bg-slate-900/30 border border-slate-800 hover:border-cyan-500/40 block transition-all group"
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-white group-hover:text-cyan-400 transition-colors">
-                      {g.name}
-                    </span>
-                    <span className="font-bold text-emerald-400">
-                      ${g.amount ? (Number(g.amount) / 1000000).toFixed(1) + "M" : "Confidential"}
-                    </span>
-                  </div>
-                  <div className="text-slate-400 text-[11px] truncate">
-                    {g.awarding_agency || "NASA / Space Force"} • {g.status || "Awarded"}
-                  </div>
-                </Link>
-              ))}
-              {(!grants || grants.length === 0) && (
-                <div className="p-6 rounded-xl border border-slate-800/60 text-center text-slate-500 text-xs">
-                  No federal grant obligations tracked yet.
-                </div>
-              )}
-            </div>
-          </div>
+          <button
+            onClick={loadPreset}
+            className="px-4 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <span>LOAD PRESET INTO MISSION BUILDER</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
       </div>
