@@ -5,164 +5,177 @@ import Link from "next/link"
 import { 
   ShieldCheck, 
   Activity, 
-  AlertTriangle, 
   Layers, 
-  Gauge, 
   Download, 
+  AlertTriangle, 
   ArrowRight, 
+  Gauge, 
   Cpu, 
+  RotateCw, 
+  Radio, 
+  BatteryCharging, 
   Clock, 
-  CheckCircle2,
-  TrendingDown
+  CheckCircle2, 
+  Sliders 
 } from "lucide-react"
 
 interface ReliabilityPreset {
   name: string
-  classType: string
-  targetMissionYears: number
-  redundancyScheme: "Single-String (COTS Smallsat)" | "Dual-Redundant (Active Parallel)" | "Cold-Standby Spares" | "Triple-Modular Redundancy (TMR)"
-  avionicsFit: number
-  powerFit: number
-  adcsFit: number
-  payloadFit: number
-  thermalFit: number
+  missionClass: "NASA Class A (Flagship)" | "NASA Class B (High Priority)" | "NASA Class C (Cost-Capped)" | "NASA Class D / Smallsat"
+  targetLifetimeYears: number
+  wheelRedundancy: "3 of 4 Pyramid (1 Cold Spare)" | "3 of 3 Minimal (No Redundancy)" | "4 of 4 Skewed Active"
+  obcRedundancy: "Dual Cold Standby (Cross-Strapped)" | "Single String (No Spare)" | "Triple Modular Redundancy (TMR)"
+  transponderRedundancy: "Dual Hot Redundant" | "Single String"
+  partQualityGrade: "Class S / QML-V (Hermetic Ceramic)" | "Automotive / AEC-Q100 (Up-screened)" | "Commercial COTS Plastic"
   description: string
 }
 
 const RELIABILITY_PRESETS: Record<string, ReliabilityPreset> = {
-  cubesat_cots: {
-    name: "Commercial CubeSat (Single-String)",
-    classType: "Low-Cost Smallsat",
-    targetMissionYears: 3,
-    redundancyScheme: "Single-String (COTS Smallsat)",
-    avionicsFit: 450,
-    powerFit: 600,
-    adcsFit: 750,
-    payloadFit: 500,
-    thermalFit: 150,
-    description: "Zero-redundancy architecture relying on commercial components. High risk, fast production.",
+  class_a_flagship: {
+    name: "NASA Class A Deep Space Flagship",
+    missionClass: "NASA Class A (Flagship)",
+    targetLifetimeYears: 12,
+    wheelRedundancy: "3 of 4 Pyramid (1 Cold Spare)",
+    obcRedundancy: "Dual Cold Standby (Cross-Strapped)",
+    transponderRedundancy: "Dual Hot Redundant",
+    partQualityGrade: "Class S / QML-V (Hermetic Ceramic)",
+    description: "Maximum reliability architecture with fully cross-strapped redundant subsystems engineered for multi-year deep space voyages.",
   },
-  flagship_geo: {
-    name: "Class-A Defense Relay / Flagship GEO",
-    classType: "15-Year High Reliability",
-    targetMissionYears: 15,
-    redundancyScheme: "Dual-Redundant (Active Parallel)",
-    avionicsFit: 85,
-    powerFit: 110,
-    adcsFit: 140,
-    payloadFit: 120,
-    thermalFit: 40,
-    description: "MIL-HDBK-217F Class-S components with fully cross-strapped redundant subsystems.",
+  class_b_leo_constellation: {
+    name: "Class B Commercial LEO Constellation Node",
+    missionClass: "NASA Class B (High Priority)",
+    targetLifetimeYears: 5,
+    wheelRedundancy: "3 of 4 Pyramid (1 Cold Spare)",
+    obcRedundancy: "Dual Cold Standby (Cross-Strapped)",
+    transponderRedundancy: "Single String",
+    partQualityGrade: "Automotive / AEC-Q100 (Up-screened)",
+    description: "Balanced cost-to-reliability trade utilizing automotive AEC-Q100 parts with 3-of-4 reaction wheel pyramid fault tolerance.",
   },
-  autonomous_lander: {
-    name: "Critical Flight Avionics (TMR)",
-    classType: "Human-Rated / Lunar Lander",
-    targetMissionYears: 5,
-    redundancyScheme: "Triple-Modular Redundancy (TMR)",
-    avionicsFit: 40,
-    powerFit: 65,
-    adcsFit: 80,
-    payloadFit: 90,
-    thermalFit: 25,
-    description: "Triple-modular voting flight computer with fail-operational / fail-safe redundancy.",
+  class_d_cubesat: {
+    name: "Class D Agile Tech Demonstration",
+    missionClass: "NASA Class D / Smallsat",
+    targetLifetimeYears: 2,
+    wheelRedundancy: "3 of 3 Minimal (No Redundancy)",
+    obcRedundancy: "Single String (No Spare)",
+    transponderRedundancy: "Single String",
+    partQualityGrade: "Commercial COTS Plastic",
+    description: "Lean single-string avionics bus utilizing industrial COTS silicon targeted for short-duration technology validation.",
   },
 }
 
-export default function SpacecraftReliabilityPage() {
-  const [selectedPresetKey, setSelectedPresetKey] = useState<string>("flagship_geo")
-  const [missionYears, setMissionYears] = useState<number>(15)
-  const [redundancy, setRedundancy] = useState<string>("Dual-Redundant (Active Parallel)")
-  const [avionicsFit, setAvionicsFit] = useState<number>(85)
-  const [powerFit, setPowerFit] = useState<number>(110)
-  const [adcsFit, setAdcsFit] = useState<number>(140)
-  const [payloadFit, setPayloadFit] = useState<number>(120)
+export default function ReliabilityPage() {
+  const [selectedKey, setSelectedKey] = useState<string>("class_b_leo_constellation")
+  const [targetYears, setTargetYears] = useState<number>(5)
+  const [partGrade, setPartGrade] = useState<string>("Automotive / AEC-Q100 (Up-screened)")
+  const [wheelConfig, setWheelConfig] = useState<string>("3 of 4 Pyramid (1 Cold Spare)")
+  const [obcConfig, setObcConfig] = useState<string>("Dual Cold Standby (Cross-Strapped)")
+  const [transponderConfig, setTransponderConfig] = useState<string>("Dual Hot Redundant")
 
-  const preset = RELIABILITY_PRESETS[selectedPresetKey]
+  const activePreset = RELIABILITY_PRESETS[selectedKey]
 
   const applyPreset = (key: string) => {
     const p = RELIABILITY_PRESETS[key]
-    setSelectedPresetKey(key)
-    setMissionYears(p.targetMissionYears)
-    setRedundancy(p.redundancyScheme)
-    setAvionicsFit(p.avionicsFit)
-    setPowerFit(p.powerFit)
-    setAdcsFit(p.adcsFit)
-    setPayloadFit(p.payloadFit)
+    setSelectedKey(key)
+    setTargetYears(p.targetLifetimeYears)
+    setPartGrade(p.partQualityGrade)
+    setWheelConfig(p.wheelRedundancy)
+    setObcConfig(p.obcRedundancy)
+    setTransponderConfig(p.transponderRedundancy)
   }
 
-  // MIL-HDBK-217F Reliability Calculations
+  // MIL-HDBK-217F & Markov Reliability Sizing Calculations
   const metrics = useMemo(() => {
-    // Total FIT (Failures In Time per 10^9 hours)
-    const baseFit = avionicsFit + powerFit + adcsFit + payloadFit + 50 // +50 for cabling/mechanisms
-    const lambdaPerHour = baseFit * 1e-9
-    const missionHours = missionYears * 365.25 * 24
+    const hours = targetYears * 8760
 
-    // Single-String base reliability
-    const rBase = Math.exp(-lambdaPerHour * missionHours)
+    // 1. Part Quality Failure Rate Multiplier (Pi_Q)
+    let piQ = 1.0
+    if (partGrade.includes("Class S")) piQ = 0.35 // Space-qualified hermetic
+    else if (partGrade.includes("COTS")) piQ = 3.2 // High FIT rate COTS plastic
 
-    // Redundancy factor adjustment
-    let rEffective = rBase
-    if (redundancy === "Dual-Redundant (Active Parallel)") {
-      // R = 1 - (1 - R_sub)^2
-      rEffective = 1 - Math.pow(1 - rBase, 2)
-    } else if (redundancy === "Cold-Standby Spares") {
-      // R = R_base * (1 + lambda * t * switch_reliability)
-      const switchRel = 0.98
-      rEffective = Math.min(0.999, rBase * (1 + lambdaPerHour * missionHours * switchRel))
-    } else if (redundancy === "Triple-Modular Redundancy (TMR)") {
-      // 2-out-of-3 majority voting: R = 3*R^2 - 2*R^3
-      rEffective = 3 * Math.pow(rBase, 2) - 2 * Math.pow(rBase, 3)
+    // Base sub-assembly FIT rates (Failures in 10^9 operating hours)
+    const fitObcBase = 1200 * piQ
+    const fitWheelBase = 2400 * piQ // Bearings & motor electronics
+    const fitTransponderBase = 1800 * piQ
+    const fitEpsPduBase = 950 * piQ
+
+    // 2. Subsystem Single-String Reliabilities: R_sub = exp(-lambda * t)
+    const rObcSingle = Math.exp(-(fitObcBase * 1e-9) * hours)
+    const rWheelSingle = Math.exp(-(fitWheelBase * 1e-9) * hours)
+    const rTransponderSingle = Math.exp(-(fitTransponderBase * 1e-9) * hours)
+    const rEps = Math.exp(-(fitEpsPduBase * 1e-9) * hours)
+
+    // 3. Redundancy Calculations
+    // Reaction Wheels: 3-of-4 pyramid vs 3-of-3
+    let rWheels = rWheelSingle * rWheelSingle * rWheelSingle
+    if (wheelConfig.includes("3 of 4")) {
+      // R_3/4 = R^4 + 4*R^3*(1-R)
+      rWheels = Math.pow(rWheelSingle, 4) + 4 * Math.pow(rWheelSingle, 3) * (1 - rWheelSingle)
     }
 
-    const probSuccessPct = Math.round(rEffective * 1000) / 10
-    const mtbfHours = Math.round(1 / lambdaPerHour)
-    const mtbfYears = Math.round((mtbfHours / (365.25 * 24)) * 10) / 10
-
-    // Insurance Risk Scoring (1 to 10 scale)
-    let insuranceRiskScore = "AAA (Prime Insurable)"
-    let riskColor = "text-emerald-400"
-    if (probSuccessPct < 70) {
-      insuranceRiskScore = "CCC (High Underwriting Premium / Sub-Standard)"
-      riskColor = "text-red-400"
-    } else if (probSuccessPct < 85) {
-      insuranceRiskScore = "BBB (Commercial Standard)"
-      riskColor = "text-amber-400"
+    // On-Board Computer: Single vs Dual Cold Standby vs TMR
+    let rObc = rObcSingle
+    if (obcConfig.includes("Dual Cold")) {
+      // R_standby = R * (1 + lambda * t)
+      const lambdaT = (fitObcBase * 1e-9) * hours
+      rObc = rObcSingle * (1 + lambdaT)
+    } else if (obcConfig.includes("TMR")) {
+      rObc = 3 * Math.pow(rObcSingle, 2) - 2 * Math.pow(rObcSingle, 3)
     }
+
+    // Transponder: Single vs Dual Hot Redundant
+    let rTransponder = rTransponderSingle
+    if (transponderConfig.includes("Dual Hot")) {
+      rTransponder = 1 - Math.pow(1 - rTransponderSingle, 2)
+    }
+
+    // 4. Total Spacecraft Bus Reliability: R_bus = R_obc * R_wheels * R_tx * R_eps
+    const rTotalBus = Math.round(rObc * rWheels * rTransponder * rEps * 1000) / 1000
+    const probabilityOfSuccessPct = Math.round(rTotalBus * 1000) / 10
+
+    // System MTBF in Hours and Years
+    const equivalentSystemFit = (fitObcBase + fitWheelBase + fitTransponderBase + fitEpsPduBase)
+    const mtbfHours = Math.round(1e9 / equivalentSystemFit)
+    const mtbfYears = Math.round((mtbfHours / 8760) * 10) / 10
+
+    // Target Compliance Check based on NASA Class
+    let targetProbabilityPct = 85.0
+    if (activePreset.missionClass.includes("Class A")) targetProbabilityPct = 92.0
+    else if (activePreset.missionClass.includes("Class D")) targetProbabilityPct = 70.0
+
+    const reliabilityCompliant = probabilityOfSuccessPct >= targetProbabilityPct
 
     return {
-      totalFit: baseFit,
-      mtbfHours: mtbfHours.toLocaleString(),
+      rObc: Math.round(rObc * 1000) / 1000,
+      rWheels: Math.round(rWheels * 1000) / 1000,
+      rTransponder: Math.round(rTransponder * 1000) / 1000,
+      rEps: Math.round(rEps * 1000) / 1000,
+      probabilityOfSuccessPct,
+      targetProbabilityPct,
+      mtbfHours,
       mtbfYears,
-      probSuccessPct,
-      insuranceRiskScore,
-      riskColor,
-      r3Yr: (Math.exp(-lambdaPerHour * (3 * 365.25 * 24)) * 100).toFixed(1),
-      r5Yr: (Math.exp(-lambdaPerHour * (5 * 365.25 * 24)) * 100).toFixed(1),
-      r10Yr: (Math.exp(-lambdaPerHour * (10 * 365.25 * 24)) * 100).toFixed(1),
-      r15Yr: (Math.exp(-lambdaPerHour * (15 * 365.25 * 24)) * 100).toFixed(1),
+      reliabilityCompliant,
     }
-  }, [avionicsFit, powerFit, adcsFit, payloadFit, missionYears, redundancy])
+  }, [targetYears, partGrade, wheelConfig, obcConfig, transponderConfig, activePreset])
 
   const exportReliabilityCSV = () => {
-    const csv = `SPACECRAFT RELIABILITY & MTBF ANALYSIS (MIL-HDBK-217F)
-Profile Architecture,${preset.name}
-Class,${preset.classType}
-Mission Duration,${missionYears} years
-Redundancy Architecture,${redundancy}
-Subsystem Failure Rate (Avionics),${avionicsFit} FIT
-Subsystem Failure Rate (EPS Power),${powerFit} FIT
-Subsystem Failure Rate (ADCS),${adcsFit} FIT
-Subsystem Failure Rate (Payload),${payloadFit} FIT
-Net Spacecraft Failure Rate,${metrics.totalFit} FIT
-Mean Time Between Failures (MTBF),${metrics.mtbfYears} years (${metrics.mtbfHours} operating hours)
-Probability of Mission Success (Ps),${metrics.probSuccessPct}%
-Insurance Underwriting Category,${metrics.insuranceRiskScore}`
+    const csv = `SPACECRAFT SYSTEM RELIABILITY & REDUNDANCY SPEC
+Mission Program,${activePreset.name}
+Risk Classification,${activePreset.missionClass}
+Target Mission Duration,${targetYears} Years
+Part Quality Grade,${partGrade}
+Reaction Wheel Configuration,${wheelConfig} (Subsystem Reliability: ${metrics.rWheels})
+On-Board Computer Architecture,${obcConfig} (Subsystem Reliability: ${metrics.rObc})
+RF Transponder Sizing,${transponderConfig} (Subsystem Reliability: ${metrics.rTransponder})
+Power PDU Subsystem Reliability,${metrics.rEps}
+System Cumulative MTBF,${metrics.mtbfHours} operating hours (${metrics.mtbfYears} years)
+End-of-Mission Success Probability,${metrics.probabilityOfSuccessPct}% (Target: >= ${metrics.targetProbabilityPct}%)
+Mission Assurance Clearance Verdict,${metrics.reliabilityCompliant ? "PASS (RELIABILITY THRESHOLD CERTIFIED)" : "FAIL (INSUFFICIENT REDUNDANCY MARGIN)"}`
 
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `veroyx-spacecraft-reliability-${selectedPresetKey}.csv`
+    a.download = `veroyx-reliability-${selectedKey}.csv`
     a.click()
   }
 
@@ -170,18 +183,18 @@ Insurance Underwriting Category,${metrics.insuranceRiskScore}`
     <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
       <div className="max-w-7xl mx-auto space-y-10">
 
-        {/* Header */}
+        {/* Master Header */}
         <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <ShieldCheck className="w-3.5 h-3.5 animate-pulse text-emerald-400" />
-              MIL-HDBK-217F Reliability &amp; Spacecraft MTBF Assessment
+              <ShieldCheck className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+              MIL-HDBK-217F &amp; NASA-STD-8729.1A System Reliability Engine
             </div>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              SPACECRAFT RELIABILITY &amp; MTBF MODEL
+              SYSTEM RELIABILITY &amp; REDUNDANCY
             </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Model parts-count failure rates (FIT), exponential reliability decay, active and standby redundancy schemes, and space insurance underwriting risk scoring.
+            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
+              Model parts-count failure rates (FIT), k-out-of-n active/standby redundant architectures, Markov state-space transitions, and end-of-mission success probabilities (P_success).
             </p>
           </div>
 
@@ -202,15 +215,53 @@ Insurance Underwriting Category,${metrics.insuranceRiskScore}`
             <button
               key={k}
               onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap ${
-                selectedPresetKey === k
+              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap text-left ${
+                selectedKey === k
                   ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
                   : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
               }`}
             >
-              {v.name}
+              <div className="font-bold">{v.name}</div>
+              <div className="text-[10px] text-slate-500">{v.missionClass} · {v.targetLifetimeYears}yr Target</div>
             </button>
           ))}
+        </div>
+
+        {/* Primary KPI Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3 text-cyan-400" /> SUCCESS PROBABILITY
+            </div>
+            <div className={`text-3xl font-black ${metrics.reliabilityCompliant ? "text-emerald-400" : "text-red-400"}`}>
+              {metrics.probabilityOfSuccessPct}%
+            </div>
+            <div className="text-[10px] text-slate-400">At {targetYears} Years (Req: &ge; {metrics.targetProbabilityPct}%)</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Clock className="w-3 h-3 text-purple-400" /> BUS MTBF
+            </div>
+            <div className="text-3xl font-black text-purple-400">{metrics.mtbfYears} yrs</div>
+            <div className="text-[10px] text-slate-400">{metrics.mtbfHours.toLocaleString()} Operating Hours</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <RotateCw className="w-3 h-3 text-amber-400" /> WHEELS RELIABILITY
+            </div>
+            <div className="text-3xl font-black text-amber-400">{metrics.rWheels}</div>
+            <div className="text-[10px] text-slate-400">{wheelConfig}</div>
+          </div>
+
+          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
+              <Cpu className="w-3 h-3 text-emerald-400" /> OBC RELIABILITY
+            </div>
+            <div className="text-3xl font-black text-white">{metrics.rObc}</div>
+            <div className="text-[10px] text-slate-400">{obcConfig}</div>
+          </div>
         </div>
 
         {/* Workspace Layout */}
@@ -220,182 +271,165 @@ Insurance Underwriting Category,${metrics.insuranceRiskScore}`
           <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
             <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
               <Gauge className="w-4 h-4 text-cyan-400" />
-              Reliability Parameters
+              Redundancy Architecture
             </div>
 
-            {/* Mission Lifetime */}
+            {/* Mission Duration */}
             <div className="space-y-2">
               <div className="flex justify-between">
-                <label className="text-slate-400">DESIGN LIFE REQUIREMENT</label>
-                <span className="text-cyan-400 font-bold">{missionYears} YEARS</span>
+                <label className="text-slate-400 uppercase font-bold">MISSION LIFETIME</label>
+                <span className="text-cyan-400 font-bold">{targetYears} YEARS</span>
               </div>
               <input
                 type="range"
                 min={1}
-                max={20}
-                value={missionYears}
-                onChange={(e) => setMissionYears(Number(e.target.value))}
+                max={15}
+                step={1}
+                value={targetYears}
+                onChange={(e) => setTargetYears(Number(e.target.value))}
                 className="w-full accent-cyan-400 cursor-pointer"
               />
               <div className="flex justify-between text-[10px] text-slate-500">
-                <span>1 Year (Demo)</span>
-                <span>5 Years (LEO)</span>
-                <span>15 Years (GEO)</span>
+                <span>1 yr (Demo)</span>
+                <span>5 yrs (LEO Standard)</span>
+                <span>15 yrs (GEO)</span>
               </div>
             </div>
 
-            {/* Redundancy Scheme */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">REDUNDANCY SCHEME</label>
+            {/* Part Grade */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+              <label className="text-slate-400 block uppercase font-bold">COMPONENT QUALITY SCREENING</label>
               <select
-                value={redundancy}
-                onChange={(e) => setRedundancy(e.target.value as any)}
+                value={partGrade}
+                onChange={(e) => setPartGrade(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
               >
-                <option value="Single-String (COTS Smallsat)">Single-String (No Redundancy)</option>
-                <option value="Dual-Redundant (Active Parallel)">Dual-Redundant (Active Parallel)</option>
-                <option value="Cold-Standby Spares">Cold-Standby Spares (Cross-Strapped)</option>
-                <option value="Triple-Modular Redundancy (TMR)">Triple-Modular Redundancy (TMR Majority Voting)</option>
+                <option value="Class S / QML-V (Hermetic Ceramic)">Class S / QML-V (Hermetic Ceramic Space Grade)</option>
+                <option value="Automotive / AEC-Q100 (Up-screened)">Automotive AEC-Q100 (Up-Screened COTS)</option>
+                <option value="Commercial COTS Plastic">Industrial COTS (Commercial Plastic Package)</option>
               </select>
             </div>
 
-            {/* Subsystem FIT Inputs */}
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              <span className="text-slate-300 font-bold uppercase block text-[11px]">
-                Subsystem Failure Rates (FIT - Failures / 10⁹ Hours)
-              </span>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">AVIONICS CDH</span>
-                  <input
-                    type="number"
-                    value={avionicsFit}
-                    onChange={(e) => setAvionicsFit(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">EPS POWER BUS</span>
-                  <input
-                    type="number"
-                    value={powerFit}
-                    onChange={(e) => setPowerFit(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">ADCS ACTUATORS</span>
-                  <input
-                    type="number"
-                    value={adcsFit}
-                    onChange={(e) => setAdcsFit(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">MISSION PAYLOAD</span>
-                  <input
-                    type="number"
-                    value={payloadFit}
-                    onChange={(e) => setPayloadFit(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-              </div>
+            {/* Reaction Wheel Redundancy */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+              <label className="text-slate-400 block uppercase font-bold">REACTION WHEEL ARRAY</label>
+              <select
+                value={wheelConfig}
+                onChange={(e) => setWheelConfig(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
+              >
+                <option value="3 of 4 Pyramid (1 Cold Spare)">3 of 4 Pyramid (1 Cold Spare - Standard)</option>
+                <option value="3 of 3 Minimal (No Redundancy)">3 of 3 Minimal (Single String - No Fault Tolerance)</option>
+              </select>
             </div>
 
-            {/* Profile Info */}
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1 text-[11px] font-sans">
-              <div className="text-cyan-400 font-bold font-mono">HERITAGE CLASS:</div>
-              <p className="text-slate-400">{preset.description}</p>
+            {/* OBC Redundancy */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+              <label className="text-slate-400 block uppercase font-bold">ON-BOARD COMPUTER (OBC)</label>
+              <select
+                value={obcConfig}
+                onChange={(e) => setObcConfig(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
+              >
+                <option value="Dual Cold Standby (Cross-Strapped)">Dual Cold Standby (Cross-Strapped PDU)</option>
+                <option value="Triple Modular Redundancy (TMR)">Triple Modular Redundancy (TMR 2-of-3 Voting)</option>
+                <option value="Single String (No Spare)">Single String (No Redundant Computer)</option>
+              </select>
+            </div>
+
+            {/* Transponder Redundancy */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+              <label className="text-slate-400 block uppercase font-bold">RF TRANSPONDER</label>
+              <select
+                value={transponderConfig}
+                onChange={(e) => setTransponderConfig(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
+              >
+                <option value="Dual Hot Redundant">Dual Hot Redundant (A/B Transponder Cross-Strap)</option>
+                <option value="Single String">Single String (Single Transceiver)</option>
+              </select>
             </div>
           </div>
 
           {/* Results Telemetry Desk */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Primary KPI Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Activity className="w-3 h-3 text-cyan-400" /> MISSION SUCCESS (Ps)
-                </div>
-                <div className="text-3xl font-black text-cyan-400">{metrics.probSuccessPct}%</div>
-                <div className="text-[10px] text-slate-500">Over {missionYears}-Year Design Life</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-purple-400" /> SYSTEM MTBF
-                </div>
-                <div className="text-3xl font-black text-white">{metrics.mtbfYears} YRS</div>
-                <div className="text-[10px] text-slate-500">{metrics.mtbfHours} Hours</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <TrendingDown className="w-3 h-3 text-emerald-400" /> NET FAILURE RATE
-                </div>
-                <div className="text-3xl font-black text-emerald-400">{metrics.totalFit} FIT</div>
-                <div className="text-[10px] text-slate-500">Total System Aggregate</div>
-              </div>
-            </div>
-
-            {/* Reliability & Insurance Underwriting Dossier */}
+            {/* Reliability Assessment Panel */}
             <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  Spacecraft Insurance Risk &amp; Reliability Profile
+                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  Mission Survivability &amp; Risk Envelope Analysis
                 </span>
                 <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded border uppercase ${
-                  metrics.probSuccessPct >= 85
+                  metrics.reliabilityCompliant
                     ? "bg-emerald-950 border-emerald-500/40 text-emerald-300"
-                    : "bg-amber-950 border-amber-500/40 text-amber-300"
+                    : "bg-red-950 border-red-500/40 text-red-300"
                 }`}>
-                  {metrics.insuranceRiskScore}
+                  {metrics.reliabilityCompliant ? "MISSION RELIABILITY VERIFIED" : "FAILURE PROBABILITY DEFICIT"}
                 </span>
               </div>
 
-              {/* Multi-Year Survival Decay Curves */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                  <span className="text-[10px] text-slate-500 block">3-YEAR SURVIVAL</span>
-                  <span className="text-sm font-black text-white">{metrics.r3Yr}%</span>
-                </div>
-                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                  <span className="text-[10px] text-slate-500 block">5-YEAR SURVIVAL</span>
-                  <span className="text-sm font-black text-cyan-400">{metrics.r5Yr}%</span>
-                </div>
-                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                  <span className="text-[10px] text-slate-500 block">10-YEAR SURVIVAL</span>
-                  <span className="text-sm font-black text-purple-400">{metrics.r10Yr}%</span>
-                </div>
-                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                  <span className="text-[10px] text-slate-500 block">15-YEAR SURVIVAL</span>
-                  <span className="text-sm font-black text-emerald-400">{metrics.r15Yr}%</span>
-                </div>
+              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-xs font-sans text-slate-300 leading-relaxed space-y-2">
+                <p>
+                  For a <strong className="text-white">{targetYears}-year mission</strong> under <strong className="text-cyan-400">{activePreset.missionClass}</strong> guidelines, the system achieves an overall probability of success of <strong className={metrics.reliabilityCompliant ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>{metrics.probabilityOfSuccessPct}%</strong> (target requirement: &ge; {metrics.targetProbabilityPct}%).
+                </p>
+                <p>
+                  Incorporating {wheelConfig} elevates attitude control reliability to <strong className="text-white">{metrics.rWheels}</strong>, while {obcConfig} provides computer reliability of <strong className="text-white">{metrics.rObc}</strong>. 
+                  Overall spacecraft mean time between failures (MTBF) converges at <strong className="text-purple-400">{metrics.mtbfHours.toLocaleString()} hours ({metrics.mtbfYears} years)</strong>.
+                  {!metrics.reliabilityCompliant && (
+                    <span className="text-red-400 block mt-1 font-bold">
+                      Reliability deficit: Mission success probability falls below institutional classification standards. Eliminate single-point failures by switching to dual cross-strapped computers or upgrading part screening to hermetic Class S components.
+                    </span>
+                  )}
+                </p>
               </div>
 
               {/* Specs Breakdown */}
-              <div className="space-y-2 text-xs pt-2">
+              <div className="space-y-2 text-xs pt-2 font-mono">
                 <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Selected Fault-Tolerant Redundancy</span>
-                  <span className="text-white font-bold">{redundancy}</span>
+                  <span className="text-slate-400">On-Board Computer Subsystem Reliability (R_obc)</span>
+                  <span className="text-white font-bold">{metrics.rObc}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Avionics &amp; Flight Computer FIT</span>
-                  <span className="text-cyan-400 font-bold">{avionicsFit} FIT</span>
+                  <span className="text-slate-400">Reaction Wheel Array Reliability (R_wheels)</span>
+                  <span className="text-white font-bold">{metrics.rWheels}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Power Conditioning &amp; Battery FIT</span>
-                  <span className="text-slate-200 font-bold">{powerFit} FIT</span>
+                  <span className="text-slate-400">RF Transponder Subsystem Reliability (R_rf)</span>
+                  <span className="text-white font-bold">{metrics.rTransponder}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Insurance Underwriting Verdict</span>
-                  <span className={`font-bold ${metrics.riskColor}`}>{metrics.insuranceRiskScore}</span>
+                  <span className="text-slate-400">Flight Mission Assurance Verdict</span>
+                  <span className={`font-bold ${metrics.reliabilityCompliant ? "text-emerald-400" : "text-red-400"}`}>
+                    {metrics.reliabilityCompliant ? "PASS (CERTIFIED FOR MISSION LIFE)" : "FAIL (UPGRADE REDUNDANCY)"}
+                  </span>
                 </div>
+              </div>
+            </div>
+
+            {/* Correlated Engines */}
+            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3 font-mono text-xs">
+              <span className="text-slate-400 font-bold uppercase text-[10px] block">
+                CORRELATED ENGINES:
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                <Link href="/compliance" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/compliance</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/rad" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/rad (TID/SEE)</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/mission-builder" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/mission-builder</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/battery" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
+                  <span>/battery (Fade)</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
               </div>
             </div>
 
