@@ -475,7 +475,39 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
 
       </div>
 
-      {/* FORMAL NASA PDR REVIEW SHEET MODAL & PRINT VIEW */}
+      
+        {/* Master Mission Timeline & Propellant Depletion Sequence (SOE) */}
+        <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4 font-mono text-xs print:hidden">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <span className="font-bold text-white uppercase tracking-wider text-xs flex items-center gap-2">
+              <Activity className="w-4 h-4 text-cyan-400" />
+              Mission Sequence of Events (SOE) &amp; Mass Depletion Timeline
+            </span>
+            <span className="text-[10px] text-emerald-400 font-bold">5 MISSION PHASES MAPPED</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {[
+              { phase: "PHASE 01: INSERTION", duration: "T+0 to T+45m", action: "Clampband sep, B-dot detumble & solar wing deployment", propKg: 0, status: "AUTONOMOUS" },
+              { phase: "PHASE 02: LEOP TRIM", duration: "Day 1 to 5", action: "Arg-perigee & RAAN phasing burn (35 m/s delta-V)", propKg: 8.5, status: "THRUSTING" },
+              { phase: "PHASE 03: PAYLOAD COMM", duration: "Day 6 to 30", action: "Star tracker alignment & optical calibration passes", propKg: 1.2, status: "NOMINAL" },
+              { phase: "PHASE 04: SCIENCE OPS", duration: "Year 1 to 5", action: "Drag makeup cycles & collision avoidance CAM maneuvers", propKg: 28.0, status: "ON-STATION" },
+              { phase: "PHASE 05: DE-ORBIT", duration: "End of Life", action: "Targeted retro-burn (110 m/s) into South Pacific (SPOUA)", propKg: 27.3, status: "DISPOSAL" }
+            ].map((p, idx) => (
+              <div key={idx} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5">
+                <div className="text-[10px] text-cyan-400 font-bold">{p.phase}</div>
+                <div className="text-white font-bold text-xs">{p.duration}</div>
+                <div className="text-[10px] text-slate-400 font-sans leading-tight">{p.action}</div>
+                <div className="pt-1.5 border-t border-slate-800/60 flex justify-between text-[10px]">
+                  <span className="text-slate-500">Prop Used:</span>
+                  <span className="text-amber-400 font-bold">{p.propKg} kg</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* FORMAL NASA PDR REVIEW SHEET MODAL & PRINT VIEW */}
       {showReviewSheet && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/90 backdrop-blur-md p-4 sm:p-10 flex justify-center print:p-0 print:bg-white print:static">
           <div className="w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden font-mono text-xs border border-slate-200 print:border-none print:shadow-none print:max-w-none">
