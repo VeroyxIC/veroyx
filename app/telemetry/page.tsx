@@ -13,7 +13,12 @@ import {
   Zap, 
   Compass, 
   Globe, 
-  Cpu
+  Cpu,
+  Layers,
+  ZoomIn,
+  ZoomOut,
+  Target,
+  ShieldAlert
 } from "lucide-react"
 
 const GROUND_STATIONS = [
@@ -24,25 +29,45 @@ const GROUND_STATIONS = [
   { name: "Wallops GS (VA)", lon: -75.46, lat: 37.94 }
 ]
 
+// Prominent Resident Space Objects (RSOs) for SSA situational awareness
+const CATALOGED_OBJECTS = [
+  { name: "ISS (ZARYA)", altKm: 418, incDeg: 51.6, type: "STATION", color: "#38bdf8" },
+  { name: "TIANGONG (CSS)", altKm: 390, incDeg: 41.5, type: "STATION", color: "#f43f5e" },
+  { name: "HST (HUBBLE)", altKm: 535, incDeg: 28.5, type: "PAYLOAD", color: "#a855f7" },
+  { name: "STARLINK-4128", altKm: 550, incDeg: 53.2, type: "CONSTELLATION", color: "#22c55e" },
+  { name: "STARLINK-5012", altKm: 550, incDeg: 53.2, type: "CONSTELLATION", color: "#22c55e" },
+  { name: "ONEWEB-0184", altKm: 1200, incDeg: 87.9, type: "CONSTELLATION", color: "#eab308" },
+  { name: "NAVSTAR GPS-78", altKm: 20180, incDeg: 55.0, type: "MEO NAV", color: "#ec4899" },
+  { name: "DEBRIS (SL-16 R/B)", altKm: 830, incDeg: 71.0, type: "DEBRIS", color: "#ef4444" },
+  { name: "DEBRIS (COSMOS 1408)", altKm: 480, incDeg: 82.5, type: "DEBRIS", color: "#ef4444" },
+  { name: "DEBRIS (FENGYUN 1C)", altKm: 865, incDeg: 98.6, type: "DEBRIS", color: "#ef4444" }
+]
+
 export default function TelemetryPage() {
   const { mission } = useMission()
   const mountRef = useRef<HTMLDivElement | null>(null)
 
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [timeScale, setTimeScale] = useState<number>(10)
+  const [showDebrisCloud, setShowDebrisCloud] = useState<boolean>(true)
+  const [cameraMode, setCameraMode] = useState<"ORBIT" | "TARGET">("ORBIT")
   
+  // High-performance animation ref with zoom and damping
   const simStateRef = useRef({
     isPlaying: true,
     timeScale: 10,
     simTimeSec: 0,
-    yaw: 0.5,
-    pitch: 0.3,
-    targetYaw: 0.5,
-    targetPitch: 0.3,
+    yaw: 0.8,
+    pitch: 0.35,
+    targetYaw: 0.8,
+    targetPitch: 0.35,
+    distance: 5.6,
+    targetDistance: 5.6,
     isDragging: false,
     prevMouse: { x: 0, y: 0 }
   })
 
+  // Throttled UI state (4 Hz)
   const [telemetryUI, setTelemetryUI] = useState({
     simTimeSec: 0,
     xEci: 0,
@@ -91,40 +116,66 @@ export default function TelemetryPage() {
     scene.background = new THREE.Color("#020617")
 
     const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 2.5, 6.2)
+    camera.position.set(0, 2.5, 5.6)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.3
+    renderer.toneMappingExposure = 1.25
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
     // Deep Starfield
-    const starCount = 1800
+    const starCount = 2000
     const starGeo = new THREE.BufferGeometry()
     const starPos = new Float32Array(starCount * 3)
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 120
-      starPos[i + 1] = (Math.random() - 0.5) * 120
-      starPos[i + 2] = (Math.random() - 0.5) * 120
+      starPos[i] = (Math.random() - 0.5) * 140
+      starPos[i + 1] = (Math.random() - 0.5) * 140
+      starPos[i + 2] = (Math.random() - 0.5) * 140
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
-    const starMat = new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.12, transparent: true, opacity: 0.9 })
+    const starMat = new THREE.PointsMaterial({ color: 0xe2e8f0, size: 0.12, transparent: true, opacity: 0.85 })
     scene.add(new THREE.Points(starGeo, starMat))
 
+    // High-Resolution Resident Space Object (RSO) Debris Cloud (500 cataloged background fragments)
+    const rsoCount = 500
+    const rsoGeo = new THREE.BufferGeometry()
+    const rsoPos = new Float32Array(rsoCount * 3)
+    const earthRadius = 1.75
+    
+    // Store orbital parameters for animated background RSOs
+    const rsoOrbits: { r: number; inc: number; raan: number; speed: number; u0: number }[] = []
+    for (let i = 0; i < rsoCount; i++) {
+      const altKm = 300 + Math.random() * 900 // LEO cluster
+      const r = earthRadius * ((6378.137 + altKm) / 6378.137)
+      const inc = (Math.random() * 110) * (Math.PI / 180)
+      const raan = Math.random() * Math.PI * 2
+      const speed = (0.6 + Math.random() * 0.8) * 0.05
+      const u0 = Math.random() * Math.PI * 2
+      rsoOrbits.push({ r, inc, raan, speed, u0 })
+    }
+    rsoGeo.setAttribute("position", new THREE.BufferAttribute(rsoPos, 3))
+    const rsoMat = new THREE.PointsMaterial({ 
+      color: 0x64748b, 
+      size: 0.045, 
+      transparent: true, 
+      opacity: 0.65 
+    })
+    const rsoPoints = new THREE.Points(rsoGeo, rsoMat)
+    scene.add(rsoPoints)
+
     // Lighting Configuration
-    const sunLight = new THREE.DirectionalLight(0xffffff, 2.8)
-    sunLight.position.set(8, 4, 8)
+    const sunLight = new THREE.DirectionalLight(0xffffff, 2.7)
+    sunLight.position.set(9, 4, 8)
     scene.add(sunLight)
 
-    const spaceAmbient = new THREE.AmbientLight(0x0e1c2e, 0.45)
-    scene.add(spaceAmbient)
+    const ambientLight = new THREE.AmbientLight(0x0f172a, 0.6)
+    scene.add(ambientLight)
 
     // Earth Setup
-    const earthRadius = 1.75
     const textureLoader = new THREE.TextureLoader()
 
     const dayTexture = textureLoader.load(
@@ -139,13 +190,12 @@ export default function TelemetryPage() {
     )
     nightTexture.colorSpace = THREE.SRGBColorSpace
 
-    // Atmospheric Shader with Day/Night Urban Blending & Specular Ocean Reflection
     const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 64)
     const earthShaderMat = new THREE.ShaderMaterial({
       uniforms: {
         dayTexture: { value: dayTexture },
         nightTexture: { value: nightTexture },
-        sunDirection: { value: new THREE.Vector3(8, 4, 8).normalize() }
+        sunDirection: { value: new THREE.Vector3(9, 4, 8).normalize() }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -172,16 +222,16 @@ export default function TelemetryPage() {
           vec4 nightColor = texture2D(nightTexture, vUv);
 
           float cosTheta = dot(vNormal, vSunDir);
-          float dayFactor = clamp(cosTheta * 3.0, 0.0, 1.0);
+          float dayFactor = clamp(cosTheta * 2.8, 0.0, 1.0);
 
-          vec3 finalColor = mix(nightColor.rgb * 1.6, dayColor.rgb, dayFactor);
+          vec3 finalColor = mix(nightColor.rgb * 1.5, dayColor.rgb, dayFactor);
 
-          // Specular water flare
+          // Specular water sheen
           if (dayColor.b > dayColor.r * 1.15 && cosTheta > 0.0) {
             vec3 viewDir = vec3(0.0, 0.0, 1.0);
             vec3 halfDir = normalize(vSunDir + viewDir);
-            float spec = pow(max(dot(vNormal, halfDir), 0.0), 32.0);
-            finalColor += vec3(0.4, 0.7, 1.0) * spec * dayFactor;
+            float spec = pow(max(dot(vNormal, halfDir), 0.0), 30.0);
+            finalColor += vec3(0.35, 0.65, 0.95) * spec * dayFactor;
           }
 
           gl_FragColor = vec4(finalColor, 1.0);
@@ -196,7 +246,7 @@ export default function TelemetryPage() {
     const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
     earthGroup.add(earthMesh)
 
-    // Tropospheric Cloud Layer with Parallax Elevation
+    // Atmospheric Cloud Layer
     const cloudsTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-clouds.png",
       () => renderer.render(scene, camera)
@@ -205,14 +255,14 @@ export default function TelemetryPage() {
     const cloudsMat = new THREE.MeshStandardMaterial({
       map: cloudsTexture,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.36,
       blending: THREE.AdditiveBlending
     })
     const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
     earthGroup.add(cloudsMesh)
 
-    // Atmospheric Rayleigh Glow Limb
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.035, 64, 64)
+    // Rayleigh Scattering Atmospheric Glow
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.032, 64, 64)
     const atmosMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.BackSide,
@@ -227,8 +277,8 @@ export default function TelemetryPage() {
       fragmentShader: `
         varying vec3 vNormal;
         void main() {
-          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.8);
-          gl_FragColor = vec4(0.12, 0.75, 1.0, 1.0) * intensity * 1.8;
+          float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.6);
+          gl_FragColor = vec4(0.14, 0.72, 1.0, 1.0) * intensity * 1.7;
         }
       `
     })
@@ -242,63 +292,75 @@ export default function TelemetryPage() {
       const z = earthRadius * Math.sin(phi) * Math.sin(theta)
       const y = earthRadius * Math.cos(phi)
 
-      const pinGeo = new THREE.SphereGeometry(0.02, 16, 16)
-      const pinMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
-      const pinMesh = new THREE.Mesh(pinGeo, pinMat)
+      const pinMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+      )
       pinMesh.position.set(x, y, z)
       earthMesh.add(pinMesh)
 
-      // Ring dome
-      const ringGeo = new THREE.RingGeometry(0.028, 0.065, 24)
-      const ringMat = new THREE.MeshBasicMaterial({ color: 0x0ea5e9, side: THREE.DoubleSide, transparent: true, opacity: 0.45 })
-      const ringMesh = new THREE.Mesh(ringGeo, ringMat)
+      const ringMesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.024, 0.055, 24),
+        new THREE.MeshBasicMaterial({ color: 0x0ea5e9, side: THREE.DoubleSide, transparent: true, opacity: 0.5 })
+      )
       ringMesh.position.set(x, y, z)
       ringMesh.lookAt(x * 2, y * 2, z * 2)
       earthMesh.add(ringMesh)
     })
 
-    // 3D Orbital Trajectory Ring
+    // Prominent Resident Space Objects (ISS, Tiangong, Hubble, Starlink)
+    const rsoMeshes: THREE.Mesh[] = []
+    CATALOGED_OBJECTS.forEach(obj => {
+      const objMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.028, 12, 12),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(obj.color) })
+      )
+      scene.add(objMesh)
+      rsoMeshes.push(objMesh)
+    })
+
+    // Primary Mission Orbital Trajectory Ring
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
     const orbitPoints = orbitCurve.getPoints(180)
     const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
-    const orbitMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9, linewidth: 2 })
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.95, linewidth: 2 })
     const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat)
     orbitLine.rotation.x = orbit.incRad
     scene.add(orbitLine)
 
-    // Spacecraft Vehicle
+    // Primary Spacecraft Vehicle
     const satGroup = new THREE.Group()
 
     const busMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.09, 0.13),
+      new THREE.BoxGeometry(0.08, 0.08, 0.12),
       new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.9 })
     )
     satGroup.add(busMesh)
 
     const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.85 })
-    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
-    leftWing.position.set(0.18, 0, 0)
-    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
-    rightWing.position.set(-0.18, 0, 0)
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
+    leftWing.position.set(0.16, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
+    rightWing.position.set(-0.16, 0, 0)
     satGroup.add(leftWing)
     satGroup.add(rightWing)
 
     const beaconMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 16, 16),
+      new THREE.SphereGeometry(0.03, 16, 16),
       new THREE.MeshBasicMaterial({ color: 0xf59e0b })
     )
     satGroup.add(beaconMesh)
     scene.add(satGroup)
 
-    // Volumetric Nadir Sensor Laser
+    // Volumetric Nadir Vector Line
     const nadirGeo = new THREE.BufferGeometry()
     nadirGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
     const nadirMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.08, gapSize: 0.04, transparent: true, opacity: 0.9 })
     const nadirLine = new THREE.Line(nadirGeo, nadirMat)
     scene.add(nadirLine)
 
-    // Interactive Drag Controls
+    // Mouse Interaction: Click Drag + Wheel Zoom
     const onMouseDown = (e: MouseEvent) => {
       simStateRef.current.isDragging = true
       simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
@@ -311,19 +373,26 @@ export default function TelemetryPage() {
       simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
 
       simStateRef.current.targetYaw += dx * 0.005
-      simStateRef.current.targetPitch = Math.max(-1.25, Math.min(1.25, simStateRef.current.targetPitch + dy * 0.005))
+      simStateRef.current.targetPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetPitch + dy * 0.005))
     }
 
     const onMouseUp = () => {
       simStateRef.current.isDragging = false
     }
 
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const zoomDelta = e.deltaY * 0.003
+      simStateRef.current.targetDistance = Math.max(2.6, Math.min(18.0, simStateRef.current.targetDistance + zoomDelta))
+    }
+
     const dom = renderer.domElement
     dom.addEventListener("mousedown", onMouseDown)
     window.addEventListener("mousemove", onMouseMove)
     window.addEventListener("mouseup", onMouseUp)
+    dom.addEventListener("wheel", onWheel, { passive: false })
 
-    // Decoupled 60fps Loop
+    // Decoupled 60fps Animation Loop
     let animId: number
     let lastTime = performance.now()
     let lastUiSync = performance.now()
@@ -333,13 +402,15 @@ export default function TelemetryPage() {
       const dt = Math.min((now - lastTime) / 1000, 0.1)
       lastTime = now
 
+      // Smooth camera interpolation (Damping for rotation & zoom)
       simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.1
       simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.1
+      simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.1
 
-      const camDist = 6.2
-      camera.position.x = camDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
-      camera.position.y = camDist * Math.sin(simStateRef.current.pitch)
-      camera.position.z = camDist * Math.cos(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+      const curDist = simStateRef.current.distance
+      camera.position.x = curDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+      camera.position.y = curDist * Math.sin(simStateRef.current.pitch)
+      camera.position.z = curDist * Math.cos(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
       camera.lookAt(0, 0, 0)
 
       if (simStateRef.current.isPlaying) {
@@ -348,11 +419,11 @@ export default function TelemetryPage() {
 
       const t = simStateRef.current.simTimeSec
 
-      // Rotation & Cloud Layer Dynamics
+      // Rotate Earth & Clouds
       earthMesh.rotation.y = t * 0.015
       cloudsMesh.rotation.y = t * 0.018
 
-      // Propagate in 3D
+      // Propagate Primary Mission Vehicle
       const u = (orbit.n * t) % (2 * Math.PI)
       const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
 
@@ -366,6 +437,7 @@ export default function TelemetryPage() {
       satGroup.position.set(xE, yE, zE)
       satGroup.lookAt(0, 0, 0)
 
+      // Update Nadir Vector Line
       const norm = new THREE.Vector3(xE, yE, zE).normalize()
       const surf = norm.clone().multiplyScalar(earthRadius)
       const posAttr = nadirGeo.attributes.position as THREE.BufferAttribute
@@ -374,9 +446,46 @@ export default function TelemetryPage() {
       posAttr.needsUpdate = true
       nadirLine.computeLineDistances()
 
+      // Propagate Cataloged RSOs (ISS, Starlink, Debris)
+      CATALOGED_OBJECTS.forEach((obj, idx) => {
+        const objMesh = rsoMeshes[idx]
+        if (!objMesh) return
+
+        const rObj = earthRadius * ((6378.137 + obj.altKm) / 6378.137)
+        const incRad = (obj.incDeg * Math.PI) / 180
+        const nObj = Math.sqrt(398600.4418 / Math.pow(6378.137 + obj.altKm, 3))
+        const uObj = (nObj * t + idx * 1.2) % (2 * Math.PI)
+        const raanObj = idx * 0.65
+
+        const xo = rObj * Math.cos(uObj)
+        const zo = rObj * Math.sin(uObj)
+
+        const xe = xo * Math.cos(raanObj) - zo * Math.cos(incRad) * Math.sin(raanObj)
+        const ze = xo * Math.sin(raanObj) + zo * Math.cos(incRad) * Math.cos(raanObj)
+        const ye = zo * Math.sin(incRad)
+
+        objMesh.position.set(xe, ye, ze)
+      })
+
+      // Animate Background RSO Debris Cloud Points
+      const rsoPositions = rsoGeo.attributes.position as THREE.BufferAttribute
+      for (let i = 0; i < rsoCount; i++) {
+        const orb = rsoOrbits[i]
+        const uCurrent = (orb.u0 + t * orb.speed) % (Math.PI * 2)
+        const xo = orb.r * Math.cos(uCurrent)
+        const zo = orb.r * Math.sin(uCurrent)
+
+        const xe = xo * Math.cos(orb.raan) - zo * Math.cos(orb.inc) * Math.sin(orb.raan)
+        const ze = xo * Math.sin(orb.raan) + zo * Math.cos(orb.inc) * Math.cos(orb.raan)
+        const ye = zo * Math.sin(orb.inc)
+
+        rsoPositions.setXYZ(i, xe, ye, ze)
+      }
+      rsoPositions.needsUpdate = true
+
       renderer.render(scene, camera)
 
-      // UI Dispatch (4 Hz)
+      // UI Dispatch (4 Hz = 250ms)
       if (now - lastUiSync > 250) {
         lastUiSync = now
 
@@ -454,34 +563,40 @@ export default function TelemetryPage() {
       dom.removeEventListener("mousedown", onMouseDown)
       window.removeEventListener("mousemove", onMouseMove)
       window.removeEventListener("mouseup", onMouseUp)
+      dom.removeEventListener("wheel", onWheel)
       renderer.dispose()
     }
   }, [orbit, mission])
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-24 pb-20 px-4 sm:px-8 font-sans selection:bg-cyan-500 selection:text-slate-950 select-none">
-      <div className="max-w-[1600px] mx-auto space-y-6">
+  const handleZoom = (direction: "IN" | "OUT") => {
+    if (direction === "IN") {
+      simStateRef.current.targetDistance = Math.max(2.6, simStateRef.current.targetDistance - 1.0)
+    } else {
+      simStateRef.current.targetDistance = Math.min(18.0, simStateRef.current.targetDistance + 1.0)
+    }
+  }
 
-        {/* Master Console Header */}
-        <div className="border-b border-slate-800 pb-5 flex flex-col md:flex-row md:items-end justify-between gap-6">
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 pt-20 pb-12 px-4 sm:px-8 font-sans selection:bg-cyan-500 selection:text-slate-950 select-none">
+      <div className="max-w-[1720px] mx-auto space-y-4">
+
+        {/* Console Header */}
+        <div className="border-b border-slate-800 pb-3 flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-2">
+            <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-1">
               <Globe className="w-3.5 h-3.5 text-cyan-400 animate-spin" style={{ animationDuration: "20s" }} />
-              NASA GSFC FDF &middot; Multi-Layer High-Fidelity Ephemeris Kernel
+              USSPACECOM 18TH SDS &middot; SPACE DOMAIN AWARENESS (SDA) TELEMETRY DECK
             </div>
-            <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white font-mono uppercase">
-              FLIGHT TELEMETRY
+            <h1 className="text-2xl md:text-4xl font-black tracking-tight text-white font-mono uppercase">
+              FLIGHT TELEMETRY &middot; J2 PROPAGATION
             </h1>
-            <p className="text-slate-400 text-xs mt-1 max-w-3xl leading-relaxed">
-              NASA Blue Marble day/night urban illumination, dynamic specular ocean glint, elevated tropospheric cloud layer, and real-time J2000 state vectors.
-            </p>
           </div>
 
-          {/* Time Controls */}
+          {/* Time & Camera Controls */}
           <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/60 p-1.5 rounded-xl border border-slate-800">
             <button
               onClick={() => setIsPlaying(!isPlaying)}
-              className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer transition-all"
             >
               {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
               <span>{isPlaying ? "PAUSE" : "RESUME"}</span>
@@ -491,7 +606,7 @@ export default function TelemetryPage() {
               <button
                 key={scale}
                 onClick={() => setTimeScale(scale)}
-                className={`px-2.5 py-1.5 rounded-lg transition-all cursor-pointer ${
+                className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
                   timeScale === scale 
                     ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20" 
                     : "text-slate-400 hover:text-white"
@@ -503,7 +618,7 @@ export default function TelemetryPage() {
 
             <button
               onClick={() => { simStateRef.current.simTimeSec = 0 }}
-              className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
               title="Reset Orbit Epoch"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -511,13 +626,13 @@ export default function TelemetryPage() {
           </div>
         </div>
 
-        {/* 3-COLUMN NASA MISSION CONTROL FLIGHT DECK */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* 3-COLUMN UNIFIED MISSION CONTROL FLIGHT DECK */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
 
-          {/* LEFT RAIL: J2000 STATE VECTORS & POSITION */}
+          {/* LEFT RAIL: J2000 STATE VECTORS & RSO CATALOG */}
           <div className="lg:col-span-3 space-y-4 font-mono text-xs flex flex-col justify-between">
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="border-b border-slate-800 pb-2.5 flex items-center justify-between">
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
+              <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
                 <span className="font-bold text-white uppercase flex items-center gap-1.5">
                   <Activity className="w-4 h-4 text-cyan-400" />
                   J2000 STATE VECTOR
@@ -525,67 +640,72 @@ export default function TelemetryPage() {
                 <span className="text-[10px] text-cyan-400">ECI FRAME</span>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <div className="space-y-1.5">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">POS X</span>
                   <span className="text-white font-bold">{telemetryUI.xEci.toLocaleString()} km</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">POS Y</span>
                   <span className="text-white font-bold">{telemetryUI.yEci.toLocaleString()} km</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">POS Z</span>
                   <span className="text-white font-bold">{telemetryUI.zEci.toLocaleString()} km</span>
                 </div>
               </div>
 
-              <div className="space-y-2 pt-1">
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <div className="space-y-1.5 pt-1">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">VEL Vx</span>
                   <span className="text-cyan-400 font-bold">{telemetryUI.vx} km/s</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">VEL Vy</span>
                   <span className="text-cyan-400 font-bold">{telemetryUI.vy} km/s</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">VEL Vz</span>
                   <span className="text-cyan-400 font-bold">{telemetryUI.vz} km/s</span>
                 </div>
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3">
-              <div className="border-b border-slate-800 pb-2 text-white font-bold uppercase flex items-center gap-1.5">
-                <Compass className="w-4 h-4 text-purple-400" /> SUB-SATELLITE NADIR POINT
+            {/* Resident Space Objects (RSOs) Live Radar List */}
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2.5">
+              <div className="border-b border-slate-800 pb-2 text-white font-bold uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-slate-200">
+                  <ShieldAlert className="w-4 h-4 text-emerald-400" />
+                  SDA OBJECT PROXIMITY
+                </span>
+                <span className="text-[10px] text-slate-400">510 TRACKED</span>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-500">LATITUDE</span>
-                <span className="text-white font-bold">{telemetryUI.latDeg}&deg;</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-500">LONGITUDE</span>
-                <span className="text-white font-bold">{telemetryUI.lonDeg}&deg;</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-500">ALTITUDE</span>
-                <span className="text-cyan-400 font-bold">{mission.altitudeKm} km</span>
+
+              <div className="space-y-1.5 max-h-[170px] overflow-y-auto pr-1">
+                {CATALOGED_OBJECTS.map((obj, i) => (
+                  <div key={i} className="flex items-center justify-between text-[11px] py-1 border-b border-slate-800/40">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: obj.color }} />
+                      <span className="text-slate-300 font-bold">{obj.name}</span>
+                    </div>
+                    <span className="text-slate-500">{obj.altKm}km &middot; {obj.incDeg}&deg;</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* CENTER: 3D PHOTOREALISTIC MULTI-LAYER EARTH */}
+          {/* CENTER: FULL-DEPTH 3D INTERACTIVE WEBGL GLOBE WITH ZOOM & RSO CLOUD */}
           <div className="lg:col-span-6 relative rounded-2xl border border-slate-800 overflow-hidden bg-slate-950 shadow-2xl flex flex-col">
             
             {/* Top Status Overlay */}
-            <div className="absolute top-0 left-0 right-0 z-10 px-5 py-3.5 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-none">
+            <div className="absolute top-0 left-0 right-0 z-10 px-5 py-3 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-none">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                 <span className="text-white font-bold uppercase tracking-wider">
-                  NASA BLUE/BLACK MARBLE
+                  SPACE DOMAIN AWARENESS ENGINE
                 </span>
-                <span className="text-[10px] text-slate-500 hidden sm:inline">| SPECULAR GLINT</span>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">| AXIAL TILT 23.44&deg;</span>
               </div>
 
               <div className="flex items-center gap-3">
@@ -599,11 +719,29 @@ export default function TelemetryPage() {
               </div>
             </div>
 
+            {/* Interactive Zoom Overlay Controls */}
+            <div className="absolute right-4 top-16 z-10 flex flex-col gap-1.5 font-mono">
+              <button
+                onClick={() => handleZoom("IN")}
+                className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer backdrop-blur-md"
+                title="Zoom Camera In"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleZoom("OUT")}
+                className="p-2 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer backdrop-blur-md"
+                title="Zoom Camera Out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+            </div>
+
             {/* Three.js Mounting Container */}
             <div
               ref={mountRef}
-              className="w-full h-[540px] block cursor-grab active:cursor-grabbing"
-              title="Click and drag to rotate camera in 3D space"
+              className="w-full h-[560px] block cursor-grab active:cursor-grabbing"
+              title="Drag to orbit, scroll to zoom"
             />
 
             {/* Bottom Contact & Control Overlay */}
@@ -617,7 +755,7 @@ export default function TelemetryPage() {
               </div>
 
               <div className="text-[10px] text-slate-400 flex items-center gap-3">
-                <span>DRAG TO ROTATE 3D VIEW</span>
+                <span>SCROLL WHEEL TO ZOOM</span>
                 <span className="text-slate-600">|</span>
                 <span>EPOCH: <strong className="text-white">{telemetryUI.simTimeSec}s</strong></span>
               </div>
@@ -627,8 +765,8 @@ export default function TelemetryPage() {
 
           {/* RIGHT RAIL: EPS BUS, SPARKLINE POWER & GNC */}
           <div className="lg:col-span-3 space-y-4 font-mono text-xs flex flex-col justify-between">
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="border-b border-slate-800 pb-2.5 flex items-center justify-between">
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
+              <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
                 <span className="font-bold text-white uppercase flex items-center gap-1.5">
                   <Zap className="w-4 h-4 text-amber-400" />
                   ELECTRICAL POWER BUS
@@ -636,36 +774,36 @@ export default function TelemetryPage() {
                 <span className="text-[10px] text-emerald-400 font-bold">NOMINAL</span>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+              <div className="space-y-1.5">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">BUS VOLTAGE</span>
                   <span className="text-white font-bold">28.4 VDC</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">SOLAR ARRAY GEN</span>
                   <span className={telemetryUI.isEclipse ? "text-slate-500 font-bold" : "text-amber-400 font-bold"}>
                     {telemetryUI.currentPowerW} W
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">BATTERY STATE</span>
                   <span className={telemetryUI.isEclipse ? "text-amber-400 font-bold" : "text-emerald-400 font-bold"}>
                     {telemetryUI.isEclipse ? "DISCHARGING (89%)" : "FLOAT TRICKLE (100%)"}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-slate-800/60">
+                <div className="flex justify-between py-0.5 border-b border-slate-800/60">
                   <span className="text-slate-500">TOTAL BUS LOAD</span>
                   <span className="text-white font-bold">{mission.busPowerW + mission.payloadPowerW} W</span>
                 </div>
               </div>
 
               {/* Real-time Oscilloscope / Sparkline Graph */}
-              <div className="pt-2">
-                <div className="text-[10px] text-slate-500 mb-1.5 flex justify-between">
+              <div className="pt-1.5">
+                <div className="text-[10px] text-slate-500 mb-1 flex justify-between">
                   <span>EPS POWER PROFILE TREND</span>
                   <span className="text-amber-400 font-bold">{telemetryUI.currentPowerW} W</span>
                 </div>
-                <div className="h-10 w-full bg-slate-950 rounded-lg border border-slate-800 flex items-end px-1 gap-0.5 overflow-hidden">
+                <div className="h-9 w-full bg-slate-950 rounded border border-slate-800 flex items-end px-1 gap-0.5 overflow-hidden">
                   {powerHistory.map((val, idx) => {
                     const maxP = mission.busPowerW + mission.payloadPowerW + 50
                     const hPercent = Math.max(8, Math.min(100, (val / maxP) * 100))
@@ -681,9 +819,9 @@ export default function TelemetryPage() {
               </div>
             </div>
 
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3">
+            <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2.5">
               <div className="border-b border-slate-800 pb-2 text-white font-bold uppercase flex items-center gap-1.5">
-                <Cpu className="w-4 h-4 text-cyan-400" /> ONBOARD GNC CONSOLE
+                <Cpu className="w-4 h-4 text-cyan-400" /> ONBOARD GNC &amp; ORBIT
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">ORBIT INCLINATION</span>
@@ -696,6 +834,10 @@ export default function TelemetryPage() {
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">VELOCITY MAGNITUDE</span>
                 <span className="text-cyan-400 font-bold">{orbit.velocityKmS.toFixed(2)} km/s</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500">ALTITUDE</span>
+                <span className="text-cyan-400 font-bold">{mission.altitudeKm} km</span>
               </div>
             </div>
           </div>
