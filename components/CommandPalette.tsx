@@ -31,6 +31,16 @@ interface CommandItem {
 
 const COMMAND_REGISTRY: CommandItem[] = [
   {
+    id: "telemetry",
+    title: "Flight Telemetry & Orbit Propagation",
+    subtitle: "Real-time J2000 state vectors, sub-satellite ground track, and bus diagnostics",
+    href: "/telemetry",
+    category: "Dynamics & Orbits",
+    keywords: ["telemetry", "ground track", "j2000", "state vector", "propagation", "real-time", "mercator"],
+    badge: "FDO Bus"
+  },
+
+  {
     id: "briefing",
     title: "Executive Briefing Dossier",
     subtitle: "NASA review board technical memorandum, validation benchmarks, and heritage matrix",

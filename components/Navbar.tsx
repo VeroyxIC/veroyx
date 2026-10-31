@@ -44,6 +44,9 @@ export default function Navbar() {
             <Link href="/mission-builder" className="hover:text-cyan-400 transition-colors">
               MISSION BUILDER
             </Link>
+            <Link href="/telemetry" className="hover:text-cyan-400 transition-colors text-cyan-300 font-bold">
+              TELEMETRY
+            </Link>
             <Link href="/visualizer" className="hover:text-cyan-400 transition-colors">
               3D VISUALIZER
             </Link>
