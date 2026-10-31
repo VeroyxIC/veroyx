@@ -1,294 +1,359 @@
 "use client"
 
 import { useState } from "react"
-import { Terminal, Copy, Check, Code2, Globe, Key, Shield, Building2, Mail, CheckCircle2, X } from "lucide-react"
+import Link from "next/link"
+import { 
+  Cpu, 
+  Code2, 
+  Terminal, 
+  Copy, 
+  Check, 
+  Download, 
+  ExternalLink, 
+  Layers, 
+  Radio, 
+  Orbit, 
+  Zap, 
+  ShieldCheck, 
+  ArrowRight,
+  Database,
+  FileCode,
+  Play
+} from "lucide-react"
+
+interface ApiEndpoint {
+  id: string
+  method: "POST" | "GET"
+  path: string
+  title: string
+  description: string
+  sampleRequest: Record<string, any>
+  sampleResponse: Record<string, any>
+}
+
+const API_ENDPOINTS: ApiEndpoint[] = [
+  {
+    id: "orbit-prop",
+    method: "POST",
+    path: "/api/v1/propagate",
+    title: "SGP4 / J2 Orbital State Propagation",
+    description: "Propagate Keplerian orbit state vectors forward in time, accounting for J2 oblateness perturbations in J2000 ECI and WGS-84 ECEF coordinates.",
+    sampleRequest: {
+      epoch_utc: "2026-10-31T00:00:00Z",
+      semi_major_axis_km: 6928.14,
+      eccentricity: 0.0012,
+      inclination_deg: 51.64,
+      raan_deg: 142.3,
+      arg_perigee_deg: 75.1,
+      true_anomaly_deg: 0.0,
+      duration_hours: 24,
+      step_size_sec: 60,
+      frame: "J2000_ECI"
+    },
+    sampleResponse: {
+      status: "SUCCESS",
+      frame: "J2000_ECI",
+      ephemeris_points_count: 1440,
+      nodal_precession_deg_day: -5.12,
+      orbit_period_min: 95.6,
+      sub_satellite_points: [
+        { t_sec: 0, lat_deg: 28.5, lon_deg: -80.5, alt_km: 550.0 },
+        { t_sec: 60, lat_deg: 32.1, lon_deg: -78.2, alt_km: 550.1 }
+      ]
+    }
+  },
+  {
+    id: "rf-link",
+    method: "POST",
+    path: "/api/v1/link-budget",
+    title: "CCSDS 401.0-B RF Downlink Closure",
+    description: "Calculate free-space path loss, atmospheric attenuation, antenna gains, and receiver Eb/N0 link margin closure.",
+    sampleRequest: {
+      carrier_frequency_ghz: 8.4,
+      orbit_altitude_km: 550.0,
+      min_elevation_deg: 5.0,
+      tx_power_watts: 10.0,
+      tx_antenna_diameter_m: 0.3,
+      rx_antenna_diameter_m: 11.3,
+      bitrate_mbps: 350.0,
+      target_ber: 1e-6
+    },
+    sampleResponse: {
+      status: "COMPLIANT",
+      carrier_frequency_ghz: 8.4,
+      max_slant_range_km: 2132,
+      free_space_path_loss_db: 177.5,
+      tx_gain_dbi: 26.2,
+      rx_gain_dbi: 57.8,
+      eb_n0_received_db: 14.8,
+      eb_n0_required_db: 10.5,
+      link_margin_db: 4.3,
+      margin_status: "PASS (>= 3.0 dB Flight Margin)"
+    }
+  },
+  {
+    id: "conjunction-risk",
+    method: "POST",
+    path: "/api/v1/conjunction-eval",
+    title: "2D B-Plane Foster Collision Probability (Pc)",
+    description: "Evaluate close-approach encounter geometry from Conjunction Data Messages (CDM) and size optimal collision avoidance maneuvers (CAM).",
+    sampleRequest: {
+      miss_distance_m: 85.0,
+      relative_velocity_km_s: 14.2,
+      primary_hbr_m: 2.2,
+      secondary_hbr_m: 0.8,
+      sigma_radial_m: 18.0,
+      sigma_intrack_m: 120.0,
+      sigma_crosstrack_m: 45.0,
+      target_clearance_km: 1.5
+    },
+    sampleResponse: {
+      status: "ACTIONABLE",
+      collision_probability_pc: "4.82e-4",
+      actionable_threshold: "1.00e-4",
+      maneuver_required: true,
+      optimized_in_track_delta_v_m_s: 0.18,
+      propellant_penalty_kg: 0.038,
+      post_cam_residual_pc: "3.20e-9"
+    }
+  }
+]
 
 export default function DevelopersPage() {
-  const [copied, setCopied] = useState<string | null>(null)
-  const [showModal, setShowModal] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [issuedKey, setIssuedKey] = useState<string | null>(null)
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string>("orbit-prop")
+  const [activeCodeLang, setActiveCodeLang] = useState<"python" | "matlab" | "curl">("python")
+  const [copied, setCopied] = useState<boolean>(false)
 
-  const [formData, setFormData] = useState({
-    organization: "",
-    email: "",
-    entityType: "Defense / Commercial Prime",
-    intendedUse: "Algorithmic telemetry ingestion & supply chain auditing",
-  })
+  const activeEndpoint = API_ENDPOINTS.find(e => e.id === selectedEndpointId) || API_ENDPOINTS[0]
 
-  const copySnippet = (text: string, id: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(id)
-    setTimeout(() => setCopied(null), 2000)
+  const getCodeSnippet = () => {
+    if (activeCodeLang === "python") {
+      return `import requests
+import json
+
+# Veroyx Institutional API - ${activeEndpoint.title}
+ENDPOINT = "https://veroyx.com${activeEndpoint.path}"
+HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer VEROYX_INSTITUTIONAL_KEY"
+}
+
+payload = ${JSON.stringify(activeEndpoint.sampleRequest, null, 4)}
+
+response = requests.post(ENDPOINT, headers=HEADERS, json=payload)
+data = response.json()
+
+print(f"Status: {data.get('status')}")
+print(json.dumps(data, indent=2))`
+    }
+
+    if (activeCodeLang === "matlab") {
+      return `% Veroyx Institutional API - MATLAB / Octave Automation
+url = 'https://veroyx.com${activeEndpoint.path}';
+options = weboptions('MediaType', 'application/json', ...
+                     'HeaderFields', {'Authorization', 'Bearer VEROYX_INSTITUTIONAL_KEY'});
+
+payload = struct();
+${Object.entries(activeEndpoint.sampleRequest).map(([k, v]) => {
+  if (typeof v === 'string') return `payload.${k} = '${v}';`
+  return `payload.${k} = ${v};`
+}).join('\n')}
+
+response = webwrite(url, payload, options);
+disp(response);`
+    }
+
+    return `curl -X POST https://veroyx.com${activeEndpoint.path} \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer VEROYX_INSTITUTIONAL_KEY" \\
+  -d '${JSON.stringify(activeEndpoint.sampleRequest)}'`
   }
 
-  const handleApply = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-
-    try {
-      const res = await fetch("/api/v1/keys", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      })
-      const result = await res.json()
-      if (result.success && result.token) {
-        setIssuedKey(result.token)
-      }
-    } catch (err) {
-      console.error("Provisioning failed:", err)
-    } finally {
-      setLoading(false)
-    }
+  const copyCode = () => {
+    navigator.clipboard.writeText(getCodeSnippet())
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
-
-  const activeToken = issuedKey || "Bearer vx_live_9f81a7b2e3c04d55b8014a9e"
-
-  const curlExample1 = `curl -X GET "https://veroyx.com/api/v1/telemetry?entity=companies&limit=5" \\
-  -H "Authorization: ${activeToken}"`
-
-  const curlExample2 = `curl -X GET "https://veroyx.com/api/v1/telemetry?entity=technologies&trl=8" \\
-  -H "Authorization: ${activeToken}"`
-
-  const jsonSample = `{
-  "status": "success",
-  "protocol": "VEROYX-AEROSPACE-v1",
-  "timestamp": "2026-10-30T13:20:00.000Z",
-  "companies": [
-    {
-      "name": "ABL Space Systems",
-      "sector": "Deployable Launch",
-      "funding_total": "$500M",
-      "hq_location": "El Segundo, California"
-    }
-  ]
-}`
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans">
-      <div className="max-w-6xl mx-auto space-y-12">
+    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
+      <div className="max-w-7xl mx-auto space-y-10">
+
+        {/* Master Header */}
         <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Code2 className="w-3.5 h-3.5" />
-              Programmatic Telemetry Protocol
+              <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+              REST API &middot; Python SDK &middot; MATLAB Integration Suite
             </div>
             <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              DEVELOPER & API SUITE
+              DEVELOPER API &amp; SDK
             </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Query aerospace primes, propulsion systems, defense grants, and live launch manifests directly into your trading algorithms or internal intelligence pipelines.
+            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
+              Programmatic calculation infrastructure for NASA JPL Team X, Goddard concurrent engineering centers, and flight software teams. Headless endpoints supporting J2000 ECI, WGS-84 ECEF, and CCSDS standard schemas.
             </p>
           </div>
 
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-5 py-2.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.3)] transition-all shrink-0"
-          >
-            <Shield className="w-4 h-4" />
-            REQUEST ENTERPRISE TOKEN
-          </button>
-        </div>
-
-        {/* Credentials Box */}
-        <div className="p-6 rounded-xl bg-slate-900/40 border border-slate-800 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 font-mono text-sm text-cyan-400 font-bold">
-              <Key className="w-4 h-4" />
-              {issuedKey ? "PROVISIONED INSTITUTIONAL BEARER TOKEN" : "SANDBOX BEARER TOKEN"}
-            </div>
-            {issuedKey && (
-              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30">
-                ACTIVE • 300 REQ/MIN
-              </span>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950 p-4 rounded-lg border border-slate-800 font-mono text-xs">
-            <code className="text-slate-300 truncate w-full sm:w-auto">
-              {activeToken}
-            </code>
-            <button
-              onClick={() => copySnippet(activeToken, "key")}
-              className="px-3 py-1.5 rounded bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 shrink-0 flex items-center gap-1.5 transition-all"
+          <div className="flex items-center gap-3 font-mono text-xs">
+            <Link
+              href="/compliance"
+              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2"
             >
-              {copied === "key" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
-              {copied === "key" ? "COPIED" : "COPY TOKEN"}
-            </button>
+              <ShieldCheck className="w-3.5 h-3.5" />
+              VCRM COMPLIANCE MATRIX
+            </Link>
           </div>
         </div>
 
-        {/* Endpoints & Schema */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="space-y-6">
-            <h3 className="text-lg font-bold font-mono text-white flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-cyan-400" />
-              REST ENDPOINTS
-            </h3>
-
-            <div className="space-y-4 font-mono text-xs">
-              <div className="p-4 rounded-xl bg-slate-900/30 border border-slate-800 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-500/40 font-bold">GET</span>
-                  <span className="text-slate-200">/api/v1/telemetry</span>
-                </div>
-                <p className="text-slate-400 leading-relaxed font-sans text-xs">
-                  Returns aggregate or filtered telemetry arrays. Accepts granular filter parameters.
-                </p>
-                <div className="pt-2 border-t border-slate-800/80 space-y-1 text-[11px] text-slate-400">
-                  <div><code className="text-cyan-300">entity</code>: <span className="text-slate-500">all | companies | technologies | grants | launches</span></div>
-                  <div><code className="text-cyan-300">trl</code>: <span className="text-slate-500">integer 1 - 9 (minimum readiness level)</span></div>
-                  <div><code className="text-cyan-300">limit</code>: <span className="text-slate-500">integer (max 100, default 50)</span></div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-slate-400 text-[11px]">
-                  <span>QUERY AEROSPACE PRIMES</span>
-                  <button onClick={() => copySnippet(curlExample1, "curl1")} className="hover:text-cyan-400 flex items-center gap-1">
-                    {copied === "curl1" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    Copy
-                  </button>
-                </div>
-                <pre className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-[11px] text-cyan-300 overflow-x-auto">
-                  {curlExample1}
-                </pre>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-slate-400 text-[11px]">
-                  <span>FILTER BY FLIGHT-PROVEN HARDWARE (TRL &ge; 8)</span>
-                  <button onClick={() => copySnippet(curlExample2, "curl2")} className="hover:text-cyan-400 flex items-center gap-1">
-                    {copied === "curl2" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    Copy
-                  </button>
-                </div>
-                <pre className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-[11px] text-cyan-300 overflow-x-auto">
-                  {curlExample2}
-                </pre>
-              </div>
+        {/* Framework & Convention Standards Badge Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
+              <Orbit className="w-3.5 h-3.5 text-cyan-400" /> COORDINATE FRAMES
             </div>
+            <div className="text-base font-bold text-white">J2000 ECI / WGS-84</div>
+            <div className="text-[10px] text-slate-400">RIC / SEZ Topocentric conversions</div>
           </div>
 
-          <div className="space-y-6">
-            <h3 className="text-lg font-bold font-mono text-white flex items-center gap-2">
-              <Globe className="w-4 h-4 text-purple-400" />
-              PAYLOAD SCHEMA RESPONSE
-            </h3>
-            <div className="relative">
-              <pre className="p-5 bg-slate-950 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto leading-relaxed max-h-[460px]">
-                {jsonSample}
-              </pre>
-              <div className="absolute top-3 right-3 text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400">
-                JSON • 200 OK
-              </div>
+          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5 text-purple-400" /> EPHEMERIS FORMATS
             </div>
+            <div className="text-base font-bold text-white">CCSDS ODM / OEM</div>
+            <div className="text-[10px] text-slate-400">OMM Mean Elements &amp; TLE Compatible</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5 text-emerald-400" /> TIME CONVENTIONS
+            </div>
+            <div className="text-base font-bold text-white">UTC / TDB / ET</div>
+            <div className="text-[10px] text-slate-400">Julian Date &amp; J2000 Seconds offset</div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
+            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1.5">
+              <Code2 className="w-3.5 h-3.5 text-amber-400" /> SPECIFICATION
+            </div>
+            <div className="text-base font-bold text-white">OpenAPI 3.1 JSON</div>
+            <div className="text-[10px] text-slate-400">Zero-dependency JSON payload schemas</div>
           </div>
         </div>
 
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl relative">
+        {/* API Interactive Workspace Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
+
+          {/* Endpoint Navigator Column */}
+          <div className="space-y-3">
+            <div className="text-slate-400 uppercase text-[10px] font-bold tracking-wider px-1">
+              PRODUCTION REST ENDPOINTS
+            </div>
+
+            {API_ENDPOINTS.map(ep => (
               <button
-                onClick={() => setShowModal(false)}
-                className="absolute top-6 right-6 text-slate-500 hover:text-white"
+                key={ep.id}
+                onClick={() => setSelectedEndpointId(ep.id)}
+                className={`w-full p-4 rounded-xl border text-left transition-all cursor-pointer ${
+                  selectedEndpointId === ep.id
+                    ? "bg-cyan-950/70 border-cyan-500 text-white shadow-lg shadow-cyan-950/30"
+                    : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
+                }`}
               >
-                <X className="w-5 h-5" />
-              </button>
-
-              {issuedKey ? (
-                <div className="text-center space-y-4 py-4">
-                  <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-                  <h3 className="text-2xl font-bold font-mono text-white">KEY ISSUED SUCCESSFULLY</h3>
-                  <p className="text-xs text-slate-400">
-                    Your institutional tier-1 access token has been activated and loaded into your terminal session.
-                  </p>
-                  <div className="p-3 bg-slate-950 border border-slate-800 rounded font-mono text-xs text-cyan-400 break-all">
-                    {issuedKey}
-                  </div>
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="w-full py-2.5 rounded bg-slate-800 hover:bg-slate-700 text-white font-mono text-xs font-bold"
-                  >
-                    RETURN TO DEVELOPER SUITE
-                  </button>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    ep.method === "POST" ? "bg-emerald-950 border border-emerald-500/40 text-emerald-300" : "bg-cyan-950 text-cyan-300"
+                  }`}>
+                    {ep.method}
+                  </span>
+                  <span className="font-mono text-xs font-bold text-slate-200">{ep.path}</span>
                 </div>
-              ) : (
-                <form onSubmit={handleApply} className="space-y-4">
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-bold font-mono text-white flex items-center gap-2">
-                      <Shield className="w-5 h-5 text-cyan-400" />
-                      INSTITUTIONAL ACCESS REQUEST
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      Provision dedicated enterprise rate-limits (300 req/min) for commercial, defense, and venture operations.
-                    </p>
-                  </div>
+                <div className="font-bold text-white text-xs">{ep.title}</div>
+                <div className="text-[11px] text-slate-400 font-sans mt-1 line-clamp-2 leading-relaxed">
+                  {ep.description}
+                </div>
+              </button>
+            ))}
 
-                  <div className="space-y-3 font-mono text-xs">
-                    <div>
-                      <label className="text-slate-400 block mb-1">ORGANIZATION NAME</label>
-                      <input
-                        required
-                        type="text"
-                        placeholder="e.g. Lockheed Martin, USSF, In-Q-Tel"
-                        value={formData.organization}
-                        onChange={(e) => setFormData({ ...formData, organization: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-slate-400 block mb-1">AUTHORIZED WORK EMAIL</label>
-                      <input
-                        required
-                        type="email"
-                        placeholder="analyst@domain.com"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-slate-400 block mb-1">ENTITY CLASSIFICATION</label>
-                      <select
-                        value={formData.entityType}
-                        onChange={(e) => setFormData({ ...formData, entityType: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-                      >
-                        <option>Defense / Commercial Prime</option>
-                        <option>Venture Capital / Sovereign Fund</option>
-                        <option>Federal / Military Department</option>
-                        <option>Aerospace R&D Lab</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-slate-400 block mb-1">INTENDED USE CASE</label>
-                      <input
-                        type="text"
-                        value={formData.intendedUse}
-                        onChange={(e) => setFormData({ ...formData, intendedUse: e.target.value })}
-                        className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    disabled={loading}
-                    type="submit"
-                    className="w-full py-2.5 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-mono font-bold text-xs tracking-wider transition-all disabled:opacity-50 mt-4"
-                  >
-                    {loading ? "AUTHENTICATING & PROVISIONING..." : "GENERATE INSTITUTIONAL KEY"}
-                  </button>
-                </form>
-              )}
+            <div className="p-4 rounded-xl bg-slate-900/30 border border-slate-800 text-[11px] font-sans text-slate-400 space-y-2 mt-4">
+              <div className="text-cyan-400 font-mono font-bold text-xs flex items-center gap-1.5">
+                <FileCode className="w-3.5 h-3.5" /> CSPICE &amp; PYTHON INTEGRATION
+              </div>
+              <p>
+                All endpoint calculations execute the identical mathematical kernels utilized in the GUI engines. Output data vectors are directly importable into NumPy, Pandas, Astropy, and MATLAB timetables.
+              </p>
             </div>
           </div>
-        )}
+
+          {/* Code Generation & Response Inspection Workbench */}
+          <div className="lg:col-span-2 space-y-6">
+
+            {/* Code Generator Card */}
+            <div className="rounded-2xl bg-slate-900/40 border border-slate-800 overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800 bg-slate-950/60">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-cyan-400" />
+                  <span className="font-bold text-white uppercase text-xs">CLIENT EXECUTION HOOK</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {(["python", "matlab", "curl"] as const).map(lang => (
+                    <button
+                      key={lang}
+                      onClick={() => setActiveCodeLang(lang)}
+                      className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
+                        activeCodeLang === lang
+                          ? "bg-cyan-950 border border-cyan-500/60 text-cyan-300"
+                          : "bg-slate-900 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {lang}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={copyCode}
+                    className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer ml-1"
+                    title="Copy Code"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-950 overflow-x-auto text-[11px] text-slate-300 font-mono leading-relaxed">
+                <pre>{getCodeSnippet()}</pre>
+              </div>
+            </div>
+
+            {/* Request & Response Schema Dossier */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+              {/* Sample Request Body */}
+              <div className="rounded-xl bg-slate-900/40 border border-slate-800 overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-950/60 text-[10px] font-bold text-slate-400 uppercase">
+                  REQUEST PAYLOAD (JSON)
+                </div>
+                <div className="p-3.5 bg-slate-950 overflow-x-auto text-[10px] text-cyan-300 font-mono leading-relaxed max-h-64">
+                  <pre>{JSON.stringify(activeEndpoint.sampleRequest, null, 2)}</pre>
+                </div>
+              </div>
+
+              {/* Sample Response Body */}
+              <div className="rounded-xl bg-slate-900/40 border border-slate-800 overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-slate-800 bg-slate-950/60 text-[10px] font-bold text-emerald-400 uppercase">
+                  RESPONSE DATA VECTOR (JSON)
+                </div>
+                <div className="p-3.5 bg-slate-950 overflow-x-auto text-[10px] text-emerald-300 font-mono leading-relaxed max-h-64">
+                  <pre>{JSON.stringify(activeEndpoint.sampleResponse, null, 2)}</pre>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
       </div>
     </div>
   )
