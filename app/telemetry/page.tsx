@@ -13,31 +13,56 @@ import {
   Zap, 
   Compass, 
   Globe, 
-  Layers, 
-  ShieldCheck,
-  Cpu,
-  Sun,
-  Maximize2,
-  Navigation
+  Cpu
 } from "lucide-react"
 
 const GROUND_STATIONS = [
-  { name: "DSN Goldstone (CA)", lon: -116.88, lat: 35.42, freq: "X/Ka" },
-  { name: "DSN Madrid (ES)", lon: -4.25, lat: 40.43, freq: "X/Ka" },
-  { name: "DSN Canberra (AU)", lon: 148.98, lat: -35.40, freq: "X/Ka" },
-  { name: "KSAT Svalbard (SG3)", lon: 15.40, lat: 78.23, freq: "S/X" },
-  { name: "Wallops GS (VA)", lon: -75.46, lat: 37.94, freq: "S/X" }
+  { name: "DSN Goldstone (CA)", lon: -116.88, lat: 35.42 },
+  { name: "DSN Madrid (ES)", lon: -4.25, lat: 40.43 },
+  { name: "DSN Canberra (AU)", lon: 148.98, lat: -35.40 },
+  { name: "KSAT Svalbard (SG3)", lon: 15.40, lat: 78.23 },
+  { name: "Wallops GS (VA)", lon: -75.46, lat: 37.94 }
 ]
 
 export default function TelemetryPage() {
   const { mission } = useMission()
   const mountRef = useRef<HTMLDivElement | null>(null)
 
-  // Simulation controls
+  // Simulation controls state (UI controls only)
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [timeScale, setTimeScale] = useState<number>(10)
-  const [simTimeSec, setSimTimeSec] = useState<number>(0)
-  const [powerHistory, setPowerHistory] = useState<number[]>(Array(30).fill(280))
+  
+  // High-performance mutable animation references (Decoupled from React render loop)
+  const simStateRef = useRef({
+    isPlaying: true,
+    timeScale: 10,
+    simTimeSec: 0,
+    yaw: 0.4,
+    pitch: 0.3,
+    targetYaw: 0.4,
+    targetPitch: 0.3,
+    isDragging: false,
+    prevMouse: { x: 0, y: 0 }
+  })
+
+  // Throttled UI state (updated at 4 Hz to guarantee zero frame jitter)
+  const [telemetryUI, setTelemetryUI] = useState({
+    simTimeSec: 0,
+    xEci: 0,
+    yEci: 0,
+    zEci: 0,
+    vx: "0.000",
+    vy: "0.000",
+    vz: "0.000",
+    latDeg: "0.00",
+    lonDeg: "0.00",
+    isEclipse: false,
+    lockedStation: null as string | null,
+    minRangeKm: 0,
+    currentPowerW: 0
+  })
+
+  const [powerHistory, setPowerHistory] = useState<number[]>(Array(24).fill(280))
 
   // Astrodynamics parameters
   const orbit = useMemo(() => {
@@ -54,81 +79,13 @@ export default function TelemetryPage() {
     return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
   }, [mission.altitudeKm, mission.inclinationDeg])
 
-  // Instantaneous state vector
-  const stateVector = useMemo(() => {
-    const t = simTimeSec
-    const u = (orbit.n * t) % (2 * Math.PI)
-    const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
-
-    // Orbital plane position
-    const xOrb = orbit.a * Math.cos(u)
-    const yOrb = orbit.a * Math.sin(u)
-
-    // J2000 ECI Position (km)
-    const xEci = xOrb * Math.cos(raan) - yOrb * Math.cos(orbit.incRad) * Math.sin(raan)
-    const yEci = xOrb * Math.sin(raan) + yOrb * Math.cos(orbit.incRad) * Math.cos(raan)
-    const zEci = yOrb * Math.sin(orbit.incRad)
-
-    // ECI Velocity (km/s)
-    const vx = -orbit.velocityKmS * Math.sin(u) * Math.cos(raan) - orbit.velocityKmS * Math.cos(u) * Math.cos(orbit.incRad) * Math.sin(raan)
-    const vy = -orbit.velocityKmS * Math.sin(u) * Math.sin(raan) + orbit.velocityKmS * Math.cos(u) * Math.cos(orbit.incRad) * Math.cos(raan)
-    const vz = orbit.velocityKmS * Math.cos(u) * Math.sin(orbit.incRad)
-
-    // Sub-satellite Lat / Lon
-    const earthSpinRad = t * 7.2921159e-5
-    const latRad = Math.asin(zEci / orbit.a)
-    let lonRad = (Math.atan2(yEci, xEci) - earthSpinRad) % (2 * Math.PI)
-    if (lonRad > Math.PI) lonRad -= 2 * Math.PI
-    if (lonRad < -Math.PI) lonRad += 2 * Math.PI
-
-    // Eclipse detection: Earth cylindrical umbra shadow
-    const isEclipse = xEci < 0 && Math.sqrt(yEci * yEci + zEci * zEci) < orbit.rEarthKm
-
-    // Check ground station contact
-    let lockedStation: string | null = null
-    let minRangeKm = 9999
-    for (const gs of GROUND_STATIONS) {
-      const gsLatRad = (gs.lat * Math.PI) / 180
-      const gsLonRad = (gs.lon * Math.PI) / 180
-      const dLon = lonRad - gsLonRad
-      const dLat = latRad - gsLatRad
-      const aH = Math.sin(dLat / 2) ** 2 + Math.cos(latRad) * Math.cos(gsLatRad) * Math.sin(dLon / 2) ** 2
-      const distKm = orbit.rEarthKm * 2 * Math.asin(Math.min(1, Math.sqrt(aH)))
-      if (distKm <= 2200) {
-        lockedStation = gs.name
-        minRangeKm = Math.round(distKm)
-        break
-      }
-    }
-
-    const currentPowerW = isEclipse ? 0 : mission.busPowerW + mission.payloadPowerW
-
-    return {
-      xEci: Math.round(xEci),
-      yEci: Math.round(yEci),
-      zEci: Math.round(zEci),
-      vx: vx.toFixed(3),
-      vy: vy.toFixed(3),
-      vz: vz.toFixed(3),
-      latDeg: ((latRad * 180) / Math.PI).toFixed(2),
-      lonDeg: ((lonRad * 180) / Math.PI).toFixed(2),
-      latRad,
-      lonRad,
-      isEclipse,
-      lockedStation,
-      minRangeKm,
-      u,
-      raan,
-      currentPowerW
-    }
-  }, [simTimeSec, orbit, mission])
-
-  // Sparkline trend buffer
+  // Sync controls to ref
   useEffect(() => {
-    setPowerHistory(prev => [...prev.slice(1), stateVector.currentPowerW])
-  }, [stateVector.currentPowerW])
+    simStateRef.current.isPlaying = isPlaying
+    simStateRef.current.timeScale = timeScale
+  }, [isPlaying, timeScale])
 
-  // WebGL Three.js Scene Setup & Render Loop
+  // Master Three.js Engine & Silky 60fps Loop
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -136,90 +93,97 @@ export default function TelemetryPage() {
     const width = container.clientWidth
     const height = container.clientHeight
 
-    // 1. Scene & Camera
+    // 1. Scene, Camera, High-Precision WebGL Renderer
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#020617")
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 4.5, 9.5)
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000)
+    camera.position.set(0, 3.5, 9.5)
     camera.lookAt(0, 0, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
     renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.15
+    renderer.toneMappingExposure = 1.2
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // 2. Stars
+    // 2. High-Precision Starfield
+    const starCount = 1200
     const starGeo = new THREE.BufferGeometry()
-    const starCount = 800
-    const starPositions = new Float32Array(starCount * 3)
+    const starPos = new Float32Array(starCount * 3)
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPositions[i] = (Math.random() - 0.5) * 80
-      starPositions[i + 1] = (Math.random() - 0.5) * 80
-      starPositions[i + 2] = (Math.random() - 0.5) * 80
+      starPos[i] = (Math.random() - 0.5) * 120
+      starPos[i + 1] = (Math.random() - 0.5) * 120
+      starPos[i + 2] = (Math.random() - 0.5) * 120
     }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
-    const starMat = new THREE.PointsMaterial({ color: 0x94a3b8, size: 0.08, transparent: true, opacity: 0.7 })
-    const starField = new THREE.Points(starGeo, starMat)
-    scene.add(starField)
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
+    const starMat = new THREE.PointsMaterial({ color: 0x94a3b8, size: 0.12, transparent: true, opacity: 0.8 })
+    scene.add(new THREE.Points(starGeo, starMat))
 
-    // 3. Lighting (Sunlight Vector)
-    const sunLight = new THREE.DirectionalLight(0xffffff, 2.2)
-    sunLight.position.set(10, 2, 8)
+    // 3. Directional Sunlight & Ambient Blue Earthshine
+    const sunLight = new THREE.DirectionalLight(0xfff7ed, 2.5)
+    sunLight.position.set(12, 3, 10)
     scene.add(sunLight)
 
-    const ambientLight = new THREE.AmbientLight(0x0c1e38, 0.6)
+    const ambientLight = new THREE.AmbientLight(0x0a192f, 0.7)
     scene.add(ambientLight)
 
-    // 4. Procedural High-Definition Earth Mesh with Canvas Texture
+    // 4. Procedural High-Contrast Vector Earth Texture
     const earthRadius = 2.4
-    const textureCanvas = document.createElement("canvas")
-    textureCanvas.width = 2048
-    textureCanvas.height = 1024
-    const tCtx = textureCanvas.getContext("2d")!
+    const texCanvas = document.createElement("canvas")
+    texCanvas.width = 4096
+    texCanvas.height = 2048
+    const tCtx = texCanvas.getContext("2d")!
 
-    // Base deep oceanic fill
-    tCtx.fillStyle = "#071e3d"
-    tCtx.fillRect(0, 0, 2048, 1024)
+    // Oceanic Base Layer
+    const oceanGrad = tCtx.createLinearGradient(0, 0, 0, 2048)
+    oceanGrad.addColorStop(0, "#06182c")
+    oceanGrad.addColorStop(0.5, "#0b2545")
+    oceanGrad.addColorStop(1, "#06182c")
+    tCtx.fillStyle = oceanGrad
+    tCtx.fillRect(0, 0, 4096, 2048)
 
-    // High-contrast topographic continents
-    tCtx.fillStyle = "#0f3a40"
-    tCtx.strokeStyle = "#22d3ee"
-    tCtx.lineWidth = 1.5
-
-    // Draw coordinate grid on map
+    // High-Precision Coordinate Graticule Grid
     tCtx.strokeStyle = "rgba(14, 165, 233, 0.12)"
-    for (let x = 0; x <= 2048; x += 128) {
-      tCtx.beginPath(); tCtx.moveTo(x, 0); tCtx.lineTo(x, 1024); tCtx.stroke()
+    tCtx.lineWidth = 2
+    for (let x = 0; x <= 4096; x += 256) {
+      tCtx.beginPath(); tCtx.moveTo(x, 0); tCtx.lineTo(x, 2048); tCtx.stroke()
     }
-    for (let y = 0; y <= 1024; y += 128) {
-      tCtx.beginPath(); tCtx.moveTo(0, y); tCtx.lineTo(2048, y); tCtx.stroke()
+    for (let y = 0; y <= 2048; y += 256) {
+      tCtx.beginPath(); tCtx.moveTo(0, y); tCtx.lineTo(4096, y); tCtx.stroke()
     }
 
-    // Continents
-    const mapContinents = [
-      // N. America
-      [[150, 200], [350, 150], [500, 250], [450, 450], [380, 500], [280, 380], [150, 200]],
-      // S. America
-      [[420, 520], [520, 580], [500, 750], [400, 900], [360, 750], [420, 520]],
+    // Equator & Prime Meridian Highlights
+    tCtx.strokeStyle = "rgba(6, 182, 212, 0.35)"
+    tCtx.lineWidth = 3
+    tCtx.beginPath(); tCtx.moveTo(0, 1024); tCtx.lineTo(4096, 1024); tCtx.stroke()
+    tCtx.beginPath(); tCtx.moveTo(2048, 0); tCtx.lineTo(2048, 2048); tCtx.stroke()
+
+    // High-Resolution World Continental Polygons
+    const continents = [
+      // North America
+      [[300, 350], [550, 250], [900, 300], [1100, 500], [1000, 850], [800, 1000], [700, 850], [550, 750], [300, 350]],
+      // South America
+      [[850, 1050], [1100, 1150], [1150, 1350], [1050, 1750], [900, 1850], [800, 1500], [750, 1200], [850, 1050]],
       // Eurasia
-      [[650, 180], [900, 120], [1300, 150], [1500, 300], [1200, 500], [900, 450], [700, 350], [650, 180]],
+      [[1900, 300], [2400, 220], [3200, 280], [3500, 550], [3100, 950], [2600, 900], [2100, 750], [1850, 500], [1900, 300]],
       // Africa
-      [[680, 380], [850, 400], [900, 580], [800, 750], [680, 600], [680, 380]],
+      [[1850, 800], [2250, 820], [2400, 1200], [2200, 1650], [1900, 1500], [1750, 1100], [1850, 800]],
       // Australia
-      [[1350, 620], [1550, 650], [1500, 800], [1320, 780], [1350, 620]]
+      [[3200, 1250], [3650, 1300], [3600, 1650], [3150, 1600], [3200, 1250]],
+      // Antarctica
+      [[0, 1900], [4096, 1900], [4096, 2048], [0, 2048]]
     ]
 
     tCtx.fillStyle = "rgba(16, 185, 129, 0.45)"
-    tCtx.strokeStyle = "rgba(52, 211, 153, 0.8)"
-    tCtx.lineWidth = 2
-    mapContinents.forEach(poly => {
+    tCtx.strokeStyle = "rgba(52, 211, 153, 0.85)"
+    tCtx.lineWidth = 3
+    continents.forEach(poly => {
       tCtx.beginPath()
-      poly.forEach(([px, py], idx) => {
-        if (idx === 0) tCtx.moveTo(px, py)
+      poly.forEach(([px, py], i) => {
+        if (i === 0) tCtx.moveTo(px, py)
         else tCtx.lineTo(px, py)
       })
       tCtx.closePath()
@@ -227,19 +191,20 @@ export default function TelemetryPage() {
       tCtx.stroke()
     })
 
-    const earthTexture = new THREE.CanvasTexture(textureCanvas)
+    const earthTexture = new THREE.CanvasTexture(texCanvas)
+    earthTexture.anisotropy = 8
     const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 64)
     const earthMat = new THREE.MeshStandardMaterial({
       map: earthTexture,
       roughness: 0.65,
-      metalness: 0.1
+      metalness: 0.15
     })
     const earthMesh = new THREE.Mesh(earthGeo, earthMat)
-    earthMesh.rotation.z = (23.44 * Math.PI) / 180 // Earth obliquity
+    earthMesh.rotation.z = (23.44 * Math.PI) / 180 // Earth 23.44 deg axial obliquity
     scene.add(earthMesh)
 
-    // 5. Volumetric Atmospheric Rayleigh Glow Shell
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.035, 64, 64)
+    // 5. Volumetric Rayleigh Atmosphere Rim Shader
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.03, 64, 64)
     const atmosMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.BackSide,
@@ -254,113 +219,119 @@ export default function TelemetryPage() {
       fragmentShader: `
         varying vec3 vNormal;
         void main() {
-          float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.8);
-          gl_FragColor = vec4(0.05, 0.75, 1.0, 1.0) * intensity * 1.6;
+          float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.5);
+          gl_FragColor = vec4(0.05, 0.8, 1.0, 1.0) * intensity * 1.8;
         }
       `
     })
-    const atmosMesh = new THREE.Mesh(atmosGeo, atmosMat)
-    scene.add(atmosMesh)
+    scene.add(new THREE.Mesh(atmosGeo, atmosMat))
 
     // 6. 3D Orbital Trajectory Ring
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
-    const orbitPoints = orbitCurve.getPoints(120)
+    const orbitPoints = orbitCurve.getPoints(160)
     const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
     const orbitMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.85, linewidth: 2 })
     const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat)
     orbitLine.rotation.x = orbit.incRad
     scene.add(orbitLine)
 
-    // 7. Spacecraft Node
+    // 7. Spacecraft Vehicle Assembly
     const satGroup = new THREE.Group()
-    
-    // Core satellite sphere
-    const satGeo = new THREE.SphereGeometry(0.065, 16, 16)
-    const satMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    const satMesh = new THREE.Mesh(satGeo, satMat)
-    satGroup.add(satMesh)
 
-    // Solar panels
-    const panelGeo = new THREE.BoxGeometry(0.3, 0.015, 0.08)
-    const panelMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.8 })
-    const panelMesh = new THREE.Mesh(panelGeo, panelMat)
-    satGroup.add(panelMesh)
+    // Chassis core
+    const busMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.12, 0.16),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.9 })
+    )
+    satGroup.add(busMesh)
 
-    // Halo glow
-    const haloGeo = new THREE.RingGeometry(0.09, 0.15, 32)
-    const haloMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
-    const haloMesh = new THREE.Mesh(haloGeo, haloMat)
-    satGroup.add(haloMesh)
+    // Dual Solar Array Wings
+    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.8 })
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.015, 0.1), solarWingMat)
+    leftWing.position.set(0.24, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.015, 0.1), solarWingMat)
+    rightWing.position.set(-0.24, 0, 0)
+    satGroup.add(leftWing)
+    satGroup.add(rightWing)
+
+    // Luminous attitude beacon
+    const beaconMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+    )
+    satGroup.add(beaconMesh)
 
     scene.add(satGroup)
 
-    // 8. Volumetric Nadir Line (Satellite -> Earth Surface)
-    const nadirGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)])
-    const nadirMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.08, gapSize: 0.04, transparent: true, opacity: 0.9 })
+    // 8. Volumetric Nadir Laser Vector (Dynamic Buffer)
+    const nadirGeo = new THREE.BufferGeometry()
+    nadirGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
+    const nadirMat = new THREE.LineDashedMaterial({ color: 0xf59e0b, dashSize: 0.1, gapSize: 0.05, transparent: true, opacity: 0.9 })
     const nadirLine = new THREE.Line(nadirGeo, nadirMat)
     scene.add(nadirLine)
 
-    // 9. Interactive Drag to Orbit Controls
-    let isDragging = false
-    let prevMouse = { x: 0, y: 0 }
-    let yaw = 0.3
-    let pitch = 0.35
-
+    // 9. Smooth Damped Mouse Orbit Controls
     const onMouseDown = (e: MouseEvent) => {
-      isDragging = true
-      prevMouse = { x: e.clientX, y: e.clientY }
+      simStateRef.current.isDragging = true
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
     }
+
     const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return
-      const dx = e.clientX - prevMouse.x
-      const dy = e.clientY - prevMouse.y
-      prevMouse = { x: e.clientX, y: e.clientY }
-      yaw += dx * 0.006
-      pitch = Math.max(-1.2, Math.min(1.2, pitch + dy * 0.006))
+      if (!simStateRef.current.isDragging) return
+      const dx = e.clientX - simStateRef.current.prevMouse.x
+      const dy = e.clientY - simStateRef.current.prevMouse.y
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+
+      simStateRef.current.targetYaw += dx * 0.005
+      simStateRef.current.targetPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetPitch + dy * 0.005))
     }
-    const onMouseUp = () => { isDragging = false }
+
+    const onMouseUp = () => {
+      simStateRef.current.isDragging = false
+    }
 
     const dom = renderer.domElement
     dom.addEventListener("mousedown", onMouseDown)
     window.addEventListener("mousemove", onMouseMove)
     window.addEventListener("mouseup", onMouseUp)
 
-    // 10. Master Animation Loop
+    // 10. Animation Loop (Decoupled from React State)
     let animId: number
-    let clock = performance.now()
+    let lastTime = performance.now()
+    let lastUiSync = performance.now()
 
-    const animate = () => {
+    const animate = (now: number) => {
       animId = requestAnimationFrame(animate)
-      const now = performance.now()
-      const dt = (now - clock) / 1000
-      clock = now
+      const dt = Math.min((now - lastTime) / 1000, 0.1)
+      lastTime = now
 
-      if (isPlaying) {
-        setSimTimeSec(prev => {
-          const next = prev + dt * timeScale
-          return next
-        })
-      }
+      // Smooth camera interpolation (inertial damping)
+      simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.1
+      simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.1
 
-      // Rotate camera around center based on mouse drag
-      const camDist = 8.5
-      camera.position.x = camDist * Math.sin(yaw) * Math.cos(pitch)
-      camera.position.y = camDist * Math.sin(pitch)
-      camera.position.z = camDist * Math.cos(yaw) * Math.cos(pitch)
+      const camDist = 9.2
+      camera.position.x = camDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+      camera.position.y = camDist * Math.sin(simStateRef.current.pitch)
+      camera.position.z = camDist * Math.cos(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
       camera.lookAt(0, 0, 0)
 
-      // Earth rotational spin (ECEF frame)
-      earthMesh.rotation.y = simTimeSec * 0.015
+      if (simStateRef.current.isPlaying) {
+        simStateRef.current.simTimeSec += dt * simStateRef.current.timeScale
+      }
 
-      // Position spacecraft in 3D orbit
-      const u = (orbit.n * simTimeSec) % (2 * Math.PI)
-      const raan = (0 - orbit.dRaanDt * simTimeSec) % (2 * Math.PI)
+      const t = simStateRef.current.simTimeSec
+
+      // Rotate Earth (ECEF frame)
+      earthMesh.rotation.y = t * 0.01
+
+      // Propagate spacecraft along orbit
+      const u = (orbit.n * t) % (2 * Math.PI)
+      const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
 
       const xOrb = orbitRadius * Math.cos(u)
       const zOrb = orbitRadius * Math.sin(u)
 
-      // Incline orbit
       const xE = xOrb * Math.cos(raan) - zOrb * Math.cos(orbit.incRad) * Math.sin(raan)
       const zE = xOrb * Math.sin(raan) + zOrb * Math.cos(orbit.incRad) * Math.cos(raan)
       const yE = zOrb * Math.sin(orbit.incRad)
@@ -368,18 +339,80 @@ export default function TelemetryPage() {
       satGroup.position.set(xE, yE, zE)
       satGroup.lookAt(0, 0, 0)
 
-      // Update nadir beam to sub-satellite surface
-      const surfaceNorm = new THREE.Vector3(xE, yE, zE).normalize()
-      const surfacePoint = surfaceNorm.clone().multiplyScalar(earthRadius)
-      nadirLine.geometry.setFromPoints([satGroup.position, surfacePoint])
+      // Update nadir laser line without recreating geometries
+      const norm = new THREE.Vector3(xE, yE, zE).normalize()
+      const surf = norm.clone().multiplyScalar(earthRadius)
+      const posAttr = nadirGeo.attributes.position as THREE.BufferAttribute
+      posAttr.setXYZ(0, xE, yE, zE)
+      posAttr.setXYZ(1, surf.x, surf.y, surf.z)
+      posAttr.needsUpdate = true
       nadirLine.computeLineDistances()
 
       renderer.render(scene, camera)
+
+      // Throttled UI State Dispatch (4 Hz = 250ms) to guarantee ZERO React jitter
+      if (now - lastUiSync > 250) {
+        lastUiSync = now
+
+        // Calculate physical orbital kinematics
+        const xPosKm = orbit.a * Math.cos(u)
+        const yPosKm = orbit.a * Math.sin(u)
+        const xEciKm = xPosKm * Math.cos(raan) - yPosKm * Math.cos(orbit.incRad) * Math.sin(raan)
+        const yEciKm = xPosKm * Math.sin(raan) + yPosKm * Math.cos(orbit.incRad) * Math.cos(raan)
+        const zEciKm = yPosKm * Math.sin(orbit.incRad)
+
+        const vx = -orbit.velocityKmS * Math.sin(u) * Math.cos(raan) - orbit.velocityKmS * Math.cos(u) * Math.cos(orbit.incRad) * Math.sin(raan)
+        const vy = -orbit.velocityKmS * Math.sin(u) * Math.sin(raan) + orbit.velocityKmS * Math.cos(u) * Math.cos(orbit.incRad) * Math.cos(raan)
+        const vz = orbit.velocityKmS * Math.cos(u) * Math.sin(orbit.incRad)
+
+        const earthSpin = t * 7.2921159e-5
+        const latR = Math.asin(zEciKm / orbit.a)
+        let lonR = (Math.atan2(yEciKm, xEciKm) - earthSpin) % (2 * Math.PI)
+        if (lonR > Math.PI) lonR -= 2 * Math.PI
+        if (lonR < -Math.PI) lonR += 2 * Math.PI
+
+        const isEclipse = xEciKm < 0 && Math.sqrt(yEciKm * yEciKm + zEciKm * zEciKm) < orbit.rEarthKm
+
+        let lockedStation: string | null = null
+        let minRangeKm = 9999
+        for (const gs of GROUND_STATIONS) {
+          const gsLat = (gs.lat * Math.PI) / 180
+          const gsLon = (gs.lon * Math.PI) / 180
+          const dLon = lonR - gsLon
+          const dLat = latR - gsLat
+          const aH = Math.sin(dLat / 2) ** 2 + Math.cos(latR) * Math.cos(gsLat) * Math.sin(dLon / 2) ** 2
+          const dKm = orbit.rEarthKm * 2 * Math.asin(Math.min(1, Math.sqrt(aH)))
+          if (dKm <= 2200) {
+            lockedStation = gs.name
+            minRangeKm = Math.round(dKm)
+            break
+          }
+        }
+
+        const pwr = isEclipse ? 0 : mission.busPowerW + mission.payloadPowerW
+
+        setTelemetryUI({
+          simTimeSec: Math.round(t),
+          xEci: Math.round(xEciKm),
+          yEci: Math.round(yEciKm),
+          zEci: Math.round(zEciKm),
+          vx: vx.toFixed(3),
+          vy: vy.toFixed(3),
+          vz: vz.toFixed(3),
+          latDeg: ((latR * 180) / Math.PI).toFixed(2),
+          lonDeg: ((lonR * 180) / Math.PI).toFixed(2),
+          isEclipse,
+          lockedStation,
+          minRangeKm,
+          currentPowerW: pwr
+        })
+
+        setPowerHistory(prev => [...prev.slice(1), pwr])
+      }
     }
 
-    animate()
+    animId = requestAnimationFrame(animate)
 
-    // Handle Resize
     const onResize = () => {
       if (!container) return
       const w = container.clientWidth
@@ -398,24 +431,24 @@ export default function TelemetryPage() {
       window.removeEventListener("mouseup", onMouseUp)
       renderer.dispose()
     }
-  }, [isPlaying, timeScale, orbit, simTimeSec])
+  }, [orbit, mission])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pt-24 pb-20 px-4 sm:px-8 font-sans selection:bg-cyan-500 selection:text-slate-950 select-none">
       <div className="max-w-[1600px] mx-auto space-y-6">
 
-        {/* Master Console Header */}
+        {/* Console Header */}
         <div className="border-b border-slate-800 pb-5 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-2">
               <Globe className="w-3.5 h-3.5 text-cyan-400 animate-spin" style={{ animationDuration: "20s" }} />
-              NASA GSFC FDF &middot; WebGL Hardware 3D Ephemeris Kernel
+              NASA GSFC FDF &middot; J2 Real-Time Ephemeris Kernel
             </div>
             <h1 className="text-3xl md:text-5xl font-black tracking-tight text-white font-mono uppercase">
               FLIGHT TELEMETRY
             </h1>
             <p className="text-slate-400 text-xs mt-1 max-w-3xl leading-relaxed">
-              Full 3D GPU-accelerated orthographic orbital dynamics deck. Interactive physical camera, volumetric atmospheric scattering, and J2000 state vectors.
+              Hardware-accelerated 3D WebGL orbital dynamics deck. Interactive physical camera, volumetric atmospheric scattering, and J2000 state vectors.
             </p>
           </div>
 
@@ -444,9 +477,9 @@ export default function TelemetryPage() {
             ))}
 
             <button
-              onClick={() => setSimTimeSec(0)}
+              onClick={() => { simStateRef.current.simTimeSec = 0 }}
               className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
-              title="Reset View & Epoch"
+              title="Reset Orbit Epoch"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -470,30 +503,30 @@ export default function TelemetryPage() {
               <div className="space-y-2">
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">POS X</span>
-                  <span className="text-white font-bold">{stateVector.xEci.toLocaleString()} km</span>
+                  <span className="text-white font-bold">{telemetryUI.xEci.toLocaleString()} km</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">POS Y</span>
-                  <span className="text-white font-bold">{stateVector.yEci.toLocaleString()} km</span>
+                  <span className="text-white font-bold">{telemetryUI.yEci.toLocaleString()} km</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">POS Z</span>
-                  <span className="text-white font-bold">{stateVector.zEci.toLocaleString()} km</span>
+                  <span className="text-white font-bold">{telemetryUI.zEci.toLocaleString()} km</span>
                 </div>
               </div>
 
               <div className="space-y-2 pt-1">
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">VEL Vx</span>
-                  <span className="text-cyan-400 font-bold">{stateVector.vx} km/s</span>
+                  <span className="text-cyan-400 font-bold">{telemetryUI.vx} km/s</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">VEL Vy</span>
-                  <span className="text-cyan-400 font-bold">{stateVector.vy} km/s</span>
+                  <span className="text-cyan-400 font-bold">{telemetryUI.vy} km/s</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">VEL Vz</span>
-                  <span className="text-cyan-400 font-bold">{stateVector.vz} km/s</span>
+                  <span className="text-cyan-400 font-bold">{telemetryUI.vz} km/s</span>
                 </div>
               </div>
             </div>
@@ -504,11 +537,11 @@ export default function TelemetryPage() {
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">LATITUDE</span>
-                <span className="text-white font-bold">{stateVector.latDeg}&deg;</span>
+                <span className="text-white font-bold">{telemetryUI.latDeg}&deg;</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">LONGITUDE</span>
-                <span className="text-white font-bold">{stateVector.lonDeg}&deg;</span>
+                <span className="text-white font-bold">{telemetryUI.lonDeg}&deg;</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">ALTITUDE</span>
@@ -527,16 +560,16 @@ export default function TelemetryPage() {
                 <span className="text-white font-bold uppercase tracking-wider">
                   3D GPU ORBITAL SIMULATION
                 </span>
-                <span className="text-[10px] text-slate-500 hidden sm:inline">| RAYLEIGH SHADER</span>
+                <span className="text-[10px] text-slate-500 hidden sm:inline">| AXIAL OBLIQUITY 23.44&deg;</span>
               </div>
 
               <div className="flex items-center gap-3">
                 <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
-                  stateVector.isEclipse 
+                  telemetryUI.isEclipse 
                     ? "bg-purple-950 border border-purple-500/40 text-purple-300"
                     : "bg-amber-950 border border-amber-500/40 text-amber-300"
                 }`}>
-                  {stateVector.isEclipse ? "ECLIPSE PASS (UMBRA)" : "SUNLIT PASS"}
+                  {telemetryUI.isEclipse ? "ECLIPSE PASS (UMBRA)" : "SUNLIT PASS"}
                 </span>
               </div>
             </div>
@@ -553,15 +586,15 @@ export default function TelemetryPage() {
               <div className="flex items-center gap-2">
                 <Radio className="w-3.5 h-3.5 text-cyan-400" />
                 <span className="text-slate-400">GROUND STATION LINK:</span>
-                <span className={stateVector.lockedStation ? "text-emerald-400 font-bold" : "text-slate-500 font-bold"}>
-                  {stateVector.lockedStation ? `AOS: ${stateVector.lockedStation} (${stateVector.minRangeKm}km)` : "LOS (SEARCHING CARRIER)"}
+                <span className={telemetryUI.lockedStation ? "text-emerald-400 font-bold" : "text-slate-500 font-bold"}>
+                  {telemetryUI.lockedStation ? `AOS: ${telemetryUI.lockedStation} (${telemetryUI.minRangeKm}km)` : "LOS (SEARCHING CARRIER)"}
                 </span>
               </div>
 
               <div className="text-[10px] text-slate-400 flex items-center gap-3">
                 <span>DRAG TO ORBIT CAMERA IN 3D</span>
                 <span className="text-slate-600">|</span>
-                <span>EPOCH: <strong className="text-white">{Math.round(simTimeSec)}s</strong></span>
+                <span>EPOCH: <strong className="text-white">{telemetryUI.simTimeSec}s</strong></span>
               </div>
             </div>
 
@@ -585,14 +618,14 @@ export default function TelemetryPage() {
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">SOLAR ARRAY GEN</span>
-                  <span className={stateVector.isEclipse ? "text-slate-500 font-bold" : "text-amber-400 font-bold"}>
-                    {stateVector.currentPowerW} W
+                  <span className={telemetryUI.isEclipse ? "text-slate-500 font-bold" : "text-amber-400 font-bold"}>
+                    {telemetryUI.currentPowerW} W
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
                   <span className="text-slate-500">BATTERY STATE</span>
-                  <span className={stateVector.isEclipse ? "text-amber-400 font-bold" : "text-emerald-400 font-bold"}>
-                    {stateVector.isEclipse ? "DISCHARGING (89%)" : "FLOAT TRICKLE (100%)"}
+                  <span className={telemetryUI.isEclipse ? "text-amber-400 font-bold" : "text-emerald-400 font-bold"}>
+                    {telemetryUI.isEclipse ? "DISCHARGING (89%)" : "FLOAT TRICKLE (100%)"}
                   </span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/60">
@@ -605,7 +638,7 @@ export default function TelemetryPage() {
               <div className="pt-2">
                 <div className="text-[10px] text-slate-500 mb-1.5 flex justify-between">
                   <span>EPS POWER PROFILE TREND</span>
-                  <span className="text-amber-400 font-bold">{stateVector.currentPowerW} W</span>
+                  <span className="text-amber-400 font-bold">{telemetryUI.currentPowerW} W</span>
                 </div>
                 <div className="h-10 w-full bg-slate-950 rounded-lg border border-slate-800 flex items-end px-1 gap-0.5 overflow-hidden">
                   {powerHistory.map((val, idx) => {
