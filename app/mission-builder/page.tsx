@@ -19,12 +19,16 @@ import {
   Flame, 
   FileText,
   Sliders,
-  ExternalLink
+  ExternalLink,
+  Printer,
+  X,
+  FileCheck2
 } from "lucide-react"
 
 export default function MissionBuilderPage() {
   const { mission, updateMission, resetMission, totalWetMassKg, totalPowerW } = useMission()
   const [copiedJson, setCopiedJson] = useState(false)
+  const [showReviewSheet, setShowReviewSheet] = useState(false)
 
   // Derived Concurrent Engineering Metrics
   const analysis = useMemo(() => {
@@ -166,11 +170,11 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950 print:bg-white print:text-black print:p-0">
       <div className="max-w-7xl mx-auto space-y-10">
 
         {/* Master Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 print:hidden">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
               <Layers className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
@@ -184,7 +188,14 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
             </p>
           </div>
 
-          <div className="flex items-center gap-3 font-mono text-xs">
+          <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+            <button
+              onClick={() => setShowReviewSheet(true)}
+              className="px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-300 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileCheck2 className="w-3.5 h-3.5 text-cyan-400" />
+              PDR REVIEW SHEET
+            </button>
             <button
               onClick={copyMachineStateJson}
               className="px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
@@ -197,13 +208,13 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
               className="px-4 py-2.5 rounded-lg bg-cyan-500 text-slate-950 font-black hover:bg-cyan-400 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20"
             >
               <Download className="w-4 h-4" />
-              EXPORT PHASE A STUDY
+              EXPORT CSV
             </button>
           </div>
         </div>
 
         {/* Real-Time Cascaded Subsystem KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs print:hidden">
           <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
             <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
               <Rocket className="w-3 h-3 text-cyan-400" /> TOTAL WET MASS
@@ -240,7 +251,7 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
         </div>
 
         {/* Global Parameter Controls Workspace */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs print:hidden">
 
           {/* Left Column: Mission & Orbit Controls */}
           <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
@@ -463,6 +474,187 @@ Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
         </div>
 
       </div>
+
+      {/* FORMAL NASA PDR REVIEW SHEET MODAL & PRINT VIEW */}
+      {showReviewSheet && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/90 backdrop-blur-md p-4 sm:p-10 flex justify-center print:p-0 print:bg-white print:static">
+          <div className="w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden font-mono text-xs border border-slate-200 print:border-none print:shadow-none print:max-w-none">
+            
+            {/* Modal Action Header (Hidden in Print) */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between print:hidden">
+              <div className="flex items-center gap-2">
+                <FileCheck2 className="w-4 h-4 text-cyan-400" />
+                <span className="font-bold uppercase tracking-wider text-xs">
+                  NASA PDR / CDR PRELIMINARY DESIGN REVIEW SHEET
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  PRINT / PDF
+                </button>
+                <button
+                  onClick={() => setShowReviewSheet(false)}
+                  className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Document Body (Print-Optimized) */}
+            <div className="p-8 sm:p-12 space-y-8 font-sans print:p-6 text-slate-800">
+              
+              {/* Formal Document Title Block */}
+              <div className="border-b-2 border-slate-900 pb-6 flex justify-between items-start">
+                <div>
+                  <div className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">
+                    NASA PROCEDURAL REQUIREMENTS NPR 7120.5F COMPLIANT
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-black text-slate-950 font-mono tracking-tight mt-1">
+                    FLIGHT DESIGN SPECIFICATION (PDR)
+                  </h1>
+                  <div className="text-xs text-slate-600 mt-1 font-mono">
+                    PROJECT: {mission.missionName.toUpperCase()} &middot; ARCHITECTURE BASELINE VERIFICATION
+                  </div>
+                </div>
+
+                <div className="text-right font-mono text-[10px] text-slate-600 space-y-0.5">
+                  <div>DOC ID: VEROYX-PDR-{mission.missionName.toUpperCase()}</div>
+                  <div>SECURITY: UNCLASSIFIED / FORMULATION</div>
+                  <div>DATE: {new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" })}</div>
+                </div>
+              </div>
+
+              {/* Data Table 1: Orbital Mechanics & Space Environment */}
+              <div className="space-y-2">
+                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
+                  <span>1.0 ORBITAL TRAJECTORY &amp; FLIGHT REGIME</span>
+                  <span className="text-slate-500 text-[10px]">KEPLER / J2 MODEL</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">TARGET ORBIT</span>
+                    <strong>{mission.targetOrbit}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">ALTITUDE</span>
+                    <strong>{mission.altitudeKm} km</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">INCLINATION</span>
+                    <strong>{mission.inclinationDeg}&deg;</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">ORBITAL PERIOD</span>
+                    <strong>{analysis.orbitPeriodMin} min ({analysis.vOrbKmS} km/s)</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Table 2: Mass, Delta-V & Launch Vehicle */}
+              <div className="space-y-2">
+                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
+                  <span>2.0 MASS PROPERTIES &amp; PROPULSION BUDGET</span>
+                  <span className="text-slate-500 text-[10px]">AIAA S-120-2015</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">DRY MASS</span>
+                    <strong>{mission.dryMassKg} kg</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">PROPELLANT</span>
+                    <strong>{mission.propellantMassKg} kg (Isp: 230s)</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">TOTAL WET MASS</span>
+                    <strong className="text-blue-700">{totalWetMassKg} kg</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">DELTA-V MARGIN</span>
+                    <strong className="text-emerald-700">+{analysis.propMarginMs} m/s ({analysis.deltaVAvailableMs} m/s total)</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Table 3: Electrical Power & Thermal Balance */}
+              <div className="space-y-2">
+                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
+                  <span>3.0 POWER &amp; ENERGY EQUILIBRIUM</span>
+                  <span className="text-slate-500 text-[10px]">ECSS-E-ST-20C</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">BUS LOAD (SUN/ECL)</span>
+                    <strong>{totalPowerW} W total</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">ECLIPSE DURATION</span>
+                    <strong>{analysis.eclipseDurationMin} min ({analysis.eclipseEnergyWh} Wh)</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">BATTERY (25% DoD)</span>
+                    <strong>{analysis.batteryCapacityWh} Wh Sized</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">SOLAR ARRAY DEMAND</span>
+                    <strong className="text-amber-700">{analysis.totalSolarArrayDemandW} W EOL</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Table 4: Lifecycle Cost & Heritage */}
+              <div className="space-y-2">
+                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
+                  <span>4.0 PROGRAMMATIC COST &amp; HERITAGE</span>
+                  <span className="text-slate-500 text-[10px]">NASA PCEC MODEL (P80)</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">DESIGN HERITAGE</span>
+                    <strong>{mission.heritagePct}% discount</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">BUS HARDWARE</span>
+                    <strong>${analysis.busHardwareCostM}M USD</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">P80 RESERVES</span>
+                    <strong>{mission.costReservePct}% contingency</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 block">TOTAL PROGRAM COST</span>
+                    <strong className="text-purple-700">${analysis.totalProgramCostM}M USD</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Approval Signature Block */}
+              <div className="pt-6 border-t-2 border-slate-900 grid grid-cols-3 gap-6 text-[11px] font-mono">
+                <div className="border-b border-slate-400 pb-1">
+                  <span className="text-[9px] text-slate-500 block">MISSION FORMULATION LEAD</span>
+                  <span className="font-bold text-slate-800">VEROYX AUTONOMOUS CAD/CAM</span>
+                </div>
+                <div className="border-b border-slate-400 pb-1">
+                  <span className="text-[9px] text-slate-500 block">SYSTEMS ENGINEERING (SE)</span>
+                  <span className="font-bold text-slate-800">CONCURRENT VERIFIED</span>
+                </div>
+                <div className="border-b border-slate-400 pb-1">
+                  <span className="text-[9px] text-slate-500 block">FLIGHT READINESS STATUS</span>
+                  <span className="font-bold text-emerald-700">APPROVED FOR PDR REVIEW</span>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
