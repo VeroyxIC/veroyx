@@ -1,609 +1,516 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
-import Link from "next/link"
-import { useMission } from "@/lib/missionStore"
+import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
 import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Activity, 
-  Compass, 
-  Radio,
-  Rocket,
-  Flame,
-  Milestone,
-  Thermometer,
-  Gauge,
-  CheckCircle2,
-  Circle,
-  Timer
+  Rocket, Activity, Gauge, Timer, Layers, ShieldCheck, 
+  Play, Square, RotateCcw, Compass, BarChart3, AlertCircle 
 } from "lucide-react"
 
-// Launch pad constants (Cape Canaveral LC-39A)
-const PAD_LAT = 28.6082
-const PAD_LON = -80.6041
-const EARTH_RADIUS_KM = 6378.137
-const MU = 398600.4418 // Earth gravitational parameter
+type VehiclePreset = "FALCON_HEAVY" | "ELECTRON" | "ARIANE_6" | "VULCAN"
 
-interface FlightEvent {
-  id: string
-  timeSec: number
-  label: string
+interface VehicleSpec {
+  name: string
+  liftoffMassKg: number
+  liftoffThrustKn: number
+  stages: number
+  maxPayloadKg: number
+  mecoSec: number
+  fairingSepSec: number
+  secoSec: number
+  colorHex: number
 }
 
-const FLIGHT_EVENTS: FlightEvent[] = [
-  { id: "ign", timeSec: 0, label: "LIFTOFF" },
-  { id: "pitch", timeSec: 15, label: "PITCH MANEUVER" },
-  { id: "maxq", timeSec: 75, label: "MAX-Q (MAX DYNAMIC PRESSURE)" },
-  { id: "meco", timeSec: 150, label: "MAIN ENGINE CUTOFF (MECO)" },
-  { id: "stage", timeSec: 154, label: "STAGE SEPARATION" },
-  { id: "ses", timeSec: 161, label: "SECOND ENGINE START (SES)" },
-  { id: "fairing", timeSec: 190, label: "FAIRING DEPLOYMENT" },
-  { id: "seco", timeSec: 510, label: "SECOND ENGINE CUTOFF (SECO)" },
-  { id: "insert", timeSec: 530, label: "ORBITAL INSERTION" }
-]
+const VEHICLES: Record<VehiclePreset, VehicleSpec> = {
+  FALCON_HEAVY: {
+    name: "Falcon-Class Heavy Lift",
+    liftoffMassKg: 549000,
+    liftoffThrustKn: 7607,
+    stages: 2,
+    maxPayloadKg: 22800,
+    mecoSec: 162,
+    fairingSepSec: 215,
+    secoSec: 510,
+    colorHex: 0x38bdf8
+  },
+  ELECTRON: {
+    name: "Electron-Class Dedicated SmallSat",
+    liftoffMassKg: 13000,
+    liftoffThrustKn: 224,
+    stages: 2,
+    maxPayloadKg: 300,
+    mecoSec: 150,
+    fairingSepSec: 185,
+    secoSec: 540,
+    colorHex: 0xf59e0b
+  },
+  ARIANE_6: {
+    name: "Ariane 6 Heavy Lift",
+    liftoffMassKg: 530000,
+    liftoffThrustKn: 8500,
+    stages: 2,
+    maxPayloadKg: 21500,
+    mecoSec: 135,
+    fairingSepSec: 202,
+    secoSec: 525,
+    colorHex: 0x10b981
+  },
+  VULCAN: {
+    name: "Vulcan Centaur Next-Gen",
+    liftoffMassKg: 546700,
+    liftoffThrustKn: 8900,
+    stages: 2,
+    maxPayloadKg: 19000,
+    mecoSec: 140,
+    fairingSepSec: 210,
+    secoSec: 515,
+    colorHex: 0xa855f7
+  }
+}
 
 export default function TrajectoryPage() {
-  const { mission } = useMission()
   const mountRef = useRef<HTMLDivElement | null>(null)
 
-  const [isPlaying, setIsPlaying] = useState<boolean>(true)
-  const [timeScale, setTimeScale] = useState<number>(1)
+  // Configuration
+  const [vehicle, setVehicle] = useState<VehiclePreset>("FALCON_HEAVY")
+  const [targetAltKm, setTargetAltKm] = useState(300) // LEO insertion altitude
+  const [azimuthDeg, setAzimuthDeg] = useState(90) // Eastward prograde launch
+  const [payloadMassKg, setPayloadMassKg] = useState(4500)
 
-  // Kinetic state for decoupled WebGL loop
-  const simStateRef = useRef({
-    isPlaying: true,
-    timeScale: 1,
-    simTimeSec: -10, // Start at T-10 seconds
-    yaw: 0.8,
-    pitch: 0.2,
-    targetYaw: 0.8,
-    targetPitch: 0.2,
-    distance: 1.0, // Close camera for launch
-    targetDistance: 1.0,
-    isDragging: false,
-    prevMouse: { x: 0, y: 0 },
-    dragVelocity: { x: 0, y: 0 }
-  })
+  // Simulation Clock (T-0 to T+540s)
+  const [simTimeSec, setSimTimeSec] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(true)
 
-  // Throttled UI Telemetry (4 Hz)
-  const [telemetryUI, setTelemetryUI] = useState({
-    simTimeSec: -10,
-    altitudeKm: "0.00",
-    velocityKmS: "0.00",
-    downrangeKm: "0.00",
-    dynamicPressureKpa: "0.00",
-    thrustWeightRatio: "0.00",
-    flightPathAngleDeg: "90.0",
-    currentMassKg: 0,
-    phase: "PRE-LAUNCH"
-  })
+  const spec = VEHICLES[vehicle]
 
-  const [altHistory, setAltHistory] = useState<number[]>(Array(40).fill(0))
+  // Flight Dynamics Kinematic Model (Parametric Gravity Turn Ascent)
+  const progress = Math.min(1.0, simTimeSec / spec.secoSec)
 
+  // Altitude curve: quadratic ramp in dense atmosphere, exponential orbital flattening
+  const altitudeKm = Math.min(targetAltKm, Math.pow(progress, 1.8) * targetAltKm)
+
+  // Velocity: Starts at 0, ramps to orbital injection velocity (~7,780 m/s for 300km LEO)
+  const targetOrbitalVelKms = Math.sqrt(398600.4418 / (6371 + targetAltKm))
+  const velocityKms = progress * targetOrbitalVelKms
+  const velocityMs = velocityKms * 1000
+
+  // Downrange distance (km)
+  const downrangeKm = Math.pow(progress, 2.2) * 1450
+
+  // Atmospheric Density & Dynamic Pressure (Max-Q):
+  // q = 0.5 * rho * v^2
+  const scaleHeightKm = 7.2
+  const rho0 = 1.225 // kg/m^3
+  const rho = altitudeKm > 100 ? 0 : rho0 * Math.exp(-altitudeKm / scaleHeightKm)
+  const dynamicPressureKpa = (0.5 * rho * Math.pow(velocityMs, 2)) / 1000 // kPa
+
+  // Flight Path Angle (γ): Starts at 90° (vertical liftoff), pitches down to 0° (horizontal insertion)
+  const flightPathAngleDeg = Math.max(0, 90 * (1 - Math.pow(progress, 0.7)))
+
+  // Acceleration / G-Force
+  const gForce = simTimeSec < 5 ? 1.2 : 1.2 + Math.pow(progress, 1.5) * 2.8
+
+  // Flight Events
+  const isMECO = simTimeSec >= spec.mecoSec
+  const isFairingSep = simTimeSec >= spec.fairingSepSec
+  const isSECO = simTimeSec >= spec.secoSec
+
+  // Timeline loop
   useEffect(() => {
-    simStateRef.current.isPlaying = isPlaying
-    simStateRef.current.timeScale = timeScale
-  }, [isPlaying, timeScale])
+    let timer: NodeJS.Timeout
+    if (isPlaying) {
+      timer = setInterval(() => {
+        setSimTimeSec(t => {
+          if (t >= spec.secoSec) {
+            setIsPlaying(false)
+            return spec.secoSec
+          }
+          return t + 2
+        })
+      }, 100)
+    }
+    return () => clearInterval(timer)
+  }, [isPlaying, spec.secoSec])
 
-  // Master WebGL Scene (Flight-Ready PBR)
+  // 3D Ascent Trajectory Visualizer
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
-
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#010308")
 
-    const camera = new THREE.PerspectiveCamera(36, width / height, 0.01, 3000)
-    camera.position.set(0, 0, 1.0)
-    camera.lookAt(0, 0, 0)
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
+    camera.position.set(0, 80, 220)
+    camera.lookAt(60, 20, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.1
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Starfield
-    const starCount = 3000
-    const starGeo = new THREE.BufferGeometry()
-    const starPos = new Float32Array(starCount * 3)
-    for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 180
-      starPos[i + 1] = (Math.random() - 0.5) * 180
-      starPos[i + 2] = (Math.random() - 0.5) * 180
+    // Lighting
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.5))
+    const sun = new THREE.DirectionalLight(0xfffaed, 3.0)
+    sun.position.set(100, 150, 80)
+    scene.add(sun)
+
+    // 1. Earth Curvature Arc
+    const earthRadius = 600
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 32, 0, Math.PI * 2, 0, Math.PI * 0.15)
+    const earthMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.8,
+      metalness: 0.1,
+      wireframe: false
+    })
+    const earth = new THREE.Mesh(earthGeo, earthMat)
+    earth.position.set(0, -earthRadius, 0)
+    scene.add(earth)
+
+    // Atmospheric Glow Layer
+    const atmoGeo = new THREE.SphereGeometry(earthRadius + 15, 64, 16, 0, Math.PI * 2, 0, Math.PI * 0.15)
+    const atmoMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.15,
+      side: THREE.BackSide
+    })
+    const atmo = new THREE.Mesh(atmoGeo, atmoMat)
+    atmo.position.copy(earth.position)
+    scene.add(atmo)
+
+    // 2. Trajectory Profile Curve (From Launch Pad to Orbital Insertion)
+    const curvePoints: THREE.Vector3[] = []
+    const totalSteps = 120
+    for (let i = 0; i <= totalSteps; i++) {
+      const p = i / totalSteps
+      const x = p * 150 // Downrange scale
+      const y = Math.pow(p, 1.8) * 35 // Altitude scale
+      const z = Math.sin(p * Math.PI * 0.5) * 8 // Azimuth deviation
+      curvePoints.push(new THREE.Vector3(x, y, z))
     }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
-    const starMat = new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.1, transparent: true, opacity: 0.7 })
-    scene.add(new THREE.Points(starGeo, starMat))
-
-    // Physical Sunlight
-    const sunDir = new THREE.Vector3(5.0, 2.0, 4.0).normalize()
-    const sunLight = new THREE.DirectionalLight(0xfff7ed, 2.8)
-    sunLight.position.copy(sunDir.clone().multiplyScalar(40))
-    scene.add(sunLight)
-    scene.add(new THREE.AmbientLight(0x061224, 0.35))
-
-    const earthRadius = 1.75
-    const textureLoader = new THREE.TextureLoader()
-
-    const dayTexture = textureLoader.load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg", () => renderer.render(scene, camera))
-    dayTexture.colorSpace = THREE.SRGBColorSpace
-    const nightTexture = textureLoader.load("https://unpkg.com/three-globe/example/img/earth-night.jpg", () => renderer.render(scene, camera))
-    nightTexture.colorSpace = THREE.SRGBColorSpace
-
-    // Earth Shader (Strictly operational, no cinematic bloat)
-    const earthGeo = new THREE.SphereGeometry(earthRadius, 128, 128)
-    const earthShaderMat = new THREE.ShaderMaterial({
-      uniforms: {
-        dayTexture: { value: dayTexture },
-        nightTexture: { value: nightTexture },
-        sunDirection: { value: sunDir }
-      },
-      vertexShader: `
-        varying vec2 vUv; varying vec3 vNormal; varying vec3 vSunDir; varying vec3 vViewDir;
-        uniform vec3 sunDirection;
-        void main() {
-          vUv = uv;
-          vNormal = normalize(normalMatrix * normal);
-          vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-          vViewDir = normalize(-mvPos.xyz);
-          gl_Position = projectionMatrix * mvPos;
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D dayTexture; uniform sampler2D nightTexture;
-        varying vec2 vUv; varying vec3 vNormal; varying vec3 vSunDir; varying vec3 vViewDir;
-        void main() {
-          vec4 dayColor = texture2D(dayTexture, vUv);
-          vec4 nightColor = texture2D(nightTexture, vUv);
-          if (dayColor.r > 0.85 && dayColor.g > 0.85 && dayColor.b > 0.85) { dayColor.rgb *= 0.85; }
-          float cosTheta = dot(vNormal, vSunDir);
-          float dayFactor = smoothstep(-0.02, 0.1, cosTheta);
-          vec3 nightLights = nightColor.rgb * vec3(1.4, 1.2, 0.9);
-          vec3 dayAlbedo = dayColor.rgb;
-          if (dayColor.b > dayColor.r * 1.1 && cosTheta > 0.0) {
-            vec3 halfVector = normalize(vSunDir + vViewDir);
-            float spec = pow(max(dot(vNormal, halfVector), 0.0), 32.0);
-            float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 5.0);
-            dayAlbedo += vec3(0.5, 0.8, 1.0) * spec * fresnel * 1.5;
-          }
-          gl_FragColor = vec4(mix(nightLights, dayAlbedo, dayFactor), 1.0);
-        }
-      `
-    })
-
-    const earthGroup = new THREE.Group()
-    earthGroup.rotation.z = (23.44 * Math.PI) / 180
-    scene.add(earthGroup)
-    earthGroup.add(new THREE.Mesh(earthGeo, earthShaderMat))
-
-    // Atmosphere
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.01, 128, 128)
-    const atmosMat = new THREE.ShaderMaterial({
-      transparent: true, side: THREE.BackSide, blending: THREE.AdditiveBlending,
-      vertexShader: `
-        varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-          vViewDir = normalize(-mvPos.xyz);
-          gl_Position = projectionMatrix * mvPos;
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-          float rayleigh = pow(rim, 5.0) * 1.0;
-          gl_FragColor = vec4(vec3(0.18, 0.65, 1.0) * rayleigh, rayleigh * 0.6);
-        }
-      `
-    })
-    earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
-
-    // Launch Vehicle (LV) Assembly
-    const lvGroup = new THREE.Group()
-    
-    // Core Stage
-    const coreGeo = new THREE.CylinderGeometry(0.004, 0.004, 0.04, 16)
-    const coreMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.3, metalness: 0.7 })
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat)
-    coreMesh.position.set(0, 0.02, 0)
-    lvGroup.add(coreMesh)
-
-    // Fairing
-    const fairingGeo = new THREE.ConeGeometry(0.004, 0.015, 16)
-    const fairingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 })
-    const fairingMesh = new THREE.Mesh(fairingGeo, fairingMat)
-    fairingMesh.position.set(0, 0.0475, 0)
-    lvGroup.add(fairingMesh)
-
-    // Plume (Engine Exhaust)
-    const plumeGeo = new THREE.ConeGeometry(0.003, 0.025, 16)
-    const plumeMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending })
-    const plumeMesh = new THREE.Mesh(plumeGeo, plumeMat)
-    plumeMesh.position.set(0, -0.0125, 0)
-    plumeMesh.rotation.x = Math.PI
-    lvGroup.add(plumeMesh)
-
-    scene.add(lvGroup)
-
-    // Trajectory Ribbon (Draws behind the rocket)
-    const trajMaxPts = 500
-    const trajGeo = new THREE.BufferGeometry()
-    const trajPos = new Float32Array(trajMaxPts * 3)
-    trajGeo.setAttribute("position", new THREE.BufferAttribute(trajPos, 3))
-    // Fill initial with zeros
-    for (let i = 0; i < trajMaxPts * 3; i++) trajPos[i] = 0
-
-    const trajMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, linewidth: 2 })
+    const trajCurve = new THREE.CatmullRomCurve3(curvePoints)
+    const trajGeo = new THREE.BufferGeometry().setFromPoints(trajCurve.getPoints(120))
+    const trajMat = new THREE.LineBasicMaterial({ color: spec.colorHex, linewidth: 2 })
     const trajLine = new THREE.Line(trajGeo, trajMat)
     scene.add(trajLine)
 
-    // Mouse Interaction
-    const onMouseDown = (e: MouseEvent) => {
-      simStateRef.current.isDragging = true
-      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+    // Key Event Markers along Trajectory
+    const addMarker = (tRatio: number, labelColor: number) => {
+      const pt = trajCurve.getPoint(tRatio)
+      const markerGeo = new THREE.SphereGeometry(0.8, 16, 16)
+      const markerMat = new THREE.MeshBasicMaterial({ color: labelColor })
+      const marker = new THREE.Mesh(markerGeo, markerMat)
+      marker.position.copy(pt)
+      scene.add(marker)
     }
-    const onMouseMove = (e: MouseEvent) => {
-      if (!simStateRef.current.isDragging) return
-      const dx = e.clientX - simStateRef.current.prevMouse.x
-      const dy = e.clientY - simStateRef.current.prevMouse.y
-      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
-      simStateRef.current.dragVelocity = { x: dx, y: dy }
-      simStateRef.current.targetYaw += dx * 0.005
-      simStateRef.current.targetPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetPitch + dy * 0.005))
-    }
-    const onMouseUp = () => { simStateRef.current.isDragging = false }
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const zoomDelta = e.deltaY * 0.001
-      simStateRef.current.targetDistance = Math.max(0.1, Math.min(6.0, simStateRef.current.targetDistance + zoomDelta))
-    }
-    const dom = renderer.domElement
-    dom.addEventListener("mousedown", onMouseDown)
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp)
-    dom.addEventListener("wheel", onWheel, { passive: false })
 
-    // Physics Engine Configuration
-    const massInitialKg = 550000 // e.g. Falcon 9 class
-    const thrustN = 7600000 
-    const ispSec = 310
-    const mDot = thrustN / (ispSec * 9.81) // kg/s
-    
+    addMarker(spec.mecoSec / spec.secoSec, 0xf59e0b) // MECO
+    addMarker(spec.fairingSepSec / spec.secoSec, 0x10b981) // Fairing Sep
+    addMarker(1.0, 0x38bdf8) // SECO Insertion
+
+    // 3. Rocket Vehicle Marker
+    const rocketMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.6, 1.0, 4.0, 16),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.8, roughness: 0.2 })
+    )
+    rocketMesh.rotation.z = -Math.PI / 2
+    scene.add(rocketMesh)
+
+    // Exhaust Flame
+    const flameGeo = new THREE.ConeGeometry(0.8, 3.5, 16)
+    const flameMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+    const flameMesh = new THREE.Mesh(flameGeo, flameMat)
+    flameMesh.rotation.z = Math.PI / 2
+    flameMesh.position.set(-3.0, 0, 0)
+    rocketMesh.add(flameMesh)
+
     let animId: number
-    let lastTime = performance.now()
-    let lastUiSync = performance.now()
-
-    let trajIndex = 0
-
-    const animate = (now: number) => {
+    const animate = () => {
       animId = requestAnimationFrame(animate)
-      const dt = Math.min((now - lastTime) / 1000, 0.1)
-      lastTime = now
 
-      if (simStateRef.current.isPlaying) {
-        simStateRef.current.simTimeSec += dt * simStateRef.current.timeScale
+      // Position rocket along trajectory curve based on current progress
+      const currentPoint = trajCurve.getPoint(progress)
+      rocketMesh.position.copy(currentPoint)
+
+      // Orient vehicle tangent to trajectory curve
+      const tangent = trajCurve.getTangent(progress).normalize()
+      rocketMesh.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), tangent)
+
+      // Flicker flame
+      if (simTimeSec < spec.secoSec) {
+        flameMesh.visible = true
+        flameMesh.scale.set(1 + Math.random() * 0.2, 1 + Math.random() * 0.4, 1 + Math.random() * 0.2)
+      } else {
+        flameMesh.visible = false
       }
-
-      const t = simStateRef.current.simTimeSec
-      let tSim = Math.max(0, t)
-
-      // Parametric Ascent Profile Approximation (For deterministic visual rendering)
-      // Orbital insertion at t=510s, alt=200km, vel=7.8 km/s, downrange ~ 1500km
-      const tNorm = Math.min(1, tSim / 510)
-      
-      // Altitude curve: quadratic early, flattens out (Logistics approx)
-      const altKm = tSim <= 0 ? 0 : 200 * (1 - Math.exp(-3 * tNorm))
-      
-      // Downrange curve: slow start, linearizes
-      const downrangeKm = 1500 * Math.pow(tNorm, 1.8)
-      
-      // Velocity magnitude curve
-      const velKmS = 7.8 * Math.pow(tNorm, 1.2)
-
-      // Flight Path Angle (90 deg = vertical, 0 deg = horizontal orbit)
-      const fpaDeg = 90 - (90 * Math.pow(Math.min(1, tSim / 150), 0.8))
-      const fpaRad = (fpaDeg * Math.PI) / 180
-
-      // Plume logic
-      plumeMesh.visible = (t > 0 && t < 150) || (t > 161 && t < 510)
-      if (t > 154) coreMesh.scale.set(1, 0.3, 1) // Stage 1 separation visualization
-      if (t > 190) fairingMesh.visible = false
-
-      // Map local ascent to ECEF Globe
-      const padLatRad = (PAD_LAT * Math.PI) / 180
-      const padLonRad = (PAD_LON * Math.PI) / 180
-      
-      // Arc distance over sphere
-      const angularDist = downrangeKm / EARTH_RADIUS_KM
-      // Approximate azimuth (launching due East)
-      const azm = (90 * Math.PI) / 180
-
-      // Spherical law of cosines for vehicle lat/lon
-      const latRad = Math.asin(Math.sin(padLatRad) * Math.cos(angularDist) + Math.cos(padLatRad) * Math.sin(angularDist) * Math.cos(azm))
-      const lonRad = padLonRad + Math.atan2(Math.sin(azm) * Math.sin(angularDist) * Math.cos(padLatRad), Math.cos(angularDist) - Math.sin(padLatRad) * Math.sin(latRad))
-
-      const r = earthRadius * ((EARTH_RADIUS_KM + altKm) / EARTH_RADIUS_KM)
-      
-      // ECEF coordinates
-      const xE = -(r * Math.cos(latRad) * Math.cos(lonRad))
-      const zE = r * Math.cos(latRad) * Math.sin(lonRad)
-      const yE = r * Math.sin(latRad)
-
-      lvGroup.position.set(xE, yE, zE)
-      
-      // Vehicle Attitude Orientation
-      // Zenith vector
-      const up = new THREE.Vector3(xE, yE, zE).normalize()
-      // Eastward downrange vector
-      const east = new THREE.Vector3(-Math.sin(lonRad), 0, -Math.cos(lonRad)).normalize()
-      
-      // Pitch rotation around North axis
-      const north = new THREE.Vector3().crossVectors(up, east).normalize()
-      lvGroup.quaternion.setFromAxisAngle(north, (90 - fpaDeg) * (Math.PI / 180))
-      // Align initial up to Zenith
-      const qUp = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), up)
-      lvGroup.quaternion.premultiply(qUp)
-
-      // Record trajectory ribbon
-      if (t > 0 && trajIndex < trajMaxPts - 1 && t % 1 < dt * simStateRef.current.timeScale) {
-        const positions = trajGeo.attributes.position as THREE.BufferAttribute
-        positions.setXYZ(trajIndex, xE, yE, zE)
-        // Shift trail forward to draw line
-        for(let i=trajIndex; i<trajMaxPts; i++) positions.setXYZ(i, xE, yE, zE)
-        positions.needsUpdate = true
-        trajIndex++
-      }
-
-      // Camera Damping & Tracking
-      if (!simStateRef.current.isDragging) {
-        simStateRef.current.targetYaw += simStateRef.current.dragVelocity.x * 0.002
-        simStateRef.current.targetPitch += simStateRef.current.dragVelocity.y * 0.002
-        simStateRef.current.dragVelocity.x *= 0.92
-        simStateRef.current.dragVelocity.y *= 0.92
-      }
-
-      simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.08
-      simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.08
-      simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.08
-
-      const curDist = simStateRef.current.distance
-      // Orbit camera around the Launch Vehicle
-      camera.position.x = lvGroup.position.x + curDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
-      camera.position.y = lvGroup.position.y + curDist * Math.sin(simStateRef.current.pitch)
-      camera.position.z = lvGroup.position.z + curDist * Math.cos(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
-      camera.lookAt(lvGroup.position)
 
       renderer.render(scene, camera)
-
-      // Telemetry Dispatch (4Hz)
-      if (now - lastUiSync > 250) {
-        lastUiSync = now
-
-        // Physics equations for UI
-        const currentMassKg = Math.max(50000, massInitialKg - (tSim * mDot))
-        const currentThrustN = tSim > 0 && tSim < 150 ? thrustN : (tSim > 161 && tSim < 510 ? 981000 : 0) // Stage 2 thrust approx
-        const gravityAtAlt = 9.81 * Math.pow(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + altKm), 2)
-        const twr = tSim > 0 ? currentThrustN / (currentMassKg * gravityAtAlt) : 0
-
-        // Barometric formula for atmospheric density
-        const rho = 1.225 * Math.exp(-altKm / 8.5) // kg/m^3
-        const vMs = velKmS * 1000
-        const qPa = 0.5 * rho * vMs * vMs
-        const qKpa = qPa / 1000
-
-        let phase = "PRE-LAUNCH"
-        if (t > 0) phase = "LIFTOFF"
-        if (t > 75) phase = "MAX-Q"
-        if (t > 150) phase = "MECO / COAST"
-        if (t > 161) phase = "STAGE 2 BURN"
-        if (t > 510) phase = "ORBITAL INSERTION"
-
-        setTelemetryUI({
-          simTimeSec: Math.round(t),
-          altitudeKm: altKm.toFixed(2),
-          velocityKmS: velKmS.toFixed(2),
-          downrangeKm: downrangeKm.toFixed(1),
-          dynamicPressureKpa: qKpa.toFixed(1),
-          thrustWeightRatio: twr.toFixed(2),
-          flightPathAngleDeg: Math.max(0, fpaDeg).toFixed(1),
-          currentMassKg: Math.round(currentMassKg),
-          phase
-        })
-
-        // Track Altitude for HUD Sparkline
-        setAltHistory(prev => [...prev.slice(1), altKm])
-      }
     }
-
-    animId = requestAnimationFrame(animate)
+    animate()
 
     const onResize = () => {
       if (!container) return
-      const w = container.clientWidth
-      const h = container.clientHeight
-      camera.aspect = w / h
+      camera.aspect = container.clientWidth / container.clientHeight
       camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
+      renderer.setSize(container.clientWidth, container.clientHeight)
     }
     window.addEventListener("resize", onResize)
 
     return () => {
       cancelAnimationFrame(animId)
       window.removeEventListener("resize", onResize)
-      dom.removeEventListener("mousedown", onMouseDown)
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      dom.removeEventListener("wheel", onWheel)
       renderer.dispose()
     }
-  }, [mission])
-
-  // Helper to format T- time
-  const formatTime = (sec: number) => {
-    const sign = sec < 0 ? "T-" : "T+"
-    const absSec = Math.abs(Math.round(sec))
-    const m = Math.floor(absSec / 60).toString().padStart(2, "0")
-    const s = (absSec % 60).toString().padStart(2, "0")
-    return `${sign}${m}:${s}`
-  }
+  }, [spec, progress, simTimeSec])
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
+    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-[#020617] font-sans text-slate-100 overflow-hidden">
       
-      {/* 3D WEBGL KERNEL */}
-      <div
-        ref={mountRef}
-        className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0"
-      />
+      {/* LEFT PANEL: LAUNCH VEHICLE & TARGETS */}
+      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Rocket className="w-5 h-5 text-cyan-400" /> Ascent &amp; Trajectory
+          </h1>
+          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
+            Multi-Stage Gravity Turn &amp; Max-Q Kinematics
+          </p>
+        </div>
 
-      {/* FLOATING LEFT HUD: ASCENT KINEMATICS */}
-      <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
-        
-        {/* Ascent Telemetry */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">
-          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-indigo-400" />
-              VEHICLE KINEMATICS
-            </span>
-            <span className="text-[10px] text-indigo-400 px-2 py-0.5 rounded border border-indigo-500/20 bg-indigo-950/50">
-              {telemetryUI.phase}
-            </span>
+        <div className="space-y-6">
+          {/* Vehicle Selector */}
+          <div className="space-y-3">
+            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" /> Launch Vehicle Architecture
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["FALCON_HEAVY", "ELECTRON", "ARIANE_6", "VULCAN"] as VehiclePreset[]).map(v => (
+                <button
+                  key={v}
+                  onClick={() => { setVehicle(v); setSimTimeSec(0); setIsPlaying(true) }}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    vehicle === v 
+                      ? "bg-cyan-950/60 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]" 
+                      : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="font-bold text-[11px] truncate">{VEHICLES[v].name.split(" ")[0]}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Cap: {VEHICLES[v].maxPayloadKg.toLocaleString()} kg</div>
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">INERTIAL VELOCITY</span>
-              <span className="text-cyan-400 font-bold">{telemetryUI.velocityKmS} km/s</span>
+          {/* Mission Targets */}
+          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Target Insertion Vector
             </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">ALTITUDE</span>
-              <span className="text-white font-bold">{telemetryUI.altitudeKm} km</span>
+
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">TARGET ALTITUDE:</span>
+                <span className="text-emerald-400 font-bold">{targetAltKm} km LEO</span>
+              </div>
+              <input 
+                type="range" min="180" max="800" step="10"
+                value={targetAltKm}
+                onChange={e => setTargetAltKm(Number(e.target.value))}
+                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">DOWNRANGE DISTANCE</span>
-              <span className="text-white font-bold">{telemetryUI.downrangeKm} km</span>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">LAUNCH AZIMUTH:</span>
+                <span className="text-cyan-400 font-bold">{azimuthDeg}° (PROGRADE)</span>
+              </div>
+              <input 
+                type="range" min="35" max="145" step="1"
+                value={azimuthDeg}
+                onChange={e => setAzimuthDeg(Number(e.target.value))}
+                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">FLIGHT PATH ANGLE</span>
-              <span className="text-amber-400 font-bold">{telemetryUI.flightPathAngleDeg}&deg;</span>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">PAYLOAD MASS:</span>
+                <span className="text-amber-400 font-bold">{payloadMassKg.toLocaleString()} kg</span>
+              </div>
+              <input 
+                type="range" min="100" max={spec.maxPayloadKg} step="100"
+                value={payloadMassKg}
+                onChange={e => setPayloadMassKg(Number(e.target.value))}
+                className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+          </div>
+
+          {/* Timeline Playback Controls */}
+          <div className="p-4 bg-slate-900/60 border border-slate-700/80 rounded-xl space-y-3">
+            <div className="flex justify-between items-center text-[11px]">
+              <span className="text-slate-400 font-bold uppercase">Mission Clock</span>
+              <span className="text-cyan-400 font-bold font-mono text-sm">
+                T+{simTimeSec.toString().padStart(3, "0")}s
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className={`flex-1 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
+                  isPlaying 
+                    ? "bg-slate-800 hover:bg-slate-700 text-white" 
+                    : "bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]"
+                }`}
+              >
+                {isPlaying ? <Square className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
+                {isPlaying ? "HOLD TRAJECTORY" : "RESUME ASCENT"}
+              </button>
+
+              <button
+                onClick={() => { setSimTimeSec(0); setIsPlaying(true) }}
+                className="p-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                title="Restart T-0"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Flight Milestones */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-800 text-[10px]">
+              <div className="flex justify-between items-center">
+                <span className={simTimeSec >= 75 && simTimeSec <= 85 ? "text-rose-400 font-bold animate-pulse" : "text-slate-500"}>
+                  • MAX-Q (MAX DYNAMIC PRESSURE)
+                </span>
+                <span className="text-slate-400">T+80s</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className={isMECO ? "text-emerald-400 font-bold" : "text-slate-500"}>
+                  • MAIN ENGINE CUTOFF (MECO)
+                </span>
+                <span className="text-slate-400">T+{spec.mecoSec}s</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className={isFairingSep ? "text-emerald-400 font-bold" : "text-slate-500"}>
+                  • PAYLOAD FAIRING JETTISON
+                </span>
+                <span className="text-slate-400">T+{spec.fairingSepSec}s</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className={isSECO ? "text-cyan-400 font-bold" : "text-slate-500"}>
+                  • ORBITAL INJECTION (SECO)
+                </span>
+                <span className="text-slate-400">T+{spec.secoSec}s</span>
+              </div>
             </div>
           </div>
         </div>
-
-        {/* Dynamic Launch Physics */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">
-          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Thermometer className="w-4 h-4 text-rose-400" />
-              PROPULSION &amp; AERO
-            </span>
-            <span className="text-[10px] text-rose-400">6-DOF RK4</span>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">DYNAMIC PRESSURE (Q)</span>
-              <span className="text-white font-bold">{telemetryUI.dynamicPressureKpa} kPa</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">THRUST/WEIGHT (TWR)</span>
-              <span className="text-white font-bold">{telemetryUI.thrustWeightRatio}</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">VEHICLE MASS</span>
-              <span className="text-emerald-400 font-bold">{telemetryUI.currentMassKg.toLocaleString()} kg</span>
-            </div>
-          </div>
-        </div>
-
       </div>
 
-      {/* FLOATING RIGHT HUD: FLIGHT EVENTS & TIMELINE */}
-      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
-        
-        {/* Event Sequence Checklist */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
-          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Milestone className="w-4 h-4 text-emerald-400" />
-              FLIGHT SEQUENCE
+      {/* CENTER PANEL: 3D TRAJECTORY FLIGHT VIEW */}
+      <div className="flex-1 h-full relative flex flex-col">
+        <div className="absolute top-6 left-6 z-10 font-mono">
+          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">Ascent Profile</div>
+          <div className="flex items-baseline gap-3">
+            <span className="text-4xl font-black text-white">{velocityKms.toFixed(2)} km/s</span>
+            <span className="text-slate-500 text-sm">INERTIAL VELOCITY</span>
+          </div>
+          <div className="flex gap-4 mt-2 text-[11px]">
+            <span className="text-emerald-400">ALTITUDE: {altitudeKm.toFixed(1)} km</span>
+            <span className="text-cyan-400">DOWNRANGE: {downrangeKm.toFixed(0)} km</span>
+            <span className="text-amber-400">PITCH: {flightPathAngleDeg.toFixed(1)}°</span>
+          </div>
+        </div>
+
+        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+
+        {/* Telemetry Bar */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Gauge className="w-5 h-5 text-amber-400" />
+            <div>
+              <span className="text-slate-500 block text-[9px]">DYNAMIC PRESSURE (q)</span>
+              <span className={`text-sm font-bold ${dynamicPressureKpa > 30 ? "text-rose-400 font-black animate-pulse" : "text-white"}`}>
+                {dynamicPressureKpa.toFixed(1)} kPa
+              </span>
+            </div>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">LONGITUDINAL ACCEL</span>
+            <span className="text-cyan-400 font-bold text-sm">+{gForce.toFixed(2)} G</span>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">STAGE STATUS</span>
+            <span className="text-emerald-400 font-bold text-sm">
+              {simTimeSec < spec.mecoSec ? "STAGE 1 BOOST" : simTimeSec < spec.secoSec ? "STAGE 2 VACUUM" : "ORBIT INSERTION"}
             </span>
-            <span className="text-[10px] text-emerald-400">NOMINAL</span>
           </div>
-
-          <div className="space-y-2">
-            {FLIGHT_EVENTS.map((evt, idx) => {
-              const isPast = telemetryUI.simTimeSec >= evt.timeSec
-              return (
-                <div key={idx} className="flex items-center gap-3">
-                  {isPast ? (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Circle className="w-3.5 h-3.5 text-slate-700" />
-                  )}
-                  <div className={`flex-1 flex justify-between ${isPast ? "text-slate-200" : "text-slate-500"}`}>
-                    <span>{evt.label}</span>
-                    <span className="font-bold">{formatTime(evt.timeSec)}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Altitude Profile Sparkline */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
-          <div className="border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              ASCENT PROFILE
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">REMAINING ΔV TO ORBIT</span>
+            <span className="text-amber-400 font-bold text-sm">
+              {Math.max(0, targetOrbitalVelKms * 1000 - velocityMs).toFixed(0)} m/s
             </span>
-            <span className="text-cyan-400 font-bold">{telemetryUI.altitudeKm} km</span>
           </div>
-
-          <div className="h-14 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-0.5 gap-px overflow-hidden">
-            {altHistory.map((val, idx) => {
-              const hPercent = Math.max(5, Math.min(100, (val / 220) * 100))
-              return (
-                <div
-                  key={idx}
-                  className="flex-1 bg-cyan-500/80 rounded-t-sm"
-                  style={{ height: `${hPercent}%` }}
-                />
-              )
-            })}
-          </div>
-        </div>
-
-      </div>
-
-      {/* BOTTOM STATUS BAR HUD */}
-      <div className="absolute bottom-4 left-6 right-6 z-20 px-5 py-2.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80 flex flex-wrap items-center justify-between font-mono text-xs pointer-events-auto shadow-2xl">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <Radio className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-slate-400">LAUNCH PAD:</span>
-            <span className="text-white font-bold">CAPE CANAVERAL (LC-39A)</span>
-          </div>
-        </div>
-        <div className="text-[11px] text-slate-400 flex items-center gap-3">
-          <span>DRAG TO ORBIT CAMERA</span>
         </div>
       </div>
 
+      {/* RIGHT PANEL: LAUNCH VEHICLE DYNAMICS */}
+      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-cyan-400" /> Vehicle Telemetry
+        </h2>
+
+        <div className="space-y-6">
+          {/* Max-Q Alert Card */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2 flex justify-between">
+              <span>Max-Q Dynamic Stress</span>
+              <span className={dynamicPressureKpa > 30 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+                {dynamicPressureKpa > 30 ? "HIGH STRESS" : "NOMINAL"}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${dynamicPressureKpa > 30 ? "bg-rose-500" : "bg-cyan-500"}`} 
+                style={{ width: `${Math.min(100, (dynamicPressureKpa / 40) * 100)}%` }} 
+              />
+            </div>
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>Limit: 38.5 kPa</span>
+              <span>Alt: {altitudeKm.toFixed(1)} km</span>
+            </div>
+          </div>
+
+          {/* Staging & Burn Times */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Ascent Milestone Schedule</div>
+            <div className="flex justify-between"><span className="text-slate-500">Liftoff Thrust:</span><span className="text-white font-bold">{spec.liftoffThrustKn} kN</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Liftoff T/W Ratio:</span><span className="text-emerald-400 font-bold">{(spec.liftoffThrustKn / ((spec.liftoffMassKg * 9.80665) / 1000)).toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">MECO Window:</span><span className="text-amber-400">{spec.mecoSec}s</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Target Injection:</span><span className="text-cyan-400 font-bold">{targetOrbitalVelKms.toFixed(3)} km/s</span></div>
+          </div>
+
+          {/* Payload Margin */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2 flex justify-between">
+              <span>Fairing Capacity</span>
+              <span className="text-emerald-400 font-bold">
+                {(((spec.maxPayloadKg - payloadMassKg) / spec.maxPayloadKg) * 100).toFixed(1)}% MARGIN
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              Payload mass fits comfortably within vehicle SSO envelope with sufficient performance reserves for reserve margins.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
