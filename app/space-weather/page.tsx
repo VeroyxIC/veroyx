@@ -1,384 +1,154 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
-import Link from "next/link"
-import { useMission } from "@/lib/missionStore"
+import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
 import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Activity, 
-  ShieldAlert, 
-  Zap, 
-  
-  CloudLightning,
-  Sun,
-  Globe2,
-  Crosshair
+  ShieldAlert, Sun, Activity, Zap, Radio, AlertTriangle, 
+  ShieldCheck, Layers, Gauge, RefreshCw, Orbit 
 } from "lucide-react"
 
+type SolarCycle = "SOLAR_MIN" | "MODERATE" | "SOLAR_MAX"
+
 export default function SpaceWeatherPage() {
-  const { mission } = useMission()
   const mountRef = useRef<HTMLDivElement | null>(null)
 
-  const [isPlaying, setIsPlaying] = useState<boolean>(true)
-  const [timeScale, setTimeScale] = useState<number>(10)
-  const [kpIndex, setKpIndex] = useState<number>(2) // Geomagnetic storm scale 0-9
+  // Orbital & Environment Controls
+  const [orbitAltKm, setOrbitAltKm] = useState(650)
+  const [inclinationDeg, setInclinationDeg] = useState(51.6) // ISS / high-density LEO
+  const [shieldingMmAl, setShieldingMmAl] = useState(2.5) // Aluminum shielding thickness
+  const [solarCycle, setSolarCycle] = useState<SolarCycle>("SOLAR_MAX")
+  const [kpIndex, setKpIndex] = useState(4.2) // Geomagnetic storm activity (0-9)
+  const [missionYears, setMissionYears] = useState(5)
 
-  // Physics Constants
-  const EARTH_RADIUS_KM = 6378.137
-  const SAA_LAT_DEG = -25.0
-  const SAA_LON_DEG = -45.0
-  const SAA_RADIUS_KM = 2800
-  const NOMINAL_FLUX = 15 // protons/cm^2/s
-  const SAA_FLUX = 25000 // Severe trapped proton flux
-  const VAN_ALLEN_FLUX = 120000
+  // Radiation Dosimetry Engine (Parametric NASA AP8/AE8 approximation)
+  // Inner belt peak: ~3,000 km (Protons). Outer belt peak: ~18,000 km (Electrons).
+  const isInsideSAA = orbitAltKm >= 450 && orbitAltKm <= 850 && inclinationDeg >= 25
+  const solarCycleMult = solarCycle === "SOLAR_MAX" ? 1.45 : solarCycle === "SOLAR_MIN" ? 0.75 : 1.0
 
-  // Kinetic state
-  const simStateRef = useRef({
-    isPlaying: true,
-    timeScale: 10,
-    kpIndex: 2,
-    simTimeSec: 0,
-    cameraYaw: 1.1,
-    cameraPitch: 0.3,
-    targetCameraYaw: 1.1,
-    targetCameraPitch: 0.3,
-    cameraDistance: 6.5,
-    targetCameraDistance: 6.5,
-    isDragging: false,
-    prevMouse: { x: 0, y: 0 },
-    dragVelocity: { x: 0, y: 0 },
-    accumulatedDoseKrad: 2.45 // Starting degraded state
-  })
+  // Total Ionizing Dose (TID) estimation [krad(Si)]:
+  // Base dose drops exponentially with aluminum shielding thickness (Lambert-Beer attenuation approx)
+  const altitudeFactor = Math.exp(-Math.pow(orbitAltKm - 3000, 2) / (2 * Math.pow(1500, 2))) * 120 + (orbitAltKm > 1000 ? (orbitAltKm / 1000) * 1.8 : 0.8)
+  const shieldingAttenuation = Math.exp(-shieldingMmAl / 2.2)
+  const annualTidKrad = (altitudeFactor * solarCycleMult * shieldingAttenuation)
+  const totalMissionTidKrad = annualTidKrad * missionYears
 
-  // Throttled UI Telemetry (4 Hz)
-  const [telemetryUI, setTelemetryUI] = useState({
-    simTimeSec: 0,
-    environmentState: "NOMINAL LEO PLASMA",
-    fluxDensity: "15",
-    doseRateRadHr: "0.01",
-    totalDoseKrad: "2.450",
-    seuProbability: "0.0001",
-    isInsideSAA: false,
-    isInsideBelt: false
-  })
+  // Single Event Upset (SEU) Rate [bit-flips per Gbit / day]:
+  // Heavy ions and trapped high-energy protons trigger upsets in SRAM/FPGA cells
+  const kpFactor = 1 + (kpIndex / 9) * 0.8
+  const baseSeuRate = isInsideSAA ? 4.2 : 0.45
+  const seuPerGbitDay = (baseSeuRate * solarCycleMult * kpFactor) / Math.sqrt(shieldingMmAl)
 
-  const [fluxHistory, setFluxHistory] = useState<number[]>(Array(40).fill(NOMINAL_FLUX))
+  // Proton Flux (>10 MeV) [pfu: particles / (cm^2 s sr)]:
+  const protonFluxPfu = Math.max(1.2, (kpIndex * 8.4) * (isInsideSAA ? 3.5 : 1.0))
 
-  useEffect(() => {
-    simStateRef.current.isPlaying = isPlaying
-    simStateRef.current.timeScale = timeScale
-    simStateRef.current.kpIndex = kpIndex
-  }, [isPlaying, timeScale, kpIndex])
-
-  const orbit = useMemo(() => {
-    const mu = 398600.4418
-    const a = EARTH_RADIUS_KM + mission.altitudeKm
-    const incRad = (mission.inclinationDeg * Math.PI) / 180
-    const n = Math.sqrt(mu / Math.pow(a, 3))
-    return { a, incRad, n }
-  }, [mission.altitudeKm, mission.inclinationDeg])
-
+  // 3D Magnetosphere & Van Allen Belts
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
-
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#010308")
 
-    const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 2000)
-    camera.position.set(0, 2.0, 6.5)
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100)
+    camera.position.set(0, 10, 16)
     camera.lookAt(0, 0, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.15
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep Space Starfield
-    const starGeo = new THREE.BufferGeometry()
-    const starPos = new Float32Array(3000 * 3)
-    for (let i = 0; i < 9000; i++) starPos[i] = (Math.random() - 0.5) * 200
-    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.1, transparent: true, opacity: 0.6 })))
-
-    const sunDir = new THREE.Vector3(7.0, 3.0, 5.0).normalize()
-    const sunLight = new THREE.DirectionalLight(0xfff7ed, 2.5)
-    sunLight.position.copy(sunDir.clone().multiplyScalar(40))
+    // Lighting
+    scene.add(new THREE.AmbientLight(0x1e293b, 1.5))
+    const sunLight = new THREE.DirectionalLight(0xfffaed, 2.5)
+    sunLight.position.set(12, 0, 8)
     scene.add(sunLight)
-    scene.add(new THREE.AmbientLight(0x061224, 0.5))
 
-    const earthRadius = 1.75
-    const textureLoader = new THREE.TextureLoader()
-    const dayTexture = textureLoader.load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg", () => renderer.render(scene, camera))
-    dayTexture.colorSpace = THREE.SRGBColorSpace
-    const nightTexture = textureLoader.load("https://unpkg.com/three-globe/example/img/earth-night.jpg", () => renderer.render(scene, camera))
-    nightTexture.colorSpace = THREE.SRGBColorSpace
-
-    // Earth Shader
-    const earthGeo = new THREE.SphereGeometry(earthRadius, 96, 96)
-    const earthMat = new THREE.ShaderMaterial({
-      uniforms: { dayTexture: { value: dayTexture }, nightTexture: { value: nightTexture }, sunDirection: { value: sunDir } },
-      vertexShader: `
-        varying vec2 vUv; varying vec3 vNormal; varying vec3 vSunDir;
-        uniform vec3 sunDirection;
-        void main() {
-          vUv = uv; vNormal = normalize(normalMatrix * normal);
-          vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D dayTexture; uniform sampler2D nightTexture;
-        varying vec2 vUv; varying vec3 vNormal; varying vec3 vSunDir;
-        void main() {
-          vec4 dayC = texture2D(dayTexture, vUv); vec4 nightC = texture2D(nightTexture, vUv);
-          if (dayC.r > 0.85 && dayC.g > 0.85 && dayC.b > 0.85) { dayC.rgb *= 0.82; }
-          float cosTheta = dot(vNormal, vSunDir);
-          float dayFactor = smoothstep(-0.04, 0.14, cosTheta);
-          vec3 finalC = mix(nightC.rgb * vec3(1.7, 1.4, 0.95) * 2.2, dayC.rgb, dayFactor);
-          gl_FragColor = vec4(finalC, 1.0);
-        }
-      `
+    // 1. Earth Sphere
+    const earthGeo = new THREE.SphereGeometry(2.0, 32, 32)
+    const earthMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.8,
+      metalness: 0.1
     })
-    const earthGroup = new THREE.Group()
-    earthGroup.rotation.z = (23.44 * Math.PI) / 180
-    scene.add(earthGroup)
-    const earthMesh = new THREE.Mesh(earthGeo, earthMat); earthGroup.add(earthMesh)
+    const earth = new THREE.Mesh(earthGeo, earthMat)
+    scene.add(earth)
 
-    // Magnetic Dipole Frame (Tilted 11 degrees from rotation axis)
-    const magFrame = new THREE.Group()
-    magFrame.rotation.z = (11 * Math.PI) / 180
-    earthGroup.add(magFrame)
-
-    // Volumetric Van Allen Belt (Plasma Glow Shader)
-    const beltGeo = new THREE.TorusGeometry(earthRadius * 1.8, earthRadius * 0.4, 32, 100)
-    const beltMat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-      vertexShader: `
-        varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-          vViewDir = normalize(-mvPos.xyz);
-          gl_Position = projectionMatrix * mvPos;
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-          float intensity = pow(rim, 2.5);
-          gl_FragColor = vec4(0.8, 0.2, 1.0, intensity * 0.4); // Purple/Violet plasma
-        }
-      `
+    // SAA Hazard Polygon (Visual patch on Earth surface)
+    const saaGeo = new THREE.SphereGeometry(2.01, 16, 16, Math.PI * 0.9, Math.PI * 0.4, Math.PI * 0.45, Math.PI * 0.3)
+    const saaMat = new THREE.MeshBasicMaterial({
+      color: 0xf43f5e,
+      transparent: true,
+      opacity: 0.45,
+      side: THREE.DoubleSide
     })
-    const beltMesh = new THREE.Mesh(beltGeo, beltMat)
-    beltMesh.rotation.x = Math.PI / 2
-    magFrame.add(beltMesh)
+    const saaPatch = new THREE.Mesh(saaGeo, saaMat)
+    scene.add(saaPatch)
 
-    // South Atlantic Anomaly (SAA) Volume
-    const saaPhi = (90 - SAA_LAT_DEG) * (Math.PI / 180)
-    const saaTheta = (SAA_LON_DEG + 180) * (Math.PI / 180)
-    const saaX = -(earthRadius * Math.sin(saaPhi) * Math.cos(saaTheta))
-    const saaZ = earthRadius * Math.sin(saaPhi) * Math.sin(saaTheta)
-    const saaY = earthRadius * Math.cos(saaPhi)
-
-    const saaGeo = new THREE.SphereGeometry(earthRadius * (SAA_RADIUS_KM / EARTH_RADIUS_KM), 32, 32)
-    const saaMat = new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      vertexShader: `
-        varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
-          vViewDir = normalize(-mvPos.xyz);
-          gl_Position = projectionMatrix * mvPos;
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vNormal; varying vec3 vViewDir;
-        void main() {
-          float rim = 1.0 - abs(dot(vNormal, vViewDir));
-          float pulse = 0.5 + 0.5 * sin(gl_FragCoord.w * 10.0); // simple pulse
-          gl_FragColor = vec4(1.0, 0.2, 0.0, pow(rim, 3.0) * 0.5);
-        }
-      `
+    // 2. Inner Van Allen Belt (Proton Trap: Torus geometry)
+    const innerBeltGeo = new THREE.TorusGeometry(3.6, 0.7, 16, 64)
+    const innerBeltMat = new THREE.MeshBasicMaterial({
+      color: 0xf43f5e,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.15
     })
-    const saaMesh = new THREE.Mesh(saaGeo, saaMat)
-    saaMesh.position.set(saaX, saaY, saaZ)
-    earthGroup.add(saaMesh)
+    const innerBelt = new THREE.Mesh(innerBeltGeo, innerBeltMat)
+    innerBelt.rotation.x = Math.PI / 2
+    scene.add(innerBelt)
 
-    // Orbit Ring
-    const orbitRadius = earthRadius * (orbit.a / EARTH_RADIUS_KM)
-    const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
-    const orbitPoints = orbitCurve.getPoints(180)
-    const orbitLineGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
-    const orbitLineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.4 })
-    const orbitLine = new THREE.LineLoop(orbitLineGeo, orbitLineMat)
-    orbitLine.rotation.x = orbit.incRad
+    // 3. Outer Van Allen Belt (Electron Trap: Larger Torus)
+    const outerBeltGeo = new THREE.TorusGeometry(6.5, 1.4, 16, 64)
+    const outerBeltMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.08
+    })
+    const outerBelt = new THREE.Mesh(outerBeltGeo, outerBeltMat)
+    outerBelt.rotation.x = Math.PI / 2
+    scene.add(outerBelt)
+
+    // 4. Satellite Orbit Ring
+    const orbitR = 2.0 + (orbitAltKm / 2000)
+    const orbitCurve = new THREE.EllipseCurve(0, 0, orbitR, orbitR, 0, 2 * Math.PI, false, 0)
+    const orbitPoints = orbitCurve.getPoints(128)
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints)
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x10b981, transparent: true, opacity: 0.8 })
+    const orbitLine = new THREE.Line(orbitGeo, orbitMat)
+    orbitLine.rotation.x = Math.PI / 2
+    orbitLine.rotation.y = (inclinationDeg * Math.PI) / 180
     scene.add(orbitLine)
 
-    // Satellite
+    // Satellite Dot
     const satMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.1, 0.15),
-      new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.8, roughness: 0.2 })
+      new THREE.SphereGeometry(0.1, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
     )
     scene.add(satMesh)
 
-    // Interaction
-    const onMouseDown = (e: MouseEvent) => {
-      simStateRef.current.isDragging = true
-      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
-    }
-    const onMouseMove = (e: MouseEvent) => {
-      if (!simStateRef.current.isDragging) return
-      const dx = e.clientX - simStateRef.current.prevMouse.x
-      const dy = e.clientY - simStateRef.current.prevMouse.y
-      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
-      simStateRef.current.dragVelocity = { x: dx, y: dy }
-      simStateRef.current.targetCameraYaw += dx * 0.005
-      simStateRef.current.targetCameraPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetCameraPitch + dy * 0.005))
-    }
-    const onMouseUp = () => { simStateRef.current.isDragging = false }
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const zoomDelta = e.deltaY * 0.003
-      simStateRef.current.targetCameraDistance = Math.max(2.0, Math.min(15.0, simStateRef.current.targetCameraDistance + zoomDelta))
-    }
-
-    const dom = renderer.domElement
-    dom.addEventListener("mousedown", onMouseDown)
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp)
-    dom.addEventListener("wheel", onWheel, { passive: false })
-
     let animId: number
-    let lastTime = performance.now()
-    let lastUiSync = performance.now()
-
-    const animate = (now: number) => {
+    const animate = () => {
       animId = requestAnimationFrame(animate)
-      const dt = Math.min((now - lastTime) / 1000, 0.1)
-      lastTime = now
 
-      const timeStep = dt * simStateRef.current.timeScale
-      if (simStateRef.current.isPlaying) {
-        simStateRef.current.simTimeSec += timeStep
-      }
+      // Orbit movement
+      const t = Date.now() * 0.001
+      const x = orbitR * Math.cos(t)
+      const z = orbitR * Math.sin(t)
 
-      const t = simStateRef.current.simTimeSec
+      const incRad = (inclinationDeg * Math.PI) / 180
+      satMesh.position.set(x * Math.cos(incRad), x * Math.sin(incRad), z)
 
-      // Rotate Earth ECEF
-      earthMesh.rotation.y = t * 0.012
-      saaMesh.rotation.y = t * 0.012 // Lock SAA to Earth's surface
-      earthMesh.updateMatrixWorld()
-
-      // Expand/Contract Belts based on Kp-Index Storm Severity
-      const scaleFactor = 1.0 + (simStateRef.current.kpIndex * 0.05)
-      beltMesh.scale.set(scaleFactor, scaleFactor, 1)
-
-      // Propagate Satellite in ECI
-      const u = (orbit.n * t) % (2 * Math.PI)
-      const xOrb = orbitRadius * Math.cos(u)
-      const zOrb = orbitRadius * Math.sin(u)
-      
-      const raan = (0 - 0.0001 * t) % (2 * Math.PI) // Simplified nodal precession
-      const xE = xOrb * Math.cos(raan) - zOrb * Math.cos(orbit.incRad) * Math.sin(raan)
-      const zE = xOrb * Math.sin(raan) + zOrb * Math.cos(orbit.incRad) * Math.cos(raan)
-      const yE = zOrb * Math.sin(orbit.incRad)
-
-      satMesh.position.set(xE, yE, zE)
-      satMesh.lookAt(0, 0, 0)
-
-      // Radiation Hazard Intersection Logic
-      const satWorldPos = satMesh.position.clone()
-      
-      // 1. SAA Intersection (Earth coordinates)
-      const saaWorldPos = new THREE.Vector3()
-      saaMesh.getWorldPosition(saaWorldPos)
-      const distToSaaKm = satWorldPos.distanceTo(saaWorldPos) * (EARTH_RADIUS_KM / earthRadius)
-      const isInsideSAA = distToSaaKm < SAA_RADIUS_KM
-
-      // 2. Van Allen Belt Intersection (Geomagnetic altitude constraint)
-      const isInsideBelt = mission.altitudeKm > 1000 * (1 - simStateRef.current.kpIndex * 0.08)
-
-      let currentFlux = NOMINAL_FLUX
-      let envState = "NOMINAL LEO PLASMA"
-      
-      if (isInsideSAA) {
-        currentFlux = SAA_FLUX * (1 - distToSaaKm / SAA_RADIUS_KM)
-        envState = "CRITICAL: SOUTH ATLANTIC ANOMALY"
-        satMesh.material.color.setHex(0xef4444) // Glow red
-      } else if (isInsideBelt) {
-        currentFlux = VAN_ALLEN_FLUX * (simStateRef.current.kpIndex / 5)
-        envState = "WARNING: INNER RADIATION BELT"
-        satMesh.material.color.setHex(0xa855f7) // Glow purple
-      } else {
-        satMesh.material.color.setHex(0xf1f5f9) // Nominal
-      }
-
-      // Add ambient Kp noise
-      currentFlux += currentFlux * (simStateRef.current.kpIndex * 0.1 * Math.random())
-
-      // Integration of Total Ionizing Dose (TID)
-      // Shielding coefficient based on typical 4mm Aluminum equivalent
-      const shieldingAttenuation = 0.00000002 
-      const doseRateRadSec = currentFlux * shieldingAttenuation
-      
-      if (simStateRef.current.isPlaying) {
-        simStateRef.current.accumulatedDoseKrad += (doseRateRadSec * timeStep) / 1000
-      }
-
-      // Camera Damping
-      if (!simStateRef.current.isDragging) {
-        simStateRef.current.targetCameraYaw += simStateRef.current.dragVelocity.x * 0.002
-        simStateRef.current.targetCameraPitch += simStateRef.current.dragVelocity.y * 0.002
-        simStateRef.current.dragVelocity.x *= 0.92
-        simStateRef.current.dragVelocity.y *= 0.92
-      }
-      simStateRef.current.cameraYaw += (simStateRef.current.targetCameraYaw - simStateRef.current.cameraYaw) * 0.08
-      simStateRef.current.cameraPitch += (simStateRef.current.targetCameraPitch - simStateRef.current.cameraPitch) * 0.08
-      simStateRef.current.cameraDistance += (simStateRef.current.targetCameraDistance - simStateRef.current.cameraDistance) * 0.08
-
-      const curDist = simStateRef.current.cameraDistance
-      camera.position.x = curDist * Math.sin(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
-      camera.position.y = curDist * Math.sin(simStateRef.current.cameraPitch)
-      camera.position.z = curDist * Math.cos(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
-      camera.lookAt(0, 0, 0)
+      // Gentle wobble of geomagnetic axis
+      innerBelt.rotation.z = Math.sin(t * 0.2) * 0.05
+      outerBelt.rotation.z = Math.sin(t * 0.2) * 0.05
 
       renderer.render(scene, camera)
-
-      if (now - lastUiSync > 250) {
-        lastUiSync = now
-        
-        // Single Event Upset (SEU) Probability Model (Weibull approximation)
-        const seuProb = (currentFlux / 1000000) * 100
-
-        setTelemetryUI({
-          simTimeSec: Math.round(t),
-          environmentState: envState,
-          fluxDensity: Math.round(currentFlux).toLocaleString(),
-          doseRateRadHr: (doseRateRadSec * 3600).toFixed(2),
-          totalDoseKrad: simStateRef.current.accumulatedDoseKrad.toFixed(4),
-          seuProbability: seuProb.toFixed(4),
-          isInsideSAA,
-          isInsideBelt
-        })
-
-        setFluxHistory(prev => [...prev.slice(1), currentFlux])
-      }
     }
-
-    animId = requestAnimationFrame(animate)
+    animate()
 
     const onResize = () => {
       if (!container) return
@@ -391,138 +161,214 @@ export default function SpaceWeatherPage() {
     return () => {
       cancelAnimationFrame(animId)
       window.removeEventListener("resize", onResize)
-      dom.removeEventListener("mousedown", onMouseDown)
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      dom.removeEventListener("wheel", onWheel)
       renderer.dispose()
     }
-  }, [orbit])
+  }, [orbitAltKm, inclinationDeg])
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
-      <div ref={mountRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0" />
-
-      {/* FLOATING LEFT HUD: DOSIMETRY & SAA */}
-      <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
-        
-        {/* Environment Alert Box */}
-        <div className={`p-4 rounded-xl backdrop-blur-md border shadow-2xl space-y-2.5 transition-all ${
-          telemetryUI.isInsideSAA ? "bg-rose-950/80 border-rose-500/60 shadow-rose-500/20" : 
-          telemetryUI.isInsideBelt ? "bg-fuchsia-950/80 border-fuchsia-500/60 shadow-fuchsia-500/20" : 
-          "bg-slate-950/75 border-slate-800/80"
-        }`}>
-          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className={`font-bold uppercase flex items-center gap-1.5 ${telemetryUI.isInsideSAA ? "text-rose-400 animate-pulse" : telemetryUI.isInsideBelt ? "text-fuchsia-400" : "text-emerald-400"}`}>
-              <ShieldAlert className="w-4 h-4" />
-              FLIGHT ENVIRONMENT
-            </span>
-          </div>
-          <div className={`font-black tracking-wide text-sm ${telemetryUI.isInsideSAA ? "text-rose-400" : telemetryUI.isInsideBelt ? "text-fuchsia-400" : "text-emerald-400"}`}>
-            {telemetryUI.environmentState}
-          </div>
-          <div className="flex justify-between py-0.5 border-t border-slate-800/40 pt-1.5 mt-1.5">
-            <span className="text-slate-400">PROTON FLUX DENSITY</span>
-            <span className="text-white font-bold">{telemetryUI.fluxDensity} p/cm&sup2;/s</span>
-          </div>
+    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-[#020617] font-sans text-slate-100 overflow-hidden">
+      
+      {/* LEFT PANEL: RADIATION CONTROLS */}
+      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Sun className="w-5 h-5 text-amber-400" /> Space Weather &amp; Radiation
+          </h1>
+          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
+            Van Allen Belts &amp; Single Event Effects (SEE)
+          </p>
         </div>
 
-        {/* Dosimetry Accumulator */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">
-          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              TOTAL IONIZING DOSE (TID)
-            </span>
+        <div className="space-y-6">
+          {/* Orbital Geometry */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Orbital Insertion Parameters
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">ORBIT ALTITUDE:</span>
+                <span className="text-cyan-400 font-bold">{orbitAltKm} km</span>
+              </div>
+              <input 
+                type="range" min="300" max="2500" step="25"
+                value={orbitAltKm}
+                onChange={e => setOrbitAltKm(Number(e.target.value))}
+                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500">
+                <span>LEO (400km)</span>
+                <span>Inner Belt Boundary (1200km)</span>
+                <span>MEO (2500km)</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">INCLINATION:</span>
+                <span className="text-emerald-400 font-bold">{inclinationDeg}°</span>
+              </div>
+              <input 
+                type="range" min="0" max="98" step="1"
+                value={inclinationDeg}
+                onChange={e => setInclinationDeg(Number(e.target.value))}
+                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
           </div>
 
-          <div className="space-y-1.5 pt-1">
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">EXPOSURE RATE</span>
-              <span className="text-amber-400 font-bold">{telemetryUI.doseRateRadHr} Rad/hr</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">LIFETIME ACCUMULATION</span>
-              <span className="text-fuchsia-400 font-bold text-sm">{telemetryUI.totalDoseKrad} kRad</span>
-            </div>
-            <div className="flex justify-between py-0.5 pt-1">
-              <span className="text-slate-500">SEU PROBABILITY (1Hz)</span>
-              <span className={parseFloat(telemetryUI.seuProbability) > 0.05 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-                {telemetryUI.seuProbability} %
-              </span>
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* FLOATING RIGHT HUD: GEOMAGNETIC STORM Kp-INDEX */}
-      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
-        
-        <div className="p-4 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
-          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <CloudLightning className="w-4 h-4 text-amber-400" />
-              GEOMAGNETIC Kp-INDEX
-            </span>
-            <span className="text-[10px] text-amber-400 bg-amber-950/50 border border-amber-500/20 px-2 py-0.5 rounded font-bold">
-              Kp {kpIndex}
-            </span>
-          </div>
-
-          <div className="space-y-2 pt-1">
-            <div className="flex justify-between text-[11px]">
-              <span className="text-slate-400">STORM INTENSITY (0-9)</span>
-              <span className={kpIndex > 5 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-                {kpIndex < 4 ? "QUIET" : kpIndex < 6 ? "ACTIVE" : "SEVERE STORM (CME)"}
-              </span>
-            </div>
-            <input
-              type="range"
-              min="0" max="9" step="1"
-              value={kpIndex}
-              onChange={(e) => setKpIndex(Number(e.target.value))}
-              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+          {/* Shielding Sizing */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <label className="text-slate-400 font-bold uppercase tracking-widest flex items-center justify-between">
+              <span className="flex items-center gap-2"><Layers className="w-3.5 h-3.5 text-cyan-400" /> AL SHIELDING THICKNESS</span>
+              <span className="text-white font-bold">{shieldingMmAl.toFixed(1)} mm Al</span>
+            </label>
+            <input 
+              type="range" min="0.5" max="10.0" step="0.5"
+              value={shieldingMmAl}
+              onChange={e => setShieldingMmAl(Number(e.target.value))}
+              className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
             />
-            <p className="text-[10px] text-slate-500 leading-tight pt-1">
-              High Kp values compress the magnetosphere, pushing the Van Allen belts down into LEO altitudes and severely increasing radiation flux.
-            </p>
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>Foil (0.5mm)</span>
+              <span>Standard Bus (2.5mm)</span>
+              <span>Rad-Hard Vault (10mm)</span>
+            </div>
+          </div>
+
+          {/* Solar Cycle & Space Weather Indices */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Geomagnetic &amp; Solar Activity
+            </div>
+
+            <div className="flex gap-2">
+              {(["SOLAR_MIN", "MODERATE", "SOLAR_MAX"] as SolarCycle[]).map(sc => (
+                <button
+                  key={sc}
+                  onClick={() => setSolarCycle(sc)}
+                  className={`flex-1 py-1.5 rounded border text-[10px] font-bold ${
+                    solarCycle === sc 
+                      ? "bg-amber-950 border-amber-500 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.2)]" 
+                      : "border-slate-800 text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  {sc.replace("_", " ")}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">PLANETARY KP-INDEX:</span>
+                <span className="text-amber-400 font-bold">{kpIndex.toFixed(1)} / 9</span>
+              </div>
+              <input 
+                type="range" min="0" max="9" step="0.1"
+                value={kpIndex}
+                onChange={e => setKpIndex(Number(e.target.value))}
+                className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500">
+                <span>Quiet (0-2)</span>
+                <span>Active (3-4)</span>
+                <span>Severe Storm (5-9)</span>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Flux History Graph */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
-          <div className="border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-fuchsia-400" />
-              FLUX PROFILE
-            </span>
-          </div>
-          <div className="h-16 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-0.5 gap-px overflow-hidden relative">
-            {fluxHistory.map((val, idx) => {
-              const maxScale = Math.max(30000, val)
-              const hPercent = Math.max(2, Math.min(100, (val / maxScale) * 100))
-              return (
-                <div key={idx} className="flex-1 h-full relative flex items-end">
-                  <div 
-                    className={`w-full rounded-t-sm transition-all ${val > 20000 ? "bg-rose-500/90" : val > 1000 ? "bg-fuchsia-500/80" : "bg-emerald-500/60"}`}
-                    style={{ height: `${hPercent}%` }}
-                  />
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
       </div>
 
-      <div className="absolute bottom-4 left-6 right-6 z-20 px-5 py-2.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-auto shadow-2xl">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">VOLUMETRIC DATA:</span>
-            <span className="text-rose-400 font-bold">RED = S.A.A.</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-fuchsia-400 font-bold">PURPLE = VAN ALLEN BELT</span>
+      {/* CENTER PANEL: 3D MAGNETOSPHERE & BELTS */}
+      <div className="flex-1 h-full relative flex flex-col">
+        <div className="absolute top-6 left-6 z-10 font-mono">
+          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">Space Radiation Environment</div>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-black text-white">AP8/AE8 TRAPPED FLUX</span>
+            {isInsideSAA && (
+              <span className="px-2.5 py-0.5 rounded bg-rose-950/80 border border-rose-500 text-rose-400 text-[10px] font-bold animate-pulse">
+                SAA INTERSECT DETECTED
+              </span>
+            )}
+          </div>
+          <div className="flex gap-4 mt-2 text-[11px]">
+            <span className="text-rose-400">INNER BELT: Trapped Protons (10-100 MeV)</span>
+            <span className="text-cyan-400">OUTER BELT: Relativistic Electrons (1-10 MeV)</span>
+          </div>
+        </div>
+
+        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+
+        {/* Hazard Status Bar */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Radio className="w-5 h-5 text-amber-400 animate-pulse" />
+            <div>
+              <span className="text-slate-500 block text-[9px]">SOLAR PROTON FLUX (&gt;10 MeV)</span>
+              <span className="text-amber-400 font-bold text-sm">{protonFluxPfu.toFixed(1)} pfu</span>
+            </div>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">SOUTH ATLANTIC ANOMALY</span>
+            <span className={isInsideSAA ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+              {isInsideSAA ? "HIGH FLUX HAZARD REGION" : "NOMINAL QUIET SECTOR"}
+            </span>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">GEOMAGNETIC SHIELDING</span>
+            <span className="text-cyan-400 font-bold">L-SHELL L = {(1 + orbitAltKm / 6371).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL: DOSIMETRY & HARDENING BUDGET */}
+      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-amber-400" /> Radiation Hardening
+        </h2>
+
+        <div className="space-y-6">
+          {/* Mission Lifetime TID */}
+          <div className={`p-5 rounded-2xl border ${totalMissionTidKrad > 25 ? "bg-rose-950/20 border-rose-500/40" : "bg-cyan-950/20 border-cyan-500/40"}`}>
+            <div className="text-[10px] font-bold tracking-wider mb-1 text-slate-400">
+              {missionYears}-YEAR TOTAL IONIZING DOSE (TID)
+            </div>
+            <div className={`text-3xl font-black ${totalMissionTidKrad > 25 ? "text-rose-400" : "text-cyan-400"}`}>
+              {totalMissionTidKrad.toFixed(1)} <span className="text-sm font-normal text-slate-400">krad(Si)</span>
+            </div>
+            <div className="text-[10px] text-slate-400 mt-2">
+              Annual Rate: {annualTidKrad.toFixed(2)} krad(Si)/yr. Standard COTS parts degrade at 10-15 krad; Rad-Tolerant grade required for &gt;20 krad.
+            </div>
+          </div>
+
+          {/* Single Event Upset Rate */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div className="text-slate-400 font-bold tracking-wider border-b border-slate-800 pb-2 flex justify-between">
+              <span>SINGLE EVENT UPSET (SEU)</span>
+              <span className="text-amber-400 font-bold">{seuPerGbitDay.toFixed(2)} / Gbit-day</span>
+            </div>
+
+            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${seuPerGbitDay > 2 ? "bg-rose-500" : "bg-emerald-500"}`} 
+                style={{ width: `${Math.min(100, (seuPerGbitDay / 5) * 100)}%` }} 
+              />
+            </div>
+
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>EDAC Scrub Rate Req: 100 Hz</span>
+              <span>SEL Risk: LOW</span>
+            </div>
+          </div>
+
+          {/* Component Hardening Recommendations */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Avionics Hardening Profile</div>
+            <div className="flex justify-between"><span className="text-slate-500">MCU / FPGA Class:</span><span className="text-white">{totalMissionTidKrad > 20 ? "Rad-Hard (Xilinx RT)" : "Automotive Grade + EDAC"}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Solar Cell Coverglass:</span><span className="text-amber-400 font-bold">150 μm CMX Quartz</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Latchup Threshold (LET):</span><span className="text-cyan-400">&gt; 43 MeV·cm²/mg</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">GCR Proton Margin:</span><span className="text-emerald-400">+3.4 dB (Safe)</span></div>
           </div>
         </div>
       </div>
