@@ -1,466 +1,473 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
+import { useMission } from "@/lib/missionStore"
+import * as THREE from "three"
 import { 
+  Play, 
+  Pause, 
+  RotateCcw, 
   Thermometer, 
-  Sun, 
-  Flame, 
-  Snowflake, 
-  Gauge, 
-  Download, 
-  ShieldCheck, 
-  AlertTriangle, 
-  ArrowRight,
-  Layers,
-  Cpu,
-  Zap
+  ThermometerSnowflake, 
+  ThermometerSun, 
+  Activity, 
+  Sun,
+  Flame,
+  Radio
 } from "lucide-react"
 
-interface ThermalPreset {
-  name: string
-  operator: string
-  propellant: "Liquid Hydrogen (LH2)" | "Liquid Methane (LCH4)" | "Liquid Oxygen (LOX)" | "Room Temp Bus"
-  tankVolumeM3: number
-  mliLayers: number
-  internalDissipationW: number
-  absorptivityAlpha: number
-  emissivityEpsilon: number
-  description: string
-}
+export default function ThermalPage() {
+  const { mission } = useMission()
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-const THERMAL_PRESETS: Record<string, ThermalPreset> = {
-  starship_depot: {
-    name: "Orbital Propellant Depot (Starship)",
-    operator: "SpaceX",
-    propellant: "Liquid Methane (LCH4)",
-    tankVolumeM3: 600,
-    mliLayers: 40,
-    internalDissipationW: 2500,
-    absorptivityAlpha: 0.12,
-    emissivityEpsilon: 0.85,
-    description: "Long-duration orbital cryogenic storage for lunar and Mars architecture refilling.",
-  },
-  centaur_v: {
-    name: "Centaur V Cryogenic Upper Stage",
-    operator: "United Launch Alliance",
-    propellant: "Liquid Hydrogen (LH2)",
-    tankVolumeM3: 75,
-    mliLayers: 25,
-    internalDissipationW: 400,
-    absorptivityAlpha: 0.14,
-    emissivityEpsilon: 0.80,
-    description: "High-energy upper stage requiring vacuum insulation to prevent rapid LH2 flash boil-off.",
-  },
-  geo_commsat: {
-    name: "GEO High-Power Telecom Bus",
-    operator: "Boeing / Maxar",
-    propellant: "Room Temp Bus",
-    tankVolumeM3: 20,
-    mliLayers: 15,
-    internalDissipationW: 8000,
-    absorptivityAlpha: 0.08, // Silvered Teflon
-    emissivityEpsilon: 0.82,
-    description: "High thermal dissipation payload radiators shedding kW-scale heat directly to deep space.",
-  },
-  smallsat_optical: {
-    name: "LEO Recon Optical Payload Radiator",
-    operator: "Defense ISR SmallSat",
-    propellant: "Room Temp Bus",
-    tankVolumeM3: 2,
-    mliLayers: 10,
-    internalDissipationW: 350,
-    absorptivityAlpha: 0.20,
-    emissivityEpsilon: 0.88,
-    description: "Precision temperature stabilization for optical mirrors and focal plane detector cooling.",
-  },
-}
+  const [isPlaying, setIsPlaying] = useState<boolean>(true)
+  const [timeScale, setTimeScale] = useState<number>(10)
 
-export default function SpacecraftThermalPage() {
-  const [selectedPresetKey, setSelectedPresetKey] = useState<string>("starship_depot")
-  const [mliLayers, setMliLayers] = useState<number>(40)
-  const [tankVolumeM3, setTankVolumeM3] = useState<number>(600)
-  const [alpha, setAlpha] = useState<number>(0.12)
-  const [epsilon, setEpsilon] = useState<number>(0.85)
-  const [internalHeatW, setInternalHeatW] = useState<number>(2500)
-  const [propellantType, setPropellantType] = useState<string>("Liquid Methane (LCH4)")
+  // Thermal Constants
+  const SIGMA = 5.67e-8 // Stefan-Boltzmann constant (W/m^2*K^4)
+  const SOLAR_FLUX = 1361 // W/m^2
+  const EARTH_IR = 237 // W/m^2 (Average Earth Infrared)
+  const ALBEDO_FACTOR = 0.3 // Earth average reflectance
 
-  const preset = THERMAL_PRESETS[selectedPresetKey]
+  // Spacecraft Thermal Properties
+  const BUS_AREA = 2.4 // m^2
+  const ARRAY_AREA = 4.2 // m^2
+  const MASS_BUS = 400 // kg
+  const CP_BUS = 900 // Specific heat capacity (J/kg*K) aluminum approx
+  const MASS_ARRAY = 20 // kg
+  const CP_ARRAY = 800 // Specific heat
+  const INTERNAL_HEAT_W = 150 // Internal avionics dissipation
+  
+  // Optical properties (MLI for Bus, Solar Cells for Arrays)
+  const ALPHA_BUS = 0.2 // Absorptivity
+  const EPSILON_BUS = 0.8 // Emissivity (Radiator surface)
+  const ALPHA_ARRAY = 0.85
+  const EPSILON_ARRAY = 0.85
 
-  const applyPreset = (key: string) => {
-    const p = THERMAL_PRESETS[key]
-    setSelectedPresetKey(key)
-    setMliLayers(p.mliLayers)
-    setTankVolumeM3(p.tankVolumeM3)
-    setAlpha(p.absorptivityAlpha)
-    setEpsilon(p.emissivityEpsilon)
-    setInternalHeatW(p.internalDissipationW)
-    setPropellantType(p.propellant)
-  }
+  // Kinetic state
+  const simStateRef = useRef({
+    isPlaying: true,
+    timeScale: 10,
+    simTimeSec: 0,
+    cameraYaw: 0.8,
+    cameraPitch: 0.4,
+    targetCameraYaw: 0.8,
+    targetCameraPitch: 0.4,
+    cameraDistance: 2.8,
+    targetCameraDistance: 2.8,
+    isDragging: false,
+    prevMouse: { x: 0, y: 0 },
+    dragVelocity: { x: 0, y: 0 },
+    
+    // Multi-Node Thermal State (Kelvin)
+    tempBusK: 293.15, // 20 C
+    tempArrayK: 293.15 // 20 C
+  })
 
-  // Thermal & Cryo Physics Calculation
-  const metrics = useMemo(() => {
-    const sigma = 5.670374e-8 // Stefan-Boltzmann W/m^2 K^4
-    const solarFlux = 1361 // W/m^2
-    const earthAlbedoFlux = 408 // ~30%
-    const deepSpaceTempK = 3 // 3K cosmic microwave background
+  // Throttled UI Telemetry (4 Hz)
+  const [telemetryUI, setTelemetryUI] = useState({
+    simTimeSec: 0,
+    tempBusC: "20.0",
+    tempArrayC: "20.0",
+    qSolarBus: "0.0",
+    qSolarArray: "0.0",
+    qAlbedo: "0.0",
+    qEarthIR: "0.0",
+    qRadiatedBus: "0.0",
+    qRadiatedArray: "0.0",
+    eclipseState: "SUNLIT"
+  })
 
-    // Surface Area approximated as cylinder/sphere from volume
-    const radiusM = Math.pow((3 * tankVolumeM3) / (4 * Math.PI), 1 / 3)
-    const surfaceAreaM2 = Math.round(4 * Math.PI * Math.pow(radiusM, 2))
+  const [tempHistory, setTempHistory] = useState<{bus: number, arr: number}[]>(Array(40).fill({bus: 20, arr: 20}))
 
-    // 1. Hot Case (Sunlit + Earth Albedo + Internal Dissipation)
-    const qAbsorbedSun = alpha * solarFlux * (surfaceAreaM2 * 0.25)
-    const qAbsorbedAlbedo = alpha * earthAlbedoFlux * (surfaceAreaM2 * 0.15)
-    const qHotTotalW = qAbsorbedSun + qAbsorbedAlbedo + internalHeatW
+  useEffect(() => {
+    simStateRef.current.isPlaying = isPlaying
+    simStateRef.current.timeScale = timeScale
+  }, [isPlaying, timeScale])
 
-    // T_hot = (Q / (epsilon * sigma * Area))^0.25
-    const tHotK = Math.round(Math.pow(qHotTotalW / (epsilon * sigma * surfaceAreaM2), 0.25))
-    const tHotC = tHotK - 273
+  const orbit = useMemo(() => {
+    const mu = 398600.4418
+    const rEarthKm = 6378.137
+    const a = rEarthKm + mission.altitudeKm
+    const incRad = (mission.inclinationDeg * Math.PI) / 180
+    const n = Math.sqrt(mu / Math.pow(a, 3))
+    const periodSec = (2 * Math.PI) / n
+    return { a, incRad, n, periodSec, rEarthKm }
+  }, [mission.altitudeKm, mission.inclinationDeg])
 
-    // 2. Cold Case (Deep Shadow Eclipse, only internal dissipation)
-    const qColdTotalW = Math.max(10, internalHeatW)
-    const tColdK = Math.round(Math.pow(qColdTotalW / (epsilon * sigma * surfaceAreaM2), 0.25))
-    const tColdC = tColdK - 273
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
 
-    // 3. Cryogenic Heat Leak across MLI
-    // Latent Heat of Vaporization: LH2 = 446 kJ/kg, LCH4 = 510 kJ/kg, LOX = 213 kJ/kg
-    let hfgKjKg = 510
-    let boilingPointK = 111
-    let fluidDensityKgM3 = 422
-    if (propellantType.includes("Hydrogen")) {
-      hfgKjKg = 446
-      boilingPointK = 20
-      fluidDensityKgM3 = 71
-    } else if (propellantType.includes("Oxygen")) {
-      hfgKjKg = 213
-      boilingPointK = 90
-      fluidDensityKgM3 = 1141
+    const width = container.clientWidth
+    const height = container.clientHeight
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#010308")
+
+    const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 1000)
+    camera.position.set(0, 1.5, 2.8)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    // Starfield
+    const starGeo = new THREE.BufferGeometry()
+    const starPos = new Float32Array(2000 * 3)
+    for (let i = 0; i < 6000; i++) starPos[i] = (Math.random() - 0.5) * 100
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.1, transparent: true, opacity: 0.4 })))
+
+    // Spacecraft Thermal Assembly
+    const satGroup = new THREE.Group()
+
+    // FLIR-style Thermal Shader Material
+    const thermalShader = {
+      uniforms: {
+        uTempK: { value: 293.15 },
+        uMinK: { value: 173.15 }, // -100C (Deep Blue)
+        uMaxK: { value: 393.15 }  // +120C (Red/White)
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTempK;
+        uniform float uMinK;
+        uniform float uMaxK;
+        varying vec3 vNormal;
+
+        // Simple jet colormap approximation
+        vec3 jet(float t) {
+          return clamp(vec3(1.5 - abs(4.0 * t - 3.0), 1.5 - abs(4.0 * t - 2.0), 1.5 - abs(4.0 * t - 1.0)), vec3(0.0), vec3(1.0));
+        }
+
+        void main() {
+          float normT = clamp((uTempK - uMinK) / (uMaxK - uMinK), 0.0, 1.0);
+          vec3 baseColor = jet(normT);
+          
+          // Add mild edge lighting for 3D definition
+          float edge = 1.0 - max(dot(vNormal, vec3(0.0, 0.0, 1.0)), 0.0);
+          gl_FragColor = vec4(baseColor + vec3(edge * 0.2), 1.0);
+        }
+      `
     }
 
-    const totalPropellantMassKg = Math.round(tankVolumeM3 * fluidDensityKgM3)
+    const busMat = new THREE.ShaderMaterial({ ...thermalShader, uniforms: { ...thermalShader.uniforms, uTempK: { value: 293.15 } } })
+    const arrayMat = new THREE.ShaderMaterial({ ...thermalShader, uniforms: { ...thermalShader.uniforms, uTempK: { value: 293.15 } } })
 
-    // Effective emissivity of MLI blanket
-    const epsStar = Math.max(0.005, 0.05 / Math.sqrt(mliLayers))
-    const heatLeakW = Math.round(
-      surfaceAreaM2 * sigma * epsStar * (Math.pow(tHotK, 4) - Math.pow(boilingPointK, 4))
-    )
+    const busMesh = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.6), busMat)
+    satGroup.add(busMesh)
 
-    // Boil-off mass per day (24 hours = 86400 seconds)
-    const boilOffRateKgPerSec = (heatLeakW / 1000) / hfgKjKg
-    const boilOffKgDay = Math.round(boilOffRateKgPerSec * 86400 * 10) / 10
-    const boilOffPctPerDay = totalPropellantMassKg > 0
-      ? (boilOffKgDay / totalPropellantMassKg) * 100
-      : 0
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.02, 0.4), arrayMat)
+    leftWing.position.set(0.9, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.02, 0.4), arrayMat)
+    rightWing.position.set(-0.9, 0, 0)
+    
+    const sadmGroup = new THREE.Group()
+    sadmGroup.add(leftWing)
+    sadmGroup.add(rightWing)
+    satGroup.add(sadmGroup)
+    scene.add(satGroup)
 
-    // Active Cryocooler Power for Zero Boil-Off (ZBO)
-    // Real cryocoolers achieve ~15-20% of Carnot efficiency
-    const carnotCop = boilingPointK / (tHotK - boilingPointK)
-    const realCop = carnotCop * 0.18
-    const cryocoolerPowerRequiredW = Math.round(heatLeakW / Math.max(0.01, realCop))
-
-    return {
-      surfaceAreaM2,
-      tHotK,
-      tHotC,
-      tColdK,
-      tColdC,
-      heatLeakW,
-      totalPropellantMassKg,
-      boilOffKgDay,
-      boilOffPctPerDay: boilOffPctPerDay.toFixed(3),
-      cryocoolerPowerRequiredW,
-      alphaOverEpsilon: (alpha / epsilon).toFixed(2),
-      isCryo: propellantType !== "Room Temp Bus",
+    // Sun Vector indicator
+    const sunDir = new THREE.Vector3(1, 0, 0).normalize() // Starts from +X
+    
+    const onMouseDown = (e: MouseEvent) => {
+      simStateRef.current.isDragging = true
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
     }
-  }, [tankVolumeM3, mliLayers, alpha, epsilon, internalHeatW, propellantType])
+    const onMouseMove = (e: MouseEvent) => {
+      if (!simStateRef.current.isDragging) return
+      const dx = e.clientX - simStateRef.current.prevMouse.x
+      const dy = e.clientY - simStateRef.current.prevMouse.y
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+      simStateRef.current.dragVelocity = { x: dx, y: dy }
+      simStateRef.current.targetCameraYaw += dx * 0.005
+      simStateRef.current.targetCameraPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetCameraPitch + dy * 0.005))
+    }
+    const onMouseUp = () => { simStateRef.current.isDragging = false }
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      simStateRef.current.targetCameraDistance = Math.max(1.5, Math.min(8.0, simStateRef.current.targetCameraDistance + e.deltaY * 0.003))
+    }
 
-  const exportThermalCSV = () => {
-    const csv = `Parameter,Value,Unit
-Architecture,${preset.name},
-Propellant Fluid,${propellantType},
-Tank Volume,${tankVolumeM3},m3
-Total Surface Area,${metrics.surfaceAreaM2},m2
-MLI Blanket Layers,${mliLayers},
-Absorptivity (Alpha),${alpha},
-Emissivity (Epsilon),${epsilon},
-Alpha / Epsilon Ratio,${metrics.alphaOverEpsilon},
-Max Sunlit Temp,${metrics.tHotC},deg C
-Deep Shadow Temp,${metrics.tColdC},deg C
-Cryogenic Heat Leak,${metrics.heatLeakW},W
-Daily Boil-Off Mass,${metrics.boilOffKgDay},kg/day
-Daily Boil-Off Rate,${metrics.boilOffPctPerDay},%/day
-Zero Boil-Off Cryocooler Power,${metrics.cryocoolerPowerRequiredW},W,`
+    const dom = renderer.domElement
+    dom.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    dom.addEventListener("wheel", onWheel, { passive: false })
 
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "veroyx-thermal-cryo-analysis.csv"
-    a.click()
-  }
+    let animId: number
+    let lastTime = performance.now()
+    let lastUiSync = performance.now()
+
+    const animate = (now: number) => {
+      animId = requestAnimationFrame(animate)
+      const dt = Math.min((now - lastTime) / 1000, 0.1)
+      lastTime = now
+
+      const timeStep = dt * simStateRef.current.timeScale
+      const t = simStateRef.current.simTimeSec + (simStateRef.current.isPlaying ? timeStep : 0)
+      if (simStateRef.current.isPlaying) simStateRef.current.simTimeSec = t
+
+      // Orbit physics for eclipse detection
+      const u = (orbit.n * t) % (2 * Math.PI)
+      const xOrb = orbit.a * Math.cos(u)
+      const zOrb = orbit.a * Math.sin(u)
+      
+      let eclipseFactor = 1.0
+      if (xOrb < 0 && Math.abs(zOrb) < orbit.rEarthKm) {
+         eclipseFactor = 0.0 // Umbra
+      }
+
+      // Sun Incidence
+      const sunLocalAngle = Math.atan2(zOrb, xOrb)
+      sadmGroup.rotation.y = -sunLocalAngle // Arrays track the sun
+
+      const incidenceArray = 0 // Arrays track perfectly
+      const incidenceBus = Math.abs(Math.sin(sunLocalAngle)) // Bus faces nadir, sun crosses its sides
+
+      // Heat Loads (Watts)
+      const qSolarBusIn = ALPHA_BUS * BUS_AREA * SOLAR_FLUX * incidenceBus * eclipseFactor
+      const qSolarArrayIn = ALPHA_ARRAY * ARRAY_AREA * SOLAR_FLUX * Math.cos(incidenceArray) * eclipseFactor
+      
+      const qAlbedo = eclipseFactor > 0.5 ? ALPHA_BUS * BUS_AREA * (SOLAR_FLUX * ALBEDO_FACTOR) * 0.3 : 0 // Simplified view factor
+      const qEarthIR = EPSILON_BUS * BUS_AREA * EARTH_IR * 0.5 // Constant view factor to Earth
+
+      // Radiated Heat (Watts)
+      const tBusK = simStateRef.current.tempBusK
+      const tArrK = simStateRef.current.tempArrayK
+      
+      const qRadBus = EPSILON_BUS * SIGMA * BUS_AREA * Math.pow(tBusK, 4)
+      const qRadArray = EPSILON_ARRAY * SIGMA * ARRAY_AREA * 2 * Math.pow(tArrK, 4) // Array radiates from both sides
+
+      // Thermal Kinetics: dT = (Q_in - Q_out) * dt / (m * Cp)
+      if (simStateRef.current.isPlaying) {
+        const dTempBus = ((qSolarBusIn + qAlbedo + qEarthIR + INTERNAL_HEAT_W - qRadBus) * timeStep) / (MASS_BUS * CP_BUS)
+        const dTempArray = ((qSolarArrayIn - qRadArray) * timeStep) / (MASS_ARRAY * CP_ARRAY)
+
+        simStateRef.current.tempBusK = Math.max(0, tBusK + dTempBus)
+        simStateRef.current.tempArrayK = Math.max(0, tArrK + dTempArray)
+      }
+
+      // Update Shaders
+      busMat.uniforms.uTempK.value = simStateRef.current.tempBusK
+      arrayMat.uniforms.uTempK.value = simStateRef.current.tempArrayK
+
+      // Camera Damping
+      if (!simStateRef.current.isDragging) {
+        simStateRef.current.targetCameraYaw += simStateRef.current.dragVelocity.x * 0.002
+        simStateRef.current.targetCameraPitch += simStateRef.current.dragVelocity.y * 0.002
+        simStateRef.current.dragVelocity.x *= 0.92
+        simStateRef.current.dragVelocity.y *= 0.92
+      }
+      simStateRef.current.cameraYaw += (simStateRef.current.targetCameraYaw - simStateRef.current.cameraYaw) * 0.08
+      simStateRef.current.cameraPitch += (simStateRef.current.targetCameraPitch - simStateRef.current.cameraPitch) * 0.08
+      simStateRef.current.cameraDistance += (simStateRef.current.targetCameraDistance - simStateRef.current.cameraDistance) * 0.08
+
+      camera.position.x = simStateRef.current.cameraDistance * Math.sin(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
+      camera.position.y = simStateRef.current.cameraDistance * Math.sin(simStateRef.current.cameraPitch)
+      camera.position.z = simStateRef.current.cameraDistance * Math.cos(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
+      camera.lookAt(0, 0, 0)
+
+      renderer.render(scene, camera)
+
+      if (now - lastUiSync > 250) {
+        lastUiSync = now
+
+        const busC = simStateRef.current.tempBusK - 273.15
+        const arrC = simStateRef.current.tempArrayK - 273.15
+
+        setTelemetryUI({
+          simTimeSec: Math.round(t),
+          tempBusC: busC.toFixed(1),
+          tempArrayC: arrC.toFixed(1),
+          qSolarBus: qSolarBusIn.toFixed(1),
+          qSolarArray: qSolarArrayIn.toFixed(1),
+          qAlbedo: qAlbedo.toFixed(1),
+          qEarthIR: qEarthIR.toFixed(1),
+          qRadiatedBus: qRadBus.toFixed(1),
+          qRadiatedArray: qRadArray.toFixed(1),
+          eclipseState: eclipseFactor < 0.5 ? "UMBRA (ECLIPSE)" : "SUNLIT"
+        })
+
+        setTempHistory(prev => [...prev.slice(1), { bus: busC, arr: arrC }])
+      }
+    }
+
+    animId = requestAnimationFrame(animate)
+
+    const onResize = () => {
+      if (!container) return
+      camera.aspect = container.clientWidth / container.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(container.clientWidth, container.clientHeight)
+    }
+    window.addEventListener("resize", onResize)
+
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      dom.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      dom.removeEventListener("wheel", onWheel)
+      renderer.dispose()
+    }
+  }, [orbit])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-6xl mx-auto space-y-10">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
+      <div ref={mountRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0" />
 
-        {/* Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Thermometer className="w-3.5 h-3.5 animate-pulse" />
-              Stefan-Boltzmann Radiation &amp; Cryogenic Boil-Off Engine
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              THERMAL MANAGEMENT &amp; CRYO BOIL-OFF
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Model orbital equilibrium temperatures (+120°C sunlit to -150°C eclipse), MLI blanket thermal conductivity, cryogenic boil-off rates, and Zero Boil-Off (ZBO) cryocooler lift power.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <button
-              onClick={exportThermalCSV}
-              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              EXPORT THERMAL SPEC
-            </button>
+      {/* TOP TACTICAL FLIGHT BAR */}
+      <div className="absolute top-4 left-6 right-6 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-none">
+        <div className="flex items-center gap-3 pointer-events-auto">
+          <Link href="/" className="px-3.5 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm hover:border-rose-500/50 transition-all shadow-xl">
+            VEROYX
+          </Link>
+          <div className="px-3 py-1 rounded-full bg-rose-950/80 backdrop-blur-md border border-rose-500/40 text-rose-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
+            <Flame className="w-3.5 h-3.5 text-rose-400" />
+            THERMAL CONTROL SYSTEM (TCS) & HEAT BALANCE
           </div>
         </div>
 
-        {/* Preset Selector */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 font-mono text-xs">
-          {Object.entries(THERMAL_PRESETS).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap ${
-                selectedPresetKey === k
-                  ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
-                  : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
-              }`}
-            >
-              {v.name}
+        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto shadow-xl">
+          <button onClick={() => setIsPlaying(!isPlaying)} className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 transition-all">
+            {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
+          </button>
+          {[1, 10, 60, 120].map(scale => (
+            <button key={scale} onClick={() => setTimeScale(scale)} className={`px-2 py-1 rounded-lg transition-all ${timeScale === scale ? "bg-rose-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"}`}>
+              {scale}x
             </button>
           ))}
+          <button onClick={() => { simStateRef.current.simTimeSec = 0; simStateRef.current.tempBusK = 293.15; simStateRef.current.tempArrayK = 293.15; }} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
         </div>
+      </div>
 
-        {/* Simulator Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
-
-          {/* Controls Form */}
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
-            <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
-              <Gauge className="w-4 h-4 text-cyan-400" />
-              Thermal Control Parameters
-            </div>
-
-            {/* Propellant Architecture */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">STORED FLUID / ARCHITECTURE</label>
-              <select
-                value={propellantType}
-                onChange={(e) => setPropellantType(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
-              >
-                <option value="Liquid Methane (LCH4)">Liquid Methane (LCH4 - 111 K)</option>
-                <option value="Liquid Hydrogen (LH2)">Liquid Hydrogen (LH2 - 20 K)</option>
-                <option value="Liquid Oxygen (LOX)">Liquid Oxygen (LOX - 90 K)</option>
-                <option value="Room Temp Bus">Standard Payload Bus (Room Temp)</option>
-              </select>
-            </div>
-
-            {/* Tank Volume Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-slate-400">TANK / BUS VOLUME</label>
-                <span className="text-cyan-400 font-bold">{tankVolumeM3} m³</span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={800}
-                value={tankVolumeM3}
-                onChange={(e) => setTankVolumeM3(Number(e.target.value))}
-                className="w-full accent-cyan-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>1 m³ (CubeSat)</span>
-                <span>75 m³ (Centaur)</span>
-                <span>800 m³ (Depot)</span>
-              </div>
-            </div>
-
-            {/* MLI Layers Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-slate-400">MLI INSULATION LAYERS</label>
-                <span className="text-purple-400 font-bold">{mliLayers} LAYERS</span>
-              </div>
-              <input
-                type="range"
-                min={5}
-                max={60}
-                value={mliLayers}
-                onChange={(e) => setMliLayers(Number(e.target.value))}
-                className="w-full accent-purple-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>5 Layers (Basic)</span>
-                <span>30 Layers</span>
-                <span>60 Layers (Cryo High-Perf)</span>
-              </div>
-            </div>
-
-            {/* Optical Coating Properties */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-slate-400 block uppercase font-bold">SOLAR ABSORPTIVITY (α)</label>
-                <input
-                  type="number"
-                  step={0.01}
-                  value={alpha}
-                  onChange={(e) => setAlpha(Math.max(0.01, Math.min(1.0, Number(e.target.value))))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-slate-400 block uppercase font-bold">IR EMISSIVITY (ε)</label>
-                <input
-                  type="number"
-                  step={0.01}
-                  value={epsilon}
-                  onChange={(e) => setEpsilon(Math.max(0.01, Math.min(1.0, Number(e.target.value))))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* Internal Heat Dissipation */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">INTERNAL AVIONICS DISSIPATION</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={internalHeatW}
-                  onChange={(e) => setInternalHeatW(Math.max(10, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
-                />
-                <span className="text-slate-500">WATTS</span>
-              </div>
-            </div>
-
-            {/* Heritage Card */}
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5 text-[11px] font-sans">
-              <div className="text-cyan-400 font-bold font-mono">COATING PERFORMANCE:</div>
-              <p className="text-slate-300 font-bold font-mono">α/ε Ratio: {metrics.alphaOverEpsilon}</p>
-              <p className="text-slate-400">{preset.description}</p>
-            </div>
+      {/* FLOATING LEFT HUD: THERMAL NODES */}
+      <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
+        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">
+          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Thermometer className="w-4 h-4 text-rose-400" />
+              NODE TEMPERATURES
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded border ${telemetryUI.eclipseState.includes("UMBRA") ? "border-sky-500/40 text-sky-400 bg-sky-950/50" : "border-amber-500/40 text-amber-400 bg-amber-950/50"}`}>
+              {telemetryUI.eclipseState}
+            </span>
           </div>
 
-          {/* Results Telemetry Desk */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Primary Temperature Range Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Flame className="w-3 h-3 text-red-400" /> SUNLIT PEAK EQUILIBRIUM
-                </div>
-                <div className="text-3xl font-black text-red-400">+{metrics.tHotC}&deg;C</div>
-                <div className="text-[10px] text-slate-500">{metrics.tHotK} K Absolute</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Snowflake className="w-3 h-3 text-cyan-400" /> DEEP SHADOW ECLIPSE
-                </div>
-                <div className="text-3xl font-black text-cyan-400">{metrics.tColdC}&deg;C</div>
-                <div className="text-[10px] text-slate-500">{metrics.tColdK} K Absolute</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-emerald-400" /> ZBO CRYOCOOLER POWER
-                </div>
-                <div className="text-3xl font-black text-emerald-400">
-                  {metrics.isCryo ? `${metrics.cryocoolerPowerRequiredW.toLocaleString()} W` : "PASSIVE"}
-                </div>
-                <div className="text-[10px] text-slate-500">Zero Boil-Off Target</div>
-              </div>
+          <div className="space-y-1.5 pt-1">
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">CHASSIS BUS (MLI)</span>
+              <span className={`font-bold ${parseFloat(telemetryUI.tempBusC) < -10 ? "text-sky-400" : parseFloat(telemetryUI.tempBusC) > 50 ? "text-rose-400" : "text-emerald-400"}`}>
+                {telemetryUI.tempBusC} &deg;C
+              </span>
             </div>
-
-            {/* Cryogenic Boil-Off Analysis Dossier */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Thermometer className="w-4 h-4 text-cyan-400" />
-                  Cryogenic Heat Leak &amp; Boil-Off Rate Matrix
-                </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
-                  metrics.isCryo
-                    ? "bg-amber-950 border-amber-500/40 text-amber-300"
-                    : "bg-emerald-950 border-emerald-500/40 text-emerald-300"
-                }`}>
-                  {metrics.isCryo ? "CRYOGENIC DECONTAMINATION REQUIRED" : "STANDARD ROOM TEMP BUS"}
-                </span>
-              </div>
-
-              {metrics.isCryo ? (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block">NET HEAT INLEAK</span>
-                      <span className="text-base font-bold text-red-400">{metrics.heatLeakW} W</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block">DAILY FLUID MASS LOSS</span>
-                      <span className="text-base font-bold text-white">{metrics.boilOffKgDay} kg/day</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase block">BOIL-OFF PERCENTAGE</span>
-                      <span className="text-base font-bold text-amber-400">{metrics.boilOffPctPerDay}% / day</span>
-                    </div>
-                  </div>
-
-                  <p className="text-slate-400 text-xs font-sans leading-relaxed">
-                    Without active refrigeration, heat transfer through the {mliLayers}-layer MLI blanket will boil off {metrics.boilOffKgDay} kg of {propellantType} every 24 hours. A continuous cryocooler electrical input of {metrics.cryocoolerPowerRequiredW.toLocaleString()} W is required to re-liquefy vapors and achieve Zero Boil-Off (ZBO).
-                  </p>
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-400 text-xs font-sans">
-                  Spacecraft operates in a non-cryogenic state. Radiative panels are sized to reject {internalHeatW} W of avionics payload heat into deep space during both illuminated and eclipsed orbital passes.
-                </div>
-              )}
-
-              {/* Thermal Specs Breakdown */}
-              <div className="space-y-2 text-xs pt-2">
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Radiating Surface Area</span>
-                  <span className="text-white font-bold">{metrics.surfaceAreaM2} m²</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Optical Coating Alpha / Epsilon</span>
-                  <span className="text-cyan-400 font-bold">{alpha} / {epsilon} ({metrics.alphaOverEpsilon})</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Total Liquid Propellant Loaded</span>
-                  <span className="text-purple-400 font-bold">{metrics.totalPropellantMassKg.toLocaleString()} kg</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Thermal Cycling Delta (ΔT)</span>
-                  <span className="text-slate-200 font-bold">{metrics.tHotC - metrics.tColdC}&deg;C per orbit</span>
-                </div>
-              </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">SOLAR ARRAYS</span>
+              <span className={`font-bold ${parseFloat(telemetryUI.tempArrayC) < -50 ? "text-sky-400" : parseFloat(telemetryUI.tempArrayC) > 80 ? "text-rose-400" : "text-amber-400"}`}>
+                {telemetryUI.tempArrayC} &deg;C
+              </span>
             </div>
-
           </div>
-
         </div>
 
+        {/* Heat Transfer Timeline */}
+        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
+          <div className="border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-cyan-400" />
+              THERMAL GRADIENT
+            </span>
+          </div>
+          <div className="h-20 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-0.5 gap-px overflow-hidden relative">
+            {/* 0 C line */}
+            <div className="absolute w-full border-b border-slate-700 top-1/2 pointer-events-none" />
+            {tempHistory.map((val, idx) => {
+              // Map -100C to 0%, +100C to 100%
+              const hArr = Math.max(0, Math.min(100, (val.arr + 100) / 2))
+              const hBus = Math.max(0, Math.min(100, (val.bus + 100) / 2))
+              return (
+                <div key={idx} className="flex-1 h-full relative">
+                  <div className="absolute bottom-0 w-full bg-amber-500/80 rounded-t-sm" style={{ height: `${hArr}%` }} />
+                  <div className="absolute bottom-0 w-full bg-rose-500/90 rounded-t-sm w-1/2 mx-auto" style={{ height: `${hBus}%` }} />
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-between text-[9px] text-slate-500">
+            <span className="text-rose-400">BUS</span>
+            <span className="text-amber-400">ARRAYS</span>
+          </div>
+        </div>
+      </div>
+
+      {/* FLOATING RIGHT HUD: HEAT BALANCE (STEFAN-BOLTZMANN) */}
+      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
+        <div className="p-4 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
+          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <ThermometerSun className="w-4 h-4 text-amber-400" />
+              HEAT ABSORPTION (Qin)
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">DIRECT SOLAR (ARRAYS)</span>
+              <span className="text-amber-400 font-bold">+{telemetryUI.qSolarArray} W</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">EARTH ALBEDO REFLECTANCE</span>
+              <span className="text-white font-bold">+{telemetryUI.qAlbedo} W</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">EARTH INFRARED (IR)</span>
+              <span className="text-rose-400 font-bold">+{telemetryUI.qEarthIR} W</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
+          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <ThermometerSnowflake className="w-4 h-4 text-sky-400" />
+              HEAT DISSIPATION (Qout)
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">BUS RADIATOR EMISSION</span>
+              <span className="text-sky-400 font-bold">-{telemetryUI.qRadiatedBus} W</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">ARRAY BLACKBODY RADIATION</span>
+              <span className="text-blue-400 font-bold">-{telemetryUI.qRadiatedArray} W</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute bottom-4 left-6 right-6 z-20 px-5 py-2.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-auto shadow-2xl">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">VIEW:</span>
+            <span className="text-rose-400 font-bold">FLIR THERMAL-CAM OVERLAY</span>
+          </div>
+        </div>
       </div>
     </div>
   )
