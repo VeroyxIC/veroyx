@@ -1,530 +1,386 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
-import Link from "next/link"
-import { useMission } from "@/lib/missionStore"
+import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
 import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Activity, 
-  Battery, 
-  BatteryCharging,
-  BatteryWarning,
-  Sun,
-  Zap,
-  Cpu,
-  Power
+  Zap, Sun, BatteryCharging, ShieldAlert, CheckCircle2, 
+  Activity, Orbit, Cpu, RefreshCw, BarChart3, AlertTriangle 
 } from "lucide-react"
 
-export default function EpsPage() {
-  const { mission } = useMission()
+export default function EPSPage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
 
-  const [isPlaying, setIsPlaying] = useState<boolean>(true)
-  const [timeScale, setTimeScale] = useState<number>(10)
+  // System Parameters
+  const [arrayAreaM2, setArrayAreaM2] = useState(2.4) // m^2
+  const [cellEfficiency, setCellEfficiency] = useState(29.5) // % (Triple-Junction GaAs)
+  const [orbitAltKm, setOrbitAltKm] = useState(550) // km
+  const [betaAngleDeg, setBetaAngleDeg] = useState(25) // deg
+  const [batteryCapacityWh, setBatteryCapacityWh] = useState(650) // Wh (LiFePO4 / NMC)
+  const [busVoltageV, setBusVoltageV] = useState(28) // 28V regulated bus
+  const [daylightLoadW, setDaylightLoadW] = useState(280) // W
+  const [eclipseLoadW, setEclipseLoadW] = useState(190) // W
+  const [missionLifeYears, setMissionLifeYears] = useState(5)
 
-  // Hardware Constants (Spacecraft Class dependent)
-  const ARRAY_AREA_M2 = 4.2 // Total active cell area
-  const CELL_EFFICIENCY = 0.295 // 29.5% GaInP/GaAs/Ge
-  const SOLAR_CONSTANT_W_M2 = 1361 // Average at 1 AU
-  const MAX_POWER_W = ARRAY_AREA_M2 * SOLAR_CONSTANT_W_M2 * CELL_EFFICIENCY
-  const BATTERY_CAPACITY_WH = 1200 // 1.2 kWh Li-Ion bus
-  const NOMINAL_LOAD_W = 450 // Baseline avionics + payload
+  // Physical Constants
+  const SOLAR_FLUX_W_M2 = 1361 // AM0 Solar Constant at 1 AU
+  const EARTH_RADIUS_KM = 6371
+  const MU = 398600.4418 // km^3/s^2
 
-  // Kinetic state for decoupled WebGL loop
-  const simStateRef = useRef({
-    isPlaying: true,
-    timeScale: 10,
-    simTimeSec: 1500, // Start slightly before eclipse
-    cameraYaw: 0.8,
-    cameraPitch: 0.3,
-    targetCameraYaw: 0.8,
-    targetCameraPitch: 0.3,
-    cameraDistance: 3.2,
-    targetCameraDistance: 3.2,
-    isDragging: false,
-    prevMouse: { x: 0, y: 0 },
-    dragVelocity: { x: 0, y: 0 },
-    batteryEnergyWh: 1200 // Start fully charged
-  })
+  // Orbital Period Calculation: T = 2π * sqrt(a^3 / μ)
+  const semiMajorAxisKm = EARTH_RADIUS_KM + orbitAltKm
+  const orbitPeriodSec = 2 * Math.PI * Math.sqrt(Math.pow(semiMajorAxisKm, 3) / MU)
+  const orbitPeriodMin = orbitPeriodSec / 60
 
-  // Throttled UI Telemetry (4 Hz)
-  const [telemetryUI, setTelemetryUI] = useState({
-    simTimeSec: 1500,
-    incidenceAngleDeg: "0.0",
-    solarFluxWm2: "1361",
-    generatedPowerW: MAX_POWER_W.toFixed(1),
-    busLoadW: NOMINAL_LOAD_W.toFixed(1),
-    netPowerW: (MAX_POWER_W - NOMINAL_LOAD_W).toFixed(1),
-    batterySocPct: "100.0",
-    batteryDodPct: "0.0",
-    eclipseState: "SUNLIT",
-    timeToEclipseSec: "0"
-  })
+  // Eclipse Duration (Cylindrical Shadow Model with Beta Angle):
+  // sin(ρ) = R_E / r
+  const rhoRad = Math.asin(EARTH_RADIUS_KM / semiMajorAxisKm)
+  const betaRad = Math.abs(betaAngleDeg) * (Math.PI / 180)
+  
+  let eclipseFraction = 0
+  if (betaRad < rhoRad) {
+    const cosVal = Math.sqrt(Math.max(0, Math.sin(rhoRad)**2 - Math.sin(betaRad)**2)) / Math.cos(betaRad)
+    eclipseFraction = Math.asin(Math.min(1, Math.max(0, cosVal))) / Math.PI
+  }
+  const eclipseTimeMin = orbitPeriodMin * eclipseFraction
+  const daylightTimeMin = orbitPeriodMin - eclipseTimeMin
 
-  const [socHistory, setSocHistory] = useState<number[]>(Array(40).fill(100))
-  const [powerHistory, setPowerHistory] = useState<number[]>(Array(40).fill(MAX_POWER_W))
+  // Solar Array Generation (BOL vs EOL with 2.5% degradation/year):
+  const degradationFactor = Math.pow(1 - 0.025, missionLifeYears)
+  const cellEffDecimal = cellEfficiency / 100
+  const cosIncidence = Math.cos(betaRad) // Assuming Sun-tracking 1-axis array
+  const bolPowerW = SOLAR_FLUX_W_M2 * arrayAreaM2 * cellEffDecimal * cosIncidence
+  const eolPowerW = bolPowerW * degradationFactor
 
-  useEffect(() => {
-    simStateRef.current.isPlaying = isPlaying
-    simStateRef.current.timeScale = timeScale
-  }, [isPlaying, timeScale])
+  // Energy Balance during Daylight:
+  // Energy to recharge battery: E_batt_recharge = (Eclipse Load * Eclipse Time) / (η_discharge * η_charge)
+  const chargeEff = 0.92
+  const dischargeEff = 0.94
+  const eclipseEnergyDemandWh = (eclipseLoadW * (eclipseTimeMin / 60)) / dischargeEff
+  const requiredRechargePowerW = (eclipseEnergyDemandWh / (daylightTimeMin / 60)) / chargeEff
+  const totalDaylightDemandW = daylightLoadW + requiredRechargePowerW
+  const powerMarginW = eolPowerW - totalDaylightDemandW
+  const isPowerPositive = powerMarginW >= 0
 
-  // Orbital Mechanics
-  const orbit = useMemo(() => {
-    const mu = 398600.4418
-    const rEarthKm = 6378.137
-    const a = rEarthKm + mission.altitudeKm
-    const incRad = (mission.inclinationDeg * Math.PI) / 180
-    const n = Math.sqrt(mu / Math.pow(a, 3))
-    const periodSec = (2 * Math.PI) / n
-    return { a, incRad, n, periodSec, rEarthKm }
-  }, [mission.altitudeKm, mission.inclinationDeg])
+  // Battery Depth of Discharge (DoD):
+  const batteryDoDPct = (eclipseEnergyDemandWh / batteryCapacityWh) * 100
+  const maxSafeDoDPct = 40.0 // LEO standard for 5+ year cycle life (~28,000 cycles)
 
-  // Master WebGL Scene
+  // 3D Orbital Sun/Shadow Scene
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
-
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#010308")
 
-    const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 1000)
-    camera.position.set(0, 1.5, 3.2)
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100)
+    camera.position.set(0, 8, 14)
     camera.lookAt(0, 0, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.15
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep Space Environment
-    const starCount = 2000
-    const starGeo = new THREE.BufferGeometry()
-    const starPos = new Float32Array(starCount * 3)
-    for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 100
-      starPos[i + 1] = (Math.random() - 0.5) * 100
-      starPos[i + 2] = (Math.random() - 0.5) * 100
-    }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
-    const starMat = new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.1, transparent: true, opacity: 0.6 })
-    scene.add(new THREE.Points(starGeo, starMat))
+    // Sun Vector Directional Light (Pointing along +X)
+    const sunLight = new THREE.DirectionalLight(0xfffaed, 3.0)
+    sunLight.position.set(15, 0, 0)
+    scene.add(sunLight)
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.2))
 
-    // Physical Sunlight
-    const sunLight = new THREE.DirectionalLight(0xfff7ed, 3.5)
-    scene.add(sunLight) // Position updated dynamically in loop
-    const ambientLight = new THREE.AmbientLight(0x061224, 0.2)
-    scene.add(ambientLight)
+    // Earth Sphere
+    const earthGeo = new THREE.SphereGeometry(3.0, 48, 48)
+    const earthMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.8,
+      metalness: 0.1
+    })
+    const earth = new THREE.Mesh(earthGeo, earthMat)
+    scene.add(earth)
 
-    // Spacecraft Assembly
+    // Cylindrical Earth Shadow Cylinder (Umbra projection)
+    const shadowGeo = new THREE.CylinderGeometry(3.0, 3.0, 16, 32, 1, true)
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.BackSide
+    })
+    const shadowCylinder = new THREE.Mesh(shadowGeo, shadowMat)
+    shadowCylinder.rotation.z = Math.PI / 2
+    shadowCylinder.position.set(-8, 0, 0)
+    scene.add(shadowCylinder)
+
+    // Orbit Ring tilted by Beta Angle
+    const orbitRadius = 4.8
+    const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
+    const orbitPoints = orbitCurve.getPoints(128)
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints)
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6 })
+    const orbitLine = new THREE.Line(orbitGeo, orbitMat)
+    orbitLine.rotation.x = Math.PI / 2
+    orbitLine.rotation.y = (betaAngleDeg * Math.PI) / 180
+    scene.add(orbitLine)
+
+    // Satellite Model Marker with Articulated Panels
     const satGroup = new THREE.Group()
-
-    // Chassis
     const busMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.4, 0.4, 0.6),
-      new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.2, metalness: 0.8 })
+      new THREE.BoxGeometry(0.35, 0.35, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 })
     )
     satGroup.add(busMesh)
 
-    // Solar Arrays (Interactive Glow based on power generation)
-    const wingMat = new THREE.MeshStandardMaterial({ 
-      color: 0x0369a1, 
-      roughness: 0.1, 
-      metalness: 0.9,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.5 // Modulated in loop
-    })
-    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.02, 0.4), wingMat)
-    leftWing.position.set(0.9, 0, 0)
-    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.02, 0.4), wingMat)
-    rightWing.position.set(-0.9, 0, 0)
-    
-    const sadmGroup = new THREE.Group()
-    sadmGroup.add(leftWing)
-    sadmGroup.add(rightWing)
-    satGroup.add(sadmGroup)
+    const panelMeshL = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 0.02, 0.35),
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.5, roughness: 0.2 })
+    )
+    panelMeshL.position.set(0.65, 0, 0)
+    satGroup.add(panelMeshL)
+
+    const panelMeshR = panelMeshL.clone()
+    panelMeshR.position.set(-0.65, 0, 0)
+    satGroup.add(panelMeshR)
+
     scene.add(satGroup)
 
-    // Sun Vector Line
-    const sunVecGeo = new THREE.BufferGeometry()
-    sunVecGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array([0,0,0, 0,0,2]), 3))
-    const sunVecMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.8 })
-    const sunVecLine = new THREE.Line(sunVecGeo, sunVecMat)
-    scene.add(sunVecLine)
-
-    // Mouse Interaction
-    const onMouseDown = (e: MouseEvent) => {
-      simStateRef.current.isDragging = true
-      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
-    }
-    const onMouseMove = (e: MouseEvent) => {
-      if (!simStateRef.current.isDragging) return
-      const dx = e.clientX - simStateRef.current.prevMouse.x
-      const dy = e.clientY - simStateRef.current.prevMouse.y
-      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
-      simStateRef.current.dragVelocity = { x: dx, y: dy }
-      simStateRef.current.targetCameraYaw += dx * 0.005
-      simStateRef.current.targetCameraPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetCameraPitch + dy * 0.005))
-    }
-    const onMouseUp = () => { simStateRef.current.isDragging = false }
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault()
-      const zoomDelta = e.deltaY * 0.003
-      simStateRef.current.targetCameraDistance = Math.max(1.5, Math.min(8.0, simStateRef.current.targetCameraDistance + zoomDelta))
-    }
-
-    const dom = renderer.domElement
-    dom.addEventListener("mousedown", onMouseDown)
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp)
-    dom.addEventListener("wheel", onWheel, { passive: false })
-
     let animId: number
-    let lastTime = performance.now()
-    let lastUiSync = performance.now()
-
-    const animate = (now: number) => {
+    const animate = () => {
       animId = requestAnimationFrame(animate)
-      const dt = Math.min((now - lastTime) / 1000, 0.1)
-      lastTime = now
 
-      if (simStateRef.current.isPlaying) {
-        simStateRef.current.simTimeSec += dt * simStateRef.current.timeScale
-      }
+      // Orbit angular progression
+      const t = Date.now() * 0.0008
+      const x = orbitRadius * Math.cos(t)
+      const z = orbitRadius * Math.sin(t)
 
-      const t = simStateRef.current.simTimeSec
+      // Apply beta angle inclination rotation to position
+      const rad = (betaAngleDeg * Math.PI) / 180
+      const rotatedX = x * Math.cos(rad)
+      const rotatedY = x * Math.sin(rad)
 
-      // Simulate Orbit Physics & Eclipse Geometry
-      // Assuming a simplified Beta angle of 0 for max eclipse duration
-      const u = (orbit.n * t) % (2 * Math.PI) // True anomaly
-      const xOrb = orbit.a * Math.cos(u)
-      const zOrb = orbit.a * Math.sin(u)
-      const rVec = new THREE.Vector3(xOrb, 0, zOrb)
-
-      // Assume Sun is at fixed +X direction in this local orbital frame
-      const sunLocalDir = new THREE.Vector3(1, 0, 0)
-      
-      // Eclipse Detection (Cylindrical shadow model)
-      const projection = rVec.clone().projectOnVector(sunLocalDir)
-      const perpDist = rVec.clone().sub(projection).length()
-      const isBehindEarth = projection.dot(sunLocalDir) < 0
-      
-      let eclipseState = "SUNLIT"
-      let eclipseFactor = 1.0 // 1.0 = full sun, 0.0 = full umbra
-
-      if (isBehindEarth) {
-        if (perpDist < orbit.rEarthKm) {
-          eclipseState = "UMBRA (FULL ECLIPSE)"
-          eclipseFactor = 0.0
-        } else if (perpDist < orbit.rEarthKm + 100) {
-          // Penumbra transition band (soft shadow)
-          eclipseState = "PENUMBRA"
-          eclipseFactor = (perpDist - orbit.rEarthKm) / 100
-        }
-      }
-
-      // Update Lighting & Vectors
-      sunLight.position.copy(sunLocalDir.clone().multiplyScalar(10))
-      sunLight.intensity = 3.5 * eclipseFactor
-      
-      // Align Sun Vector Line indicator
-      const linePositions = sunVecGeo.attributes.position as THREE.BufferAttribute
-      linePositions.setXYZ(1, sunLocalDir.x * 2, sunLocalDir.y * 2, sunLocalDir.z * 2)
-      linePositions.needsUpdate = true
-      sunVecMat.opacity = 0.8 * eclipseFactor
-
-      // Spacecraft Attitude (Nadir Pointing +X Forward, -Z Down)
-      // For visual simplicity in this local frame, we keep the bus fixed 
-      // and rotate the SADM to track the sun.
-      const sunAngle = Math.atan2(sunLocalDir.z, sunLocalDir.x)
-      
-      // Add slight pointing error noise to demonstrate cosine loss
-      const pointingError = Math.sin(t * 0.1) * 0.15 
-      sadmGroup.rotation.y = -sunAngle + pointingError
-
-      // Power Generation Calculation (P_gen = Area * Flux * Eff * cos(theta))
-      const panelNormal = new THREE.Vector3(0, 1, 0).applyAxisAngle(new THREE.Vector3(0,0,1), sadmGroup.rotation.y) // Simplified panel normal
-      // Actual incidence angle
-      const incidenceRad = Math.abs(pointingError) 
-      const incidenceDeg = (incidenceRad * 180) / Math.PI
-      
-      const generatedW = MAX_POWER_W * Math.cos(incidenceRad) * eclipseFactor
-      const netPowerW = generatedW - NOMINAL_LOAD_W
-
-      // Battery Kinetics Integration (Wh)
-      // Energy = Power (W) * Time (h). dt is in seconds, so (dt/3600) hours.
-      if (simStateRef.current.isPlaying) {
-        const energyDeltaWh = netPowerW * (dt * simStateRef.current.timeScale / 3600)
-        simStateRef.current.batteryEnergyWh = Math.max(0, Math.min(BATTERY_CAPACITY_WH, simStateRef.current.batteryEnergyWh + energyDeltaWh))
-      }
-
-      const socPct = (simStateRef.current.batteryEnergyWh / BATTERY_CAPACITY_WH) * 100
-      const dodPct = 100 - socPct
-
-      // Visual feedback: Solar panels dim when losing power
-      wingMat.emissiveIntensity = 0.6 * (generatedW / MAX_POWER_W)
-
-      // Camera Damping
-      if (!simStateRef.current.isDragging) {
-        simStateRef.current.targetCameraYaw += simStateRef.current.dragVelocity.x * 0.002
-        simStateRef.current.targetCameraPitch += simStateRef.current.dragVelocity.y * 0.002
-        simStateRef.current.dragVelocity.x *= 0.92
-        simStateRef.current.dragVelocity.y *= 0.92
-      }
-      simStateRef.current.cameraYaw += (simStateRef.current.targetCameraYaw - simStateRef.current.cameraYaw) * 0.08
-      simStateRef.current.cameraPitch += (simStateRef.current.targetCameraPitch - simStateRef.current.cameraPitch) * 0.08
-      simStateRef.current.cameraDistance += (simStateRef.current.targetCameraDistance - simStateRef.current.cameraDistance) * 0.08
-
-      const curDist = simStateRef.current.cameraDistance
-      camera.position.x = curDist * Math.sin(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
-      camera.position.y = curDist * Math.sin(simStateRef.current.cameraPitch)
-      camera.position.z = curDist * Math.cos(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
-      camera.lookAt(0, 0, 0)
+      satGroup.position.set(rotatedX, rotatedY, z)
+      satGroup.lookAt(0, 0, 0)
 
       renderer.render(scene, camera)
-
-      // UI Dispatch (4 Hz = 250ms)
-      if (now - lastUiSync > 250) {
-        lastUiSync = now
-
-        // Calculate time to next eclipse event
-        // Simplified based on circular orbit anomaly
-        let timeToEclipse = 0
-        if (eclipseState === "SUNLIT") {
-           const anomalyToEclipse = (Math.PI / 2) - u
-           timeToEclipse = anomalyToEclipse > 0 ? (anomalyToEclipse / orbit.n) : ((Math.PI * 2.5 - u) / orbit.n)
-        }
-
-        setTelemetryUI({
-          simTimeSec: Math.round(t),
-          incidenceAngleDeg: incidenceDeg.toFixed(1),
-          solarFluxWm2: (SOLAR_CONSTANT_W_M2 * eclipseFactor).toFixed(1),
-          generatedPowerW: generatedW.toFixed(1),
-          busLoadW: NOMINAL_LOAD_W.toFixed(1),
-          netPowerW: netPowerW.toFixed(1),
-          batterySocPct: socPct.toFixed(2),
-          batteryDodPct: dodPct.toFixed(2),
-          eclipseState,
-          timeToEclipseSec: eclipseState === "SUNLIT" ? Math.round(timeToEclipse).toString() : "ACTIVE"
-        })
-
-        setSocHistory(prev => [...prev.slice(1), socPct])
-        setPowerHistory(prev => [...prev.slice(1), generatedW])
-      }
     }
-
-    animId = requestAnimationFrame(animate)
+    animate()
 
     const onResize = () => {
       if (!container) return
-      const w = container.clientWidth
-      const h = container.clientHeight
-      camera.aspect = w / h
+      camera.aspect = container.clientWidth / container.clientHeight
       camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
+      renderer.setSize(container.clientWidth, container.clientHeight)
     }
     window.addEventListener("resize", onResize)
 
     return () => {
       cancelAnimationFrame(animId)
       window.removeEventListener("resize", onResize)
-      dom.removeEventListener("mousedown", onMouseDown)
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      dom.removeEventListener("wheel", onWheel)
       renderer.dispose()
     }
-  }, [orbit])
+  }, [betaAngleDeg, orbitAltKm])
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
+    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-[#020617] font-sans text-slate-100 overflow-hidden">
       
-      <div
-        ref={mountRef}
-        className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0"
-      />
-
-      {/* FLOATING LEFT HUD: POWER GENERATION */}
-      <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
-        
-        {/* Array Generation */}
-        <div className={`p-4 rounded-xl backdrop-blur-md border shadow-2xl space-y-2.5 transition-all ${
-          telemetryUI.eclipseState === "SUNLIT" 
-            ? "bg-slate-950/85 border-amber-500/40" 
-            : "bg-slate-950/75 border-slate-800/80"
-        }`}>
-          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Sun className={`w-4 h-4 ${telemetryUI.eclipseState === "SUNLIT" ? "text-amber-400" : "text-slate-500"}`} />
-              SOLAR ARRAY KINETICS
-            </span>
-            <span className={`text-[10px] px-2 py-0.5 rounded border ${
-              telemetryUI.eclipseState === "SUNLIT" 
-                ? "text-amber-400 border-amber-500/20 bg-amber-950/50"
-                : "text-slate-400 border-slate-700 bg-slate-800"
-            }`}>
-              {telemetryUI.eclipseState}
-            </span>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">SOLAR FLUX</span>
-              <span className="text-amber-400 font-bold">{telemetryUI.solarFluxWm2} W/m&sup2;</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">SUN INCIDENCE ANGLE (θ)</span>
-              <span className="text-white font-bold">{telemetryUI.incidenceAngleDeg}&deg;</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">COSINE LOSS</span>
-              <span className="text-white font-bold">{(1 - Math.cos((parseFloat(telemetryUI.incidenceAngleDeg) * Math.PI) / 180)).toFixed(3)}</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">GENERATED POWER (Pgen)</span>
-              <span className="text-emerald-400 font-bold">{telemetryUI.generatedPowerW} W</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">NEXT ECLIPSE IN</span>
-              <span className="text-slate-300 font-bold">{telemetryUI.timeToEclipseSec} s</span>
-            </div>
-          </div>
+      {/* LEFT PANEL: EPS CONFIGURATION */}
+      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Zap className="w-5 h-5 text-amber-400" /> Power Systems (EPS)
+          </h1>
+          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
+            Solar Generation &amp; Battery DoD Energy Balance
+          </p>
         </div>
 
-        {/* Rolling Generation Graph */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
-          <div className="border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              Pgen PROFILE
-            </span>
-            <span className="text-cyan-400 font-bold">{telemetryUI.generatedPowerW} W</span>
-          </div>
-
-          <div className="h-14 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-0.5 gap-px overflow-hidden">
-            {powerHistory.map((val, idx) => {
-              const hPercent = Math.max(2, Math.min(100, (val / MAX_POWER_W) * 100))
-              return (
-                <div
-                  key={idx}
-                  className={`flex-1 rounded-t-sm transition-all ${val > 100 ? "bg-amber-400/80" : "bg-slate-700"}`}
-                  style={{ height: `${hPercent}%` }}
-                />
-              )
-            })}
-          </div>
-        </div>
-
-      </div>
-
-      {/* FLOATING RIGHT HUD: BATTERY & BUS LOAD */}
-      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
-        
-        {/* Power Bus Budget */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">
-          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Cpu className="w-4 h-4 text-rose-400" />
-              ELECTRICAL BUS BUDGET
-            </span>
-            <span className="text-[10px] text-rose-400">28V BUS</span>
-          </div>
-
-          <div className="space-y-1.5">
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">AVIONICS + PAYLOAD LOAD</span>
-              <span className="text-rose-400 font-bold">-{telemetryUI.busLoadW} W</span>
-            </div>
-            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
-              <span className="text-slate-500">POWER GENERATION</span>
-              <span className="text-emerald-400 font-bold">+{telemetryUI.generatedPowerW} W</span>
-            </div>
-            <div className="flex justify-between pt-1 font-bold">
-              <span className="text-white">NET POWER</span>
-              <span className={parseFloat(telemetryUI.netPowerW) >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                {parseFloat(telemetryUI.netPowerW) > 0 ? "+" : ""}{telemetryUI.netPowerW} W
-              </span>
+        <div className="space-y-6">
+          {/* Solar Array Controls */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <label className="text-slate-400 font-bold uppercase tracking-widest flex items-center justify-between">
+              <span className="flex items-center gap-2"><Sun className="w-3.5 h-3.5 text-amber-400" /> SOLAR ARRAY AREA</span>
+              <span className="text-amber-400 font-bold">{arrayAreaM2.toFixed(2)} m²</span>
+            </label>
+            <input 
+              type="range" min="0.5" max="8.0" step="0.1"
+              value={arrayAreaM2}
+              onChange={e => setArrayAreaM2(Number(e.target.value))}
+              className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>CubeSat (0.5m²)</span>
+              <span>ESPA Class (2.4m²)</span>
+              <span>SmallSat (8.0m²)</span>
             </div>
           </div>
-        </div>
 
-        {/* Battery State of Charge */}
-        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
-          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              {parseFloat(telemetryUI.netPowerW) >= 0 ? (
-                <BatteryCharging className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <BatteryWarning className="w-4 h-4 text-rose-400" />
-              )}
-              BATTERY KINETICS
-            </span>
-            <span className="text-[10px] text-slate-400">Li-Ion 1.2kWh</span>
+          {/* Orbit Beta Angle */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <label className="text-slate-400 font-bold uppercase tracking-widest flex items-center justify-between">
+              <span className="flex items-center gap-2"><Orbit className="w-3.5 h-3.5 text-cyan-400" /> BETA ANGLE (β)</span>
+              <span className="text-cyan-400 font-bold">{betaAngleDeg}°</span>
+            </label>
+            <input 
+              type="range" min="0" max="75" step="1"
+              value={betaAngleDeg}
+              onChange={e => setBetaAngleDeg(Number(e.target.value))}
+              className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>Max Eclipse (0°)</span>
+              <span>Sun-Synchronous Noon (25°)</span>
+              <span>Full Sun / Dawn-Dusk (75°)</span>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="flex justify-between text-[11px]">
-              <span className="text-slate-400">STATE OF CHARGE (SoC)</span>
-              <span className={parseFloat(telemetryUI.batterySocPct) < 50 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-                {telemetryUI.batterySocPct} %
-              </span>
+          {/* Battery Sizing & Bus */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <label className="text-slate-400 font-bold uppercase tracking-widest flex items-center justify-between">
+              <span className="flex items-center gap-2"><BatteryCharging className="w-3.5 h-3.5 text-emerald-400" /> BATT CAPACITY</span>
+              <span className="text-emerald-400 font-bold">{batteryCapacityWh} Wh</span>
+            </label>
+            <input 
+              type="range" min="100" max="2500" step="25"
+              value={batteryCapacityWh}
+              onChange={e => setBatteryCapacityWh(Number(e.target.value))}
+              className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+            />
+
+            <div className="flex justify-between items-center pt-2 border-t border-slate-800 text-[11px]">
+              <span className="text-slate-400">BUS VOLTAGE:</span>
+              <div className="flex gap-2">
+                {[28, 50, 100].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setBusVoltageV(v)}
+                    className={`px-2 py-0.5 rounded border text-[10px] ${busVoltageV === v ? "bg-cyan-950 border-cyan-500 text-cyan-400 font-bold" : "border-slate-800 text-slate-500"}`}
+                  >
+                    {v}V
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-              <div 
-                className={`h-full transition-all duration-200 ${parseFloat(telemetryUI.batterySocPct) < 50 ? "bg-rose-500" : "bg-emerald-500"}`}
-                style={{ width: `${telemetryUI.batterySocPct}%` }}
+          </div>
+
+          {/* Payload Load Profiles */}
+          <div className="space-y-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Power Consumption Profiles
+            </div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Sunlit Mode Load:</span>
+                <span className="text-white font-bold">{daylightLoadW} W</span>
+              </div>
+              <input 
+                type="range" min="50" max="1200" step="10"
+                value={daylightLoadW}
+                onChange={e => setDaylightLoadW(Number(e.target.value))}
+                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
             </div>
-            <div className="flex justify-between text-[11px] pt-1">
-              <span className="text-slate-400">DEPTH OF DISCHARGE (DoD)</span>
-              <span className="text-white font-bold">{telemetryUI.batteryDodPct} %</span>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Eclipse Mode Load:</span>
+                <span className="text-white font-bold">{eclipseLoadW} W</span>
+              </div>
+              <input 
+                type="range" min="30" max="800" step="10"
+                value={eclipseLoadW}
+                onChange={e => setEclipseLoadW(Number(e.target.value))}
+                className="w-full accent-rose-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
           </div>
-
-          {/* SoC Graph */}
-          <div className="pt-2">
-            <div className="h-10 w-full bg-slate-950 rounded border border-slate-800 flex items-end px-0.5 gap-px overflow-hidden">
-              {socHistory.map((val, idx) => {
-                const hPercent = Math.max(5, Math.min(100, val))
-                return (
-                  <div
-                    key={idx}
-                    className={`flex-1 transition-all rounded-t-sm ${val < 50 ? "bg-rose-500/80" : "bg-emerald-500/80"}`}
-                    style={{ height: `${hPercent}%` }}
-                  />
-                )
-              })}
-            </div>
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* BOTTOM STATUS BAR */}
-      <div className="absolute bottom-4 left-6 right-6 z-20 px-5 py-2.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-auto shadow-2xl">
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">STATUS:</span>
-            <span className={telemetryUI.eclipseState === "SUNLIT" ? "text-amber-400 font-bold" : "text-rose-400 font-bold"}>
-              {telemetryUI.eclipseState === "SUNLIT" ? "NOMINAL CHARGING" : "ECLIPSE DISCHARGING"}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 text-slate-400">
-          <span>SIM TIME: <strong className="text-white">{telemetryUI.simTimeSec}s</strong></span>
         </div>
       </div>
 
+      {/* CENTER PANEL: 3D ORBITAL ECLIPSE VISUALIZER */}
+      <div className="flex-1 h-full relative flex flex-col">
+        <div className="absolute top-6 left-6 z-10 font-mono">
+          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">Orbit Illumination Geometry</div>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl font-black text-white">{orbitPeriodMin.toFixed(1)} min</span>
+            <span className="text-slate-500 text-xs">ORBIT PERIOD</span>
+          </div>
+          <div className="flex gap-4 mt-2 text-[11px]">
+            <span className="text-amber-400">SUN: {daylightTimeMin.toFixed(1)}m ({( (daylightTimeMin / orbitPeriodMin) * 100).toFixed(0)}%)</span>
+            <span className="text-cyan-400">UMBRA: {eclipseTimeMin.toFixed(1)}m ({( (eclipseTimeMin / orbitPeriodMin) * 100).toFixed(0)}%)</span>
+          </div>
+        </div>
+
+        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+
+        {/* Orbit Eclipse Bar */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl">
+          <div className="flex justify-between mb-1.5 text-[10px]">
+            <span className="text-amber-400 flex items-center gap-1"><Sun className="w-3 h-3" /> SUNLIT PHASE ({daylightTimeMin.toFixed(1)} min)</span>
+            <span className="text-slate-400 flex items-center gap-1"><Orbit className="w-3 h-3" /> ECLIPSE SHADOW ({eclipseTimeMin.toFixed(1)} min)</span>
+          </div>
+          <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden flex">
+            <div className="h-full bg-amber-400" style={{ width: `${(daylightTimeMin / orbitPeriodMin) * 100}%` }} />
+            <div className="h-full bg-slate-950 border-l border-slate-700" style={{ width: `${(eclipseTimeMin / orbitPeriodMin) * 100}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL: ENERGY BALANCE & BATTERY METRICS */}
+      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-emerald-400" /> Power Balance
+        </h2>
+
+        <div className="space-y-6">
+          {/* Power Margin Status Box */}
+          <div className={`p-5 rounded-2xl border ${isPowerPositive ? "bg-emerald-950/20 border-emerald-500/40" : "bg-rose-950/20 border-rose-500/40"}`}>
+            <div className={`text-[10px] font-bold tracking-wider mb-1 ${isPowerPositive ? "text-emerald-400/80" : "text-rose-400/80"}`}>
+              EOL POWER BALANCE MARGIN
+            </div>
+            <div className={`text-3xl font-black ${isPowerPositive ? "text-emerald-400" : "text-rose-400"}`}>
+              {isPowerPositive ? `+${powerMarginW.toFixed(1)}` : powerMarginW.toFixed(1)} W
+            </div>
+            <div className="text-[10px] text-slate-400 mt-2">
+              {isPowerPositive 
+                ? "Array provides sufficient energy to power daylight loads and fully replenish battery before next eclipse." 
+                : "NEGATIVE ENERGY BALANCE: Satellite will experience progressive battery depletion each orbit."}
+            </div>
+          </div>
+
+          {/* Battery DoD Metric */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <div className="text-slate-400 font-bold tracking-wider border-b border-slate-800 pb-2 flex justify-between">
+              <span>BATTERY DOD (PER ORBIT)</span>
+              <span className={batteryDoDPct <= maxSafeDoDPct ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                {batteryDoDPct.toFixed(1)}%
+              </span>
+            </div>
+
+            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div 
+                className={`h-full ${batteryDoDPct <= maxSafeDoDPct ? "bg-emerald-500" : "bg-rose-500"}`} 
+                style={{ width: `${Math.min(100, (batteryDoDPct / 50) * 100)}%` }} 
+              />
+            </div>
+
+            <div className="flex justify-between text-[10px] text-slate-500">
+              <span>Max Safe DoD: 40%</span>
+              <span>Eclipse Demand: {eclipseEnergyDemandWh.toFixed(1)} Wh</span>
+            </div>
+          </div>
+
+          {/* Solar Array Sizing Breakdown */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Solar Array Metrics</div>
+            <div className="flex justify-between"><span className="text-slate-500">BOL Generation:</span><span className="text-white">{bolPowerW.toFixed(0)} W</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">EOL Generation ({missionLifeYears} yr):</span><span className="text-amber-400 font-bold">{eolPowerW.toFixed(0)} W</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Recharge Requirement:</span><span className="text-cyan-400">{requiredRechargePowerW.toFixed(0)} W</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Bus Current (at {busVoltageV}V):</span><span className="text-white">{(eolPowerW / busVoltageV).toFixed(1)} A</span></div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
