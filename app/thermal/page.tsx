@@ -330,33 +330,6 @@ export default function ThermalPage() {
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
       <div ref={mountRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0" />
 
-      {/* TOP TACTICAL FLIGHT BAR */}
-      <div className="absolute top-4 left-6 right-6 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-none">
-        <div className="flex items-center gap-3 pointer-events-auto">
-          <Link href="/" className="px-3.5 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm hover:border-rose-500/50 transition-all shadow-xl">
-            VEROYX
-          </Link>
-          <div className="px-3 py-1 rounded-full bg-rose-950/80 backdrop-blur-md border border-rose-500/40 text-rose-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
-            <Flame className="w-3.5 h-3.5 text-rose-400" />
-            THERMAL CONTROL SYSTEM (TCS) & HEAT BALANCE
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto shadow-xl">
-          <button onClick={() => setIsPlaying(!isPlaying)} className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 transition-all">
-            {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
-          </button>
-          {[1, 10, 60, 120].map(scale => (
-            <button key={scale} onClick={() => setTimeScale(scale)} className={`px-2 py-1 rounded-lg transition-all ${timeScale === scale ? "bg-rose-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"}`}>
-              {scale}x
-            </button>
-          ))}
-          <button onClick={() => { simStateRef.current.simTimeSec = 0; simStateRef.current.tempBusK = 293.15; simStateRef.current.tempArrayK = 293.15; }} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
       {/* FLOATING LEFT HUD: THERMAL NODES */}
       <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
         <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">

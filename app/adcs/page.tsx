@@ -326,55 +326,6 @@ export default function AdcsPage() {
         className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0"
       />
 
-      {/* TOP TACTICAL FLIGHT BAR */}
-      <div className="absolute top-4 left-6 right-6 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-none">
-        
-        <div className="flex items-center gap-3 pointer-events-auto">
-          <Link
-            href="/"
-            className="px-3.5 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm tracking-wider hover:border-purple-500/50 transition-all shadow-xl"
-          >
-            VEROYX
-          </Link>
-          <div className="px-3 py-1 rounded-full bg-purple-950/80 backdrop-blur-md border border-purple-500/40 text-purple-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
-            <Compass className="w-3.5 h-3.5 text-purple-400" />
-            ATTITUDE DETERMINATION &amp; CONTROL SYSTEM (ADCS)
-          </div>
-        </div>
-
-        {/* Command Mode Switcher & Time */}
-        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto shadow-xl">
-          <div className="flex items-center bg-slate-800/90 rounded-lg p-0.5 mr-2">
-            <button
-              onClick={() => setControlMode("NADIR_TRACKING")}
-              className={`px-3 py-1 rounded cursor-pointer transition-all ${controlMode === "NADIR_TRACKING" ? "bg-purple-500 text-slate-950 font-bold shadow-md shadow-purple-500/20" : "text-slate-400 hover:text-white"}`}
-            >
-              NADIR POINT
-            </button>
-            <button
-              onClick={() => setControlMode("SUN_POINTING")}
-              className={`px-3 py-1 rounded cursor-pointer transition-all ${controlMode === "SUN_POINTING" ? "bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20" : "text-slate-400 hover:text-white"}`}
-            >
-              SUN POINT
-            </button>
-            <button
-              onClick={() => setControlMode("SAFE_HOLD")}
-              className={`px-3 py-1 rounded cursor-pointer transition-all ${controlMode === "SAFE_HOLD" ? "bg-rose-500 text-slate-950 font-bold shadow-md shadow-rose-500/20" : "text-slate-400 hover:text-white"}`}
-            >
-              SAFE HOLD
-            </button>
-          </div>
-          
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer transition-all"
-          >
-            {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
-          </button>
-        </div>
-
-      </div>
-
       {/* FLOATING LEFT HUD: QUATERNIONS & EULERS */}
       <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
         
