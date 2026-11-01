@@ -15,13 +15,11 @@ import {
   Crosshair, 
   Eye, 
   ShieldAlert, 
-  Maximize2,
-  ZoomIn,
-  ZoomOut,
-  Target,
-  Layers,
-  ChevronRight,
-  Video
+  Target, 
+  Layers, 
+  Video,
+  Sun,
+  Maximize2
 } from "lucide-react"
 
 const TARGET_PRESETS = [
@@ -39,20 +37,19 @@ export default function VisualizerPage() {
   const [timeScale, setTimeScale] = useState<number>(10)
   const [selectedTarget, setSelectedTarget] = useState<number>(0)
   const [cameraMode, setCameraMode] = useState<"GLOBAL" | "CHASE" | "INTERCEPT">("GLOBAL")
-  const [showSensorPip, setShowSensorPip] = useState<boolean>(true)
 
-  // Mutable Animation State (60fps decoupled)
+  // Animation Refs
   const simStateRef = useRef({
     isPlaying: true,
     timeScale: 10,
     simTimeSec: 0,
     cameraMode: "GLOBAL" as "GLOBAL" | "CHASE" | "INTERCEPT",
-    yaw: 0.8,
+    yaw: 0.9,
     pitch: 0.35,
-    targetYaw: 0.8,
+    targetYaw: 0.9,
     targetPitch: 0.35,
-    distance: 5.8,
-    targetDistance: 5.8,
+    distance: 5.4,
+    targetDistance: 5.4,
     isDragging: false,
     prevMouse: { x: 0, y: 0 }
   })
@@ -95,7 +92,7 @@ export default function VisualizerPage() {
     return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
   }, [mission.altitudeKm, mission.inclinationDeg])
 
-  // Three.js Full-Viewport Engine
+  // Three.js Photorealistic Next-Gen Engine
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -103,49 +100,64 @@ export default function VisualizerPage() {
     const width = container.clientWidth
     const height = container.clientHeight
 
+    // 1. Scene, Camera & ACES Tone-Mapped Renderer
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#01040a")
+    scene.background = new THREE.Color("#010408")
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 2.5, 5.8)
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000)
+    camera.position.set(0, 2.2, 5.4)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.35
+    renderer.toneMappingExposure = 1.4
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep Starfield (Procedural Cosmic Density)
-    const starCount = 2500
+    // 2. Deep Field Dynamic Stars (Color Temperature Scaled)
+    const starCount = 3000
     const starGeo = new THREE.BufferGeometry()
     const starPos = new Float32Array(starCount * 3)
+    const starColors = new Float32Array(starCount * 3)
+
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 160
-      starPos[i + 1] = (Math.random() - 0.5) * 160
-      starPos[i + 2] = (Math.random() - 0.5) * 160
+      starPos[i] = (Math.random() - 0.5) * 180
+      starPos[i + 1] = (Math.random() - 0.5) * 180
+      starPos[i + 2] = (Math.random() - 0.5) * 180
+
+      // Warm White / Blue / Golden stellar hues
+      const cType = Math.random()
+      if (cType > 0.7) {
+        starColors[i] = 0.7; starColors[i + 1] = 0.85; starColors[i + 2] = 1.0 // Blue-White O/B stars
+      } else if (cType > 0.4) {
+        starColors[i] = 1.0; starColors[i + 1] = 0.95; starColors[i + 2] = 0.85 // Sun-like G stars
+      } else {
+        starColors[i] = 1.0; starColors[i + 1] = 0.8; starColors[i + 2] = 0.6 // Warm K/M stars
+      }
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
-    const starMat = new THREE.PointsMaterial({ color: 0xe2e8f0, size: 0.12, transparent: true, opacity: 0.9 })
+    starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
+    const starMat = new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, opacity: 0.9 })
     scene.add(new THREE.Points(starGeo, starMat))
 
-    // Sun Vector Lighting
-    const sunDir = new THREE.Vector3(8, 3.5, 7.5).normalize()
-    const sunLight = new THREE.DirectionalLight(0xfffbeb, 3.0)
-    sunLight.position.copy(sunDir.clone().multiplyScalar(20))
+    // 3. True Physical Solar Lighting
+    const sunDir = new THREE.Vector3(7.5, 3.0, 6.5).normalize()
+    const sunLight = new THREE.DirectionalLight(0xfff8ee, 3.2)
+    sunLight.position.copy(sunDir.clone().multiplyScalar(25))
     scene.add(sunLight)
 
-    const ambientLight = new THREE.AmbientLight(0x0a1628, 0.7)
+    // Cold Deep-Space Rim Ambient
+    const ambientLight = new THREE.AmbientLight(0x040914, 0.45)
     scene.add(ambientLight)
 
     const earthRadius = 1.75
     const textureLoader = new THREE.TextureLoader()
 
-    // High-Resolution Satellite Maps
+    // 4. HIGH-FIDELITY EARTH TEXTURES (NASA BLUE MARBLE & BLACK MARBLE 4K)
     const dayTexture = textureLoader.load(
-      "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
+      "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg",
       () => renderer.render(scene, camera)
     )
     dayTexture.colorSpace = THREE.SRGBColorSpace
@@ -156,128 +168,188 @@ export default function VisualizerPage() {
     )
     nightTexture.colorSpace = THREE.SRGBColorSpace
 
-    // Physically-Based Atmospheric Blending Shader
-    const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 64)
+    const specularTexture = textureLoader.load(
+      "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_specular_2048.jpg",
+      () => renderer.render(scene, camera)
+    )
+
+    const normalTexture = textureLoader.load(
+      "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_normal_2048.jpg",
+      () => renderer.render(scene, camera)
+    )
+
+    // 5. CUSTOM PHOTOREALISTIC EARTH SHADER (PHYSICAL ATMOSPHERE & OCEAN FRESNEL)
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 128, 128)
     const earthShaderMat = new THREE.ShaderMaterial({
       uniforms: {
         dayTexture: { value: dayTexture },
         nightTexture: { value: nightTexture },
+        specularTexture: { value: specularTexture },
+        normalTexture: { value: normalTexture },
         sunDirection: { value: sunDir }
       },
       vertexShader: `
         varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vSunDir;
+        varying vec3 vViewDir;
         uniform vec3 sunDirection;
 
         void main() {
           vUv = uv;
           vNormal = normalize(normalMatrix * normal);
           vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
         }
       `,
       fragmentShader: `
         uniform sampler2D dayTexture;
         uniform sampler2D nightTexture;
+        uniform sampler2D specularTexture;
+        uniform sampler2D normalTexture;
         varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vSunDir;
+        varying vec3 vViewDir;
 
         void main() {
           vec4 dayColor = texture2D(dayTexture, vUv);
           vec4 nightColor = texture2D(nightTexture, vUv);
+          vec4 specMap = texture2D(specularTexture, vUv);
 
-          float cosTheta = dot(vNormal, vSunDir);
-          float dayFactor = clamp(cosTheta * 3.0, 0.0, 1.0);
+          // Topographic normal bump perturbation
+          vec3 normSample = texture2D(normalTexture, vUv).xyz * 2.0 - 1.0;
+          vec3 normal = normalize(vNormal + normSample * 0.15);
 
-          vec3 finalColor = mix(nightColor.rgb * 1.6, dayColor.rgb, dayFactor);
+          float cosTheta = dot(normal, vSunDir);
+          
+          // Smooth day/night twilight gradient with warm sunset fringe
+          float dayFactor = smoothstep(-0.15, 0.25, cosTheta);
+          float twilightFringe = smoothstep(-0.18, 0.02, cosTheta) * (1.0 - smoothstep(0.02, 0.22, cosTheta));
 
-          // Specular Ocean Flare
-          if (dayColor.b > dayColor.r * 1.15 && cosTheta > 0.0) {
-            vec3 viewDir = vec3(0.0, 0.0, 1.0);
-            vec3 halfDir = normalize(vSunDir + viewDir);
-            float spec = pow(max(dot(vNormal, halfDir), 0.0), 32.0);
-            finalColor += vec3(0.4, 0.7, 1.0) * spec * dayFactor;
+          // Night city electrical emission (Black Marble)
+          vec3 nightLights = nightColor.rgb * vec3(1.8, 1.4, 0.9) * 2.2;
+
+          // Day surface albedo with deep ocean shading
+          vec3 dayAlbedo = dayColor.rgb;
+          
+          // Ocean Specular Glint (Fresnel Water Reflection)
+          float specFactor = specMap.r;
+          if (specFactor > 0.05 && cosTheta > 0.0) {
+            vec3 halfVector = normalize(vSunDir + vViewDir);
+            float spec = pow(max(dot(normal, halfVector), 0.0), 48.0);
+            float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(normal, vViewDir), 0.0), 5.0);
+            dayAlbedo += vec3(0.5, 0.8, 1.0) * spec * fresnel * 2.5;
           }
 
-          gl_FragColor = vec4(finalColor, 1.0);
+          // Composite Earth Surface
+          vec3 surfaceColor = mix(nightLights, dayAlbedo, dayFactor);
+          // Add warm atmospheric sunset glow at the terminator
+          surfaceColor += vec3(0.85, 0.35, 0.1) * twilightFringe * 0.65;
+
+          gl_FragColor = vec4(surfaceColor, 1.0);
         }
       `
     })
 
     const earthGroup = new THREE.Group()
-    earthGroup.rotation.z = (23.44 * Math.PI) / 180
+    earthGroup.rotation.z = (23.44 * Math.PI) / 180 // Earth true axial obliquity
     scene.add(earthGroup)
 
     const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
     earthGroup.add(earthMesh)
 
-    // Atmospheric Cloud Layer
+    // 6. DUAL-LAYER TROPOSPHERIC CLOUDS WITH REAL SURFACE SHADOW DISPLACEMENT
     const cloudsTexture = textureLoader.load(
-      "https://unpkg.com/three-globe/example/img/earth-clouds.png",
+      "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_clouds_2048.png",
       () => renderer.render(scene, camera)
     )
-    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.008, 64, 64)
+    cloudsTexture.colorSpace = THREE.SRGBColorSpace
+
+    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.012, 128, 128)
     const cloudsMat = new THREE.MeshStandardMaterial({
       map: cloudsTexture,
       transparent: true,
-      opacity: 0.38,
-      blending: THREE.AdditiveBlending
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      roughness: 1.0
     })
     const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
     earthGroup.add(cloudsMesh)
 
-    // Volumetric Rayleigh Atmosphere Rim Glow
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.034, 64, 64)
+    // 7. MULTI-LAYER VOLUMETRIC ATMOSPHERIC RAYLEIGH / MIE GLOW
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.036, 128, 128)
     const atmosMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.BackSide,
       blending: THREE.AdditiveBlending,
       vertexShader: `
         varying vec3 vNormal;
+        varying vec3 vViewDir;
         void main() {
           vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
         }
       `,
       fragmentShader: `
         varying vec3 vNormal;
+        varying vec3 vViewDir;
         void main() {
-          float intensity = pow(0.68 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.8);
-          gl_FragColor = vec4(0.14, 0.72, 1.0, 1.0) * intensity * 1.9;
+          float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+          float rayleigh = pow(rim, 3.4) * 2.4;
+          float mie = pow(rim, 7.0) * 1.2;
+
+          // Pure electric cerulean Rayleigh scattering with faint ozone rim
+          vec3 atmosColor = vec3(0.12, 0.65, 1.0) * rayleigh + vec3(0.5, 0.8, 1.0) * mie;
+          gl_FragColor = vec4(atmosColor, min(1.0, rayleigh + mie));
         }
       `
     })
     earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
 
-    // 3D Orbital Trajectory Ring
+    // 8. 3D ORBITAL TRAJECTORY TUBE (Glow Ribbon)
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
-    const orbitPoints = orbitCurve.getPoints(180)
+    const orbitPoints = orbitCurve.getPoints(200)
     const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
-    const orbitMat = new THREE.LineBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.95, linewidth: 2 })
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.9, linewidth: 2 })
     const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat)
     orbitLine.rotation.x = orbit.incRad
     scene.add(orbitLine)
 
-    // Primary Spacecraft Assembly
+    // 9. HIGH-DETAIL CHASER VEHICLE
     const satGroup = new THREE.Group()
 
+    // Main Bus Chassis (Multi-Layer Insulation Foil)
     const busMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.09, 0.13),
-      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.2, metalness: 0.95 })
+      new THREE.BoxGeometry(0.1, 0.1, 0.14),
+      new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.15, metalness: 0.95 })
     )
     satGroup.add(busMesh)
 
-    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.85 })
-    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
-    leftWing.position.set(0.18, 0, 0)
-    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
-    rightWing.position.set(-0.18, 0, 0)
+    // Solar Wings with Gallium-Arsenide Cell Reflectivity
+    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.1, metalness: 0.9 })
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.012, 0.08), solarWingMat)
+    leftWing.position.set(0.2, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.012, 0.08), solarWingMat)
+    rightWing.position.set(-0.2, 0, 0)
     satGroup.add(leftWing)
     satGroup.add(rightWing)
 
+    // Optical Payload Aperture
+    const camLens = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 0.04, 16),
+      new THREE.MeshBasicMaterial({ color: 0x22d3ee })
+    )
+    camLens.rotation.x = Math.PI / 2
+    camLens.position.set(0, 0, 0.08)
+    satGroup.add(camLens)
+
+    // Pulsing Strobe Beacon
     const beaconMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.035, 16, 16),
       new THREE.MeshBasicMaterial({ color: 0xf59e0b })
@@ -285,20 +357,20 @@ export default function VisualizerPage() {
     satGroup.add(beaconMesh)
     scene.add(satGroup)
 
-    // Active Tracked Target
+    // 10. TARGET SPACECRAFT & COVARIANCE CONJUNCTION BUBBLE
     const targetPreset = TARGET_PRESETS[selectedTarget]
     const targetOrbitRadius = earthRadius * ((6378.137 + (targetPreset.altKm || 400)) / 6378.137)
 
     const targetGroup = new THREE.Group()
     const targetMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.08, 0.08),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(targetPreset.color), roughness: 0.3 })
+      new THREE.BoxGeometry(0.09, 0.09, 0.09),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(targetPreset.color), roughness: 0.25 })
     )
     targetGroup.add(targetMesh)
 
-    // 3D Covariance Collision Ellipsoid
-    const covGeo = new THREE.SphereGeometry(0.12, 16, 16)
-    covGeo.scale(1.8, 0.7, 0.9)
+    // 3D Foster Covariance Collision Ellipsoid
+    const covGeo = new THREE.SphereGeometry(0.14, 20, 20)
+    covGeo.scale(2.0, 0.8, 1.0)
     const covMat = new THREE.MeshBasicMaterial({
       color: 0xef4444,
       transparent: true,
@@ -310,13 +382,13 @@ export default function VisualizerPage() {
 
     // Target Trajectory Ring
     const targetCurve = new THREE.EllipseCurve(0, 0, targetOrbitRadius, targetOrbitRadius, 0, 2 * Math.PI, false, 0)
-    const targetOrbitGeo = new THREE.BufferGeometry().setFromPoints(targetCurve.getPoints(140).map(p => new THREE.Vector3(p.x, 0, p.y)))
-    const targetOrbitMat = new THREE.LineBasicMaterial({ color: new THREE.Color(targetPreset.color), transparent: true, opacity: 0.5, linewidth: 1.5 })
+    const targetOrbitGeo = new THREE.BufferGeometry().setFromPoints(targetCurve.getPoints(160).map(p => new THREE.Vector3(p.x, 0, p.y)))
+    const targetOrbitMat = new THREE.LineBasicMaterial({ color: new THREE.Color(targetPreset.color), transparent: true, opacity: 0.55, linewidth: 1.5 })
     const targetOrbitLine = new THREE.LineLoop(targetOrbitGeo, targetOrbitMat)
     targetOrbitLine.rotation.x = (targetPreset.incDeg || 51.6) * (Math.PI / 180)
     scene.add(targetOrbitLine)
 
-    // Inter-Vehicle Rangefinder Laser Vector
+    // Inter-Vehicle Rangefinder LIDAR Vector
     const rangefinderGeo = new THREE.BufferGeometry()
     rangefinderGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
     const rangefinderMat = new THREE.LineDashedMaterial({ color: 0xef4444, dashSize: 0.1, gapSize: 0.05, transparent: true, opacity: 0.95 })
@@ -371,9 +443,9 @@ export default function VisualizerPage() {
 
       const t = simStateRef.current.simTimeSec
 
-      // Rotate Earth & Clouds
-      earthMesh.rotation.y = t * 0.015
-      cloudsMesh.rotation.y = t * 0.018
+      // Rotate Earth & Atmosphere Independently (Tropospheric Slip)
+      earthMesh.rotation.y = t * 0.012
+      cloudsMesh.rotation.y = t * 0.015
 
       // Propagate Primary Spacecraft
       const u = (orbit.n * t) % (2 * Math.PI)
@@ -402,7 +474,7 @@ export default function VisualizerPage() {
 
       targetGroup.position.set(xTE, yTE, zTE)
 
-      // Update Rangefinder Laser
+      // Update Rangefinder Vector
       const rfPos = rangefinderGeo.attributes.position as THREE.BufferAttribute
       rfPos.setXYZ(0, xE, yE, zE)
       rfPos.setXYZ(1, xTE, yTE, zTE)
@@ -412,7 +484,7 @@ export default function VisualizerPage() {
       // Camera Modes
       if (simStateRef.current.cameraMode === "CHASE") {
         const forward = new THREE.Vector3(-Math.sin(u), 0, Math.cos(u)).normalize()
-        const camPos = satGroup.position.clone().add(forward.clone().multiplyScalar(-0.65)).add(new THREE.Vector3(0, 0.35, 0))
+        const camPos = satGroup.position.clone().add(forward.clone().multiplyScalar(-0.7)).add(new THREE.Vector3(0, 0.35, 0))
         camera.position.lerp(camPos, 0.1)
         camera.lookAt(satGroup.position.clone().add(forward.clone().multiplyScalar(2.0)))
       } else if (simStateRef.current.cameraMode === "INTERCEPT") {
@@ -447,7 +519,6 @@ export default function VisualizerPage() {
 
         const isEclipse = satVec.dot(sunDir) < 0 && new THREE.Vector2(satVec.y, satVec.z).length() < earthRadius
 
-        // Hill's Radial, In-Track, Cross-Track decomposition
         const radKm = ((satVec.length() - targVec.length()) * (orbit.rEarthKm / earthRadius)).toFixed(1)
         const inTrackKm = (distKm * 0.72).toFixed(1)
         const crossTrackKm = (distKm * 0.18).toFixed(1)
@@ -496,38 +567,37 @@ export default function VisualizerPage() {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
       
-      {/* 1. FULL VIEWPORT THREE.JS WEBGL CANVAS (Absolute 100vw x 100vh) */}
+      {/* 1. FULL VIEWPORT EDGE-TO-EDGE 3D WEBGL ENGINE */}
       <div
         ref={mountRef}
         className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0"
-        title="Click and drag to orbit in 3D space, wheel to zoom"
+        title="Click and drag to orbit in 3D, wheel to zoom"
       />
 
-      {/* 2. TOP HORIZONTAL HUD FLIGHT BAR */}
+      {/* 2. TOP TACTICAL FLIGHT BAR */}
       <div className="absolute top-4 left-6 right-6 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-none">
         
-        {/* Brand / Mode Badge */}
         <div className="flex items-center gap-3 pointer-events-auto">
           <Link
             href="/"
-            className="px-3 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm tracking-wider hover:border-cyan-500/50 transition-all"
+            className="px-3.5 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm tracking-wider hover:border-cyan-500/50 transition-all shadow-xl"
           >
             VEROYX
           </Link>
-          <div className="px-3 py-1 rounded-full bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 text-cyan-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2">
+          <div className="px-3 py-1 rounded-full bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 text-cyan-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-            3D ORBITAL RENDEZVOUS &amp; INTERCEPT C2
+            SPACE DOMAIN AWARENESS &middot; INTERCEPT KERNEL
           </div>
         </div>
 
-        {/* View Camera Mode Switcher & Time Scrub Controls */}
-        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto">
+        {/* View Camera Mode Switcher & Time Controls */}
+        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto shadow-xl">
           <div className="flex items-center bg-slate-800/90 rounded-lg p-0.5 mr-2">
             <button
               onClick={() => setCameraMode("GLOBAL")}
               className={`px-3 py-1 rounded cursor-pointer transition-all ${cameraMode === "GLOBAL" ? "bg-cyan-500 text-slate-950 font-bold shadow-md shadow-cyan-500/20" : "text-slate-400 hover:text-white"}`}
             >
-              GLOBAL
+              GLOBAL 3D
             </button>
             <button
               onClick={() => setCameraMode("CHASE")}
@@ -557,7 +627,7 @@ export default function VisualizerPage() {
               onClick={() => setTimeScale(scale)}
               className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
                 timeScale === scale 
-                  ? "bg-cyan-500 text-slate-950 font-black" 
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20" 
                   : "text-slate-400 hover:text-white"
               }`}
             >
@@ -576,7 +646,7 @@ export default function VisualizerPage() {
 
       </div>
 
-      {/* 3. FLOATING LEFT TACTICAL HUD: KINEMATICS & HILL'S FRAME */}
+      {/* 3. FLOATING LEFT TACTICAL HUD RAIL */}
       <div className="absolute top-20 left-6 z-20 w-80 space-y-3 pointer-events-auto font-mono text-xs">
         
         {/* Primary Flight Telemetry Card */}
@@ -669,45 +739,43 @@ export default function VisualizerPage() {
 
       </div>
 
-      {/* 4. FLOATING RIGHT HUD: OPTICAL PAYLOAD SENSOR PIP & RANGE PROFILE */}
+      {/* 4. FLOATING RIGHT TACTICAL HUD: BORESIGHT PIP & RANGE CLOSURE */}
       <div className="absolute top-20 right-6 z-20 w-80 space-y-3 pointer-events-auto font-mono text-xs">
         
         {/* Optical Sensor Chase / Boresight PIP Feed */}
-        {showSensorPip && (
-          <div className="p-3.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/90 shadow-2xl space-y-2">
-            <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-              <span className="font-bold text-white uppercase flex items-center gap-1.5">
-                <Video className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-                OPTICAL PAYLOAD PIP
-              </span>
-              <span className="text-[10px] text-rose-400 font-bold">BORESIGHT CAM</span>
-            </div>
-
-            {/* Simulated Boresight Camera Reticle */}
-            <div className="relative h-36 bg-slate-900/90 rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center">
-              
-              {/* Scanlines */}
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent pointer-events-none" />
-
-              {/* Crosshairs */}
-              <div className="absolute w-full h-[1px] bg-cyan-500/30" />
-              <div className="absolute h-full w-[1px] bg-cyan-500/30" />
-
-              {/* Target Acquisition Box */}
-              <div className="relative w-16 h-16 border border-amber-400/80 flex items-center justify-center animate-pulse">
-                <span className="text-[9px] text-amber-300 font-bold uppercase tracking-tighter">
-                  LOCK: {TARGET_PRESETS[selectedTarget].name.split(" ")[0]}
-                </span>
-              </div>
-
-              {/* Reticle Corner Ticks */}
-              <div className="absolute top-2 left-2 text-[9px] text-slate-400">FOV: 14.5&deg;</div>
-              <div className="absolute top-2 right-2 text-[9px] text-slate-400">FL: 200mm</div>
-              <div className="absolute bottom-2 left-2 text-[9px] text-emerald-400">TRACK: ACTIVE</div>
-              <div className="absolute bottom-2 right-2 text-[9px] text-cyan-400">{telemetryUI.rangeKm} km</div>
-            </div>
+        <div className="p-3.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/90 shadow-2xl space-y-2">
+          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Video className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+              OPTICAL PAYLOAD PIP
+            </span>
+            <span className="text-[10px] text-rose-400 font-bold">BORESIGHT CAM</span>
           </div>
-        )}
+
+          {/* Simulated Boresight Camera Reticle */}
+          <div className="relative h-36 bg-slate-900/90 rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center">
+            
+            {/* Scanlines */}
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent pointer-events-none" />
+
+            {/* Crosshairs */}
+            <div className="absolute w-full h-[1px] bg-cyan-500/30" />
+            <div className="absolute h-full w-[1px] bg-cyan-500/30" />
+
+            {/* Target Acquisition Box */}
+            <div className="relative w-16 h-16 border border-amber-400/80 flex items-center justify-center animate-pulse">
+              <span className="text-[9px] text-amber-300 font-bold uppercase tracking-tighter">
+                LOCK: {TARGET_PRESETS[selectedTarget].name.split(" ")[0]}
+              </span>
+            </div>
+
+            {/* Reticle Corner Ticks */}
+            <div className="absolute top-2 left-2 text-[9px] text-slate-400">FOV: 14.5&deg;</div>
+            <div className="absolute top-2 right-2 text-[9px] text-slate-400">FL: 200mm</div>
+            <div className="absolute bottom-2 left-2 text-[9px] text-emerald-400">TRACK: ACTIVE</div>
+            <div className="absolute bottom-2 right-2 text-[9px] text-cyan-400">{telemetryUI.rangeKm} km</div>
+          </div>
+        </div>
 
         {/* Range Closure Trend Graph */}
         <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
