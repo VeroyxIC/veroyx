@@ -1,747 +1,310 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
-import { useMission } from "@/lib/missionStore"
+import * as THREE from "three"
 import { 
-  Rocket, 
-  Orbit, 
-  Zap, 
-  Layers, 
-  DollarSign, 
-  ShieldCheck, 
-  Download, 
-  RotateCw, 
-  CheckCircle2, 
-  ArrowRight, 
-  Activity, 
+  Calculator, 
+  Settings2, 
+  Save, 
   Cpu, 
-  Flame, 
-  FileText,
-  Sliders,
-  ExternalLink,
-  Printer,
-  X,
-  FileCheck2
+  Battery, 
+  Rocket, 
+  DollarSign,
+  Scale,
+  Zap,
+  Layers
 } from "lucide-react"
 
+type BusClass = "NANO" | "MICRO" | "ESPA" | "HEAVY"
+type PayloadType = "OPTICAL" | "SAR" | "SIGINT" | "COMM"
+
 export default function MissionBuilderPage() {
-  const { mission, updateMission, resetMission, totalWetMassKg, totalPowerW } = useMission()
-  const [copiedJson, setCopiedJson] = useState(false)
-  const [showReviewSheet, setShowReviewSheet] = useState(false)
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-  // Derived Concurrent Engineering Metrics
-  const analysis = useMemo(() => {
-    const rEarthKm = 6378.137
-    const mu = 398600.4418
-    const rOrbKm = rEarthKm + mission.altitudeKm
-    
-    // Vis-Viva & True Elliptical Orbital Mechanics
-    const isMolniya = mission.targetOrbit.includes("Molniya")
-    const isGTO = mission.targetOrbit.includes("GEO") || mission.targetOrbit.includes("GTO")
-    const isTLI = mission.targetOrbit.includes("TLI") || mission.targetOrbit.includes("Lunar")
+  // Configuration State
+  const [busClass, setBusClass] = useState<BusClass>("ESPA")
+  const [payloadType, setPayloadType] = useState<PayloadType>("OPTICAL")
+  const [orbitAlt, setOrbitAlt] = useState<number>(550)
+  const [redundancy, setRedundancy] = useState<"SINGLE" | "DUAL">("DUAL")
 
-    let rpKm = rEarthKm + mission.altitudeKm
-    let raKm = rpKm
-    let ecc = 0.001
-
-    if (isMolniya) {
-      rpKm = rEarthKm + 600
-      raKm = rEarthKm + 39750
-      ecc = 0.72
-    } else if (isGTO) {
-      rpKm = rEarthKm + 250
-      raKm = rEarthKm + 35786
-      ecc = 0.73
-    } else if (isTLI) {
-      rpKm = rEarthKm + 200
-      raKm = rEarthKm + 384400
-      ecc = 0.97
+  // Dynamic Engine (Hardware Specifications)
+  const getBusSpecs = (bus: BusClass) => {
+    switch(bus) {
+      case "NANO": return { massKg: 12, powerW: 45, costM: 1.5, scale: 0.3 }
+      case "MICRO": return { massKg: 85, powerW: 150, costM: 8.0, scale: 0.6 }
+      case "ESPA": return { massKg: 350, powerW: 800, costM: 25.0, scale: 1.0 }
+      case "HEAVY": return { massKg: 1200, powerW: 3500, costM: 95.0, scale: 1.8 }
     }
-
-    const aKm = (rpKm + raKm) / 2
-    const orbitPeriodSec = 2 * Math.PI * Math.sqrt(Math.pow(aKm, 3) / mu)
-    const orbitPeriodMin = orbitPeriodSec / 60
-    
-    // Vis-viva perigee and apogee speeds
-    const vPerigeeKmS = Math.sqrt(mu * (2 / rpKm - 1 / aKm))
-    const vApogeeKmS = Math.sqrt(mu * (2 / raKm - 1 / aKm))
-    const vOrbKmS = ((vPerigeeKmS + vApogeeKmS) / 2)
-
-    // Eclipse geometry via cylindrical shadow projection
-    const asinVal = Math.min(1.0, rEarthKm / rpKm)
-    const eclipseAngleRad = 2 * Math.asin(asinVal)
-    const eclipseFraction = Math.min(0.38, (eclipseAngleRad / (2 * Math.PI)) * (1 - ecc * 0.4))
-    const eclipseDurationMin = Math.round(Math.min(75, orbitPeriodMin * eclipseFraction) * 10) / 10
-    const sunlightDurationMin = Math.round((orbitPeriodMin - eclipseDurationMin) * 10) / 10
-
-    // Power & Battery Balance
-    const eclipseEnergyWh = Math.round((totalPowerW * (eclipseDurationMin / 60)) * 10) / 10
-    // Battery sizing for 25% max DoD
-    const batteryCapacityWh = Math.round(eclipseEnergyWh / 0.25)
-    // Sunlight recharge requirement
-    const requiredRechargePowerW = Math.round(((eclipseEnergyWh / (sunlightDurationMin / 60)) / 0.92) * 10) / 10
-    const totalSolarArrayDemandW = Math.round(totalPowerW + requiredRechargePowerW)
-
-    // Propulsion Budget (Delta-V from Tsiolkovsky rocket equation with Isp = 230s)
-    const ispSec = 230
-    const g0 = 9.80665
-    const deltaVAvailableMs = Math.round(ispSec * g0 * Math.log(totalWetMassKg / mission.dryMassKg))
-    // Nominal LEO budget: 5 years drag makeup (~120 m/s) + deorbit (~110 m/s) + 50 m/s CAM margin
-    const deltaVRequiredMs = 280
-    const propMarginMs = deltaVAvailableMs - deltaVRequiredMs
-    const propCleared = propMarginMs >= 0
-
-    // Lifecycle Cost (NASA PCEC CER model)
-    const nreFactor = 1.0 - (mission.heritagePct / 100) * 0.65
-    const busHardwareCostM = Math.round((0.045 * Math.pow(mission.dryMassKg * 0.35, 0.75) * nreFactor + 
-      0.14 * Math.pow(mission.dryMassKg * 0.18, 0.65) * nreFactor + 
-      0.0085 * Math.pow(totalPowerW, 0.82) * nreFactor + 
-      0.09 * Math.pow(mission.dryMassKg * 0.25, 0.70) * nreFactor) * 100) / 100
-    const aitCostM = Math.round((busHardwareCostM * 0.16) * 100) / 100
-    const pmSeSmaCostM = Math.round(((busHardwareCostM + 12.0) * 0.18) * 100) / 100
-    const opsCostM = Math.round((1.2 * mission.missionLifetimeYears) * 100) / 100
-    const baseCostM = Math.round((busHardwareCostM + 12.0 + aitCostM + pmSeSmaCostM + opsCostM) * 100) / 100
-    const reserveM = Math.round((baseCostM * (mission.costReservePct / 100)) * 100) / 100
-    const totalProgramCostM = Math.round((baseCostM + reserveM) * 100) / 100
-
-    return {
-      vOrbKmS: vOrbKmS.toFixed(2),
-      vPerigeeKmS: vPerigeeKmS.toFixed(2),
-      vApogeeKmS: vApogeeKmS.toFixed(2),
-      eccentricity: ecc.toFixed(3),
-      orbitPeriodMin: orbitPeriodMin.toFixed(1),
-      eclipseDurationMin,
-      sunlightDurationMin,
-      eclipseEnergyWh,
-      batteryCapacityWh,
-      requiredRechargePowerW,
-      totalSolarArrayDemandW,
-      deltaVAvailableMs,
-      deltaVRequiredMs,
-      propMarginMs,
-      propCleared,
-      totalProgramCostM,
-      busHardwareCostM,
-    }
-  }, [mission, totalWetMassKg, totalPowerW])
-
-  // Single-Click Master Concept Study Export
-  const exportMasterDossierCSV = () => {
-    const csv = `================================================================================
-VEROYX CONCURRENT ENGINEERING STUDY - PHASE A/B MISSION SPECIFICATION
-Generated by: Veroyx Institutional Flight Engineering Platform
-Status: FORMULATION BASELINE VERIFIED
-================================================================================
-
-1. MISSION ARCHITECTURE IDENTIFICATION
-Spacecraft Designation,${mission.missionName}
-Target Orbit Class,${mission.targetOrbit}
-Orbital Altitude,${mission.altitudeKm} km
-Orbital Inclination,${mission.inclinationDeg} deg
-Design Mission Lifetime,${mission.missionLifetimeYears} Years
-Primary Launch Vehicle,${mission.launchVehicle}
-
-2. MASS AND INERTIA BUDGET (AIAA S-120-2015)
-Spacecraft Dry Mass,${mission.dryMassKg} kg
-Propellant Mass Sized,${mission.propellantMassKg} kg
-Total Spacecraft Wet Mass,${totalWetMassKg} kg
-Propulsion System Isp,230.0 seconds
-Total Delta-V Capability,${analysis.deltaVAvailableMs} m/s
-Mission Delta-V Demand,${analysis.deltaVRequiredMs} m/s (Drag makeup, CAM & Deorbit)
-Propulsion Margin,+${analysis.propMarginMs} m/s (${analysis.propCleared ? "MARGIN CLEARED" : "PROP DEFICIT"})
-
-3. ELECTRICAL POWER & ENERGY EQUILIBRIUM (ECSS-E-ST-20C)
-Payload Power Consumption,${mission.payloadPowerW} Watts
-Bus Systems Power Draw,${mission.busPowerW} Watts
-Total Orbit Power Demand,${totalPowerW} Watts
-Orbital Period,${analysis.orbitPeriodMin} minutes
-Daylight Duration,${analysis.sunlightDurationMin} minutes
-Eclipse Shadow Duration,${analysis.eclipseDurationMin} minutes
-Eclipse Storage Consumed,${analysis.eclipseEnergyWh} Wh
-Minimum Battery Sizing (25% DoD Limit),${analysis.batteryCapacityWh} Wh
-Sunlight Recharge Power Demand,${analysis.requiredRechargePowerW} Watts
-Solar Array Required Output,${analysis.totalSolarArrayDemandW} Watts
-
-4. PARAMETRIC LIFECYCLE COST (NASA PCEC MODEL)
-Hardware Design Heritage,${mission.heritagePct}% Heritage Discount
-Spacecraft Bus Hardware Cost,$${analysis.busHardwareCostM} Million USD
-Contingency Cost Reserve Allocation,${mission.costReservePct}% P80 Margin
-Total Estimated Program Cost,$${analysis.totalProgramCostM} Million USD
-
-5. REGULATORY & SAFETY CLEARANCES
-NASA-STD-8719.14C Orbital Lifetime,PASS (Under 5-Year Requirement via Natural Drag)
-Public Safety Expectation (Ec),PASS (Targeted SPOUA Disposal Corridor)
-NASA CARA Conjunction Maneuver,PASS (Delta-V Allocated)
-Structural Factor of Safety (NASA-STD-5001B),PASS (Yield >= 1.25 / Ult >= 1.40)`
-
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${mission.missionName.toLowerCase()}-phase-a-concept-study.csv`
-    a.click()
   }
 
-  const copyMachineStateJson = () => {
-    const stateObj = {
-      mission,
-      analysis,
-      timestamp: new Date().toISOString(),
-      standards: [
-        "NASA-STD-5001B",
-        "NASA-STD-8719.14C",
-        "ECSS-E-ST-20C",
-        "AIAA-S-120-2015"
-      ]
+  const getPayloadSpecs = (payload: PayloadType) => {
+    switch(payload) {
+      case "OPTICAL": return { massKg: 80, powerW: 120, costM: 15.0 }
+      case "SAR": return { massKg: 250, powerW: 1200, costM: 45.0 }
+      case "SIGINT": return { massKg: 150, powerW: 400, costM: 35.0 }
+      case "COMM": return { massKg: 120, powerW: 800, costM: 20.0 }
     }
-    navigator.clipboard.writeText(JSON.stringify(stateObj, null, 2))
-    setCopiedJson(true)
-    setTimeout(() => setCopiedJson(false), 2000)
   }
+
+  const busSpecs = getBusSpecs(busClass)
+  const payloadSpecs = getPayloadSpecs(payloadType)
+  
+  const redundancyMult = redundancy === "DUAL" ? 1.4 : 1.0 // 40% mass/cost penalty for full redundancy
+
+  const totalDryMass = (busSpecs.massKg + payloadSpecs.massKg) * redundancyMult
+  const totalPower = busSpecs.powerW + payloadSpecs.powerW
+  const estimatedCostM = (busSpecs.costM + payloadSpecs.costM) * redundancyMult
+
+  // Rocket Throw Mass Validation (Assuming Falcon 9 SSO capability ~10,000kg for comparison)
+  const launchMarginPct = ((10000 - totalDryMass) / 10000) * 100
+
+  // 3D CAD Visualizer
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
+
+    const width = container.clientWidth
+    const height = container.clientHeight
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#010308")
+
+    const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100)
+    camera.position.set(3, 2, 4)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    // Studio Lighting
+    const ambientLight = new THREE.AmbientLight(0x1e293b, 2.0)
+    scene.add(ambientLight)
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3.0)
+    dirLight.position.set(5, 5, 5)
+    scene.add(dirLight)
+    const backLight = new THREE.DirectionalLight(0x38bdf8, 2.0)
+    backLight.position.set(-5, -5, -5)
+    scene.add(backLight)
+
+    // Grid
+    const grid = new THREE.GridHelper(10, 20, 0x1e293b, 0x0f172a)
+    scene.add(grid)
+
+    // Spacecraft Assembly Group
+    const scGroup = new THREE.Group()
+
+    // Dynamic Bus Chassis
+    const busMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.8, 0.8, 1.2),
+      new THREE.MeshStandardMaterial({ color: 0x94a3b8, metalness: 0.8, roughness: 0.2 })
+    )
+    scGroup.add(busMesh)
+
+    // Dynamic Solar Arrays (Scale based on power requirement)
+    const arraySpan = Math.max(1, totalPower / 500)
+    const arrayMat = new THREE.MeshStandardMaterial({ color: 0x0369a1, metalness: 0.9, roughness: 0.1 })
+    
+    const leftArray = new THREE.Mesh(new THREE.BoxGeometry(arraySpan, 0.05, 0.6), arrayMat)
+    leftArray.position.set(arraySpan/2 + 0.4, 0, 0)
+    scGroup.add(leftArray)
+    
+    const rightArray = new THREE.Mesh(new THREE.BoxGeometry(arraySpan, 0.05, 0.6), arrayMat)
+    rightArray.position.set(-(arraySpan/2 + 0.4), 0, 0)
+    scGroup.add(rightArray)
+
+    // Dynamic Payload Indicator
+    let payloadColor = 0xffffff
+    if (payloadType === "OPTICAL") payloadColor = 0x38bdf8
+    if (payloadType === "SAR") payloadColor = 0xf59e0b
+    if (payloadType === "SIGINT") payloadColor = 0xa855f7
+    if (payloadType === "COMM") payloadColor = 0x10b981
+
+    const payloadMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3, 0.3, 0.6, 32),
+      new THREE.MeshStandardMaterial({ color: payloadColor, metalness: 0.5, roughness: 0.5 })
+    )
+    payloadMesh.position.set(0, 0, 0.9)
+    payloadMesh.rotation.x = Math.PI / 2
+    scGroup.add(payloadMesh)
+
+    // Apply scale based on Bus Class
+    scGroup.scale.setScalar(busSpecs.scale)
+    scene.add(scGroup)
+
+    let animId: number
+    const animate = () => {
+      animId = requestAnimationFrame(animate)
+      scGroup.rotation.y += 0.005
+      scGroup.rotation.x = Math.sin(Date.now() * 0.001) * 0.1
+      renderer.render(scene, camera)
+    }
+    animate()
+
+    const onResize = () => {
+      if (!container) return
+      camera.aspect = container.clientWidth / container.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(container.clientWidth, container.clientHeight)
+    }
+    window.addEventListener("resize", onResize)
+
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      renderer.dispose()
+    }
+  }, [busClass, payloadType, totalPower, busSpecs.scale])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950 print:bg-white print:text-black print:p-0">
-      <div className="max-w-7xl mx-auto space-y-10">
-
-        {/* Master Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6 print:hidden">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Layers className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-              Unified Concurrent Space Mission Engineering Suite
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono uppercase">
-              MISSION ARCHITECTURE
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
-              Global system parameter bus. Modifying orbit, mass, or power variables automatically cascades across all 34 subsystems, recalculating propellant budgets, eclipse battery sizing, and lifecycle costs.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
-            <button
-              onClick={() => setShowReviewSheet(true)}
-              className="px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-300 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <FileCheck2 className="w-3.5 h-3.5 text-cyan-400" />
-              PDR REVIEW SHEET
-            </button>
-            <button
-              onClick={copyMachineStateJson}
-              className="px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-slate-300 font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Cpu className="w-3.5 h-3.5 text-purple-400" />
-              {copiedJson ? "COPIED STATE JSON" : "COPY JSON STATE"}
-            </button>
-            <button
-              onClick={exportMasterDossierCSV}
-              className="px-4 py-2.5 rounded-lg bg-cyan-500 text-slate-950 font-black hover:bg-cyan-400 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-cyan-500/20"
-            >
-              <Download className="w-4 h-4" />
-              EXPORT CSV
-            </button>
-          </div>
+    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-slate-950 font-sans text-slate-100 overflow-hidden">
+      
+      {/* LEFT PANEL: ARCHITECTURE CONTROLS */}
+      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Settings2 className="w-5 h-5 text-emerald-400" />
+            System Architecture
+          </h1>
+          <p className="text-slate-400 font-mono text-xs mt-1 uppercase tracking-wider">
+            Parametric Cost &amp; Mass Modeling
+          </p>
         </div>
 
-        {/* Real-Time Cascaded Subsystem KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs print:hidden">
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Rocket className="w-3 h-3 text-cyan-400" /> TOTAL WET MASS
-            </div>
-            <div className="text-3xl font-black text-white">{totalWetMassKg} kg</div>
-            <div className="text-[10px] text-slate-400">Dry: {mission.dryMassKg} kg | Prop: {mission.propellantMassKg} kg</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Zap className="w-3 h-3 text-amber-400" /> BUS &amp; ARRAY POWER
-            </div>
-            <div className="text-3xl font-black text-amber-400">{analysis.totalSolarArrayDemandW} W</div>
-            <div className="text-[10px] text-slate-400">Loads: {totalPowerW} W | Recharge: +{analysis.requiredRechargePowerW} W</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Flame className="w-3 h-3 text-emerald-400" /> PROPULSION DELTA-V
-            </div>
-            <div className={`text-3xl font-black ${analysis.propCleared ? "text-emerald-400" : "text-red-400"}`}>
-              {analysis.deltaVAvailableMs} m/s
-            </div>
-            <div className="text-[10px] text-slate-400">Req: {analysis.deltaVRequiredMs} m/s (+{analysis.propMarginMs} m/s margin)</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <DollarSign className="w-3 h-3 text-purple-400" /> PROGRAM COST (P80)
-            </div>
-            <div className="text-3xl font-black text-purple-400">${analysis.totalProgramCostM}M</div>
-            <div className="text-[10px] text-slate-400">PCEC Model ({mission.costReservePct}% Reserve)</div>
-          </div>
-        </div>
-
-        {/* Global Parameter Controls Workspace */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs print:hidden">
-
-          {/* Left Column: Mission & Orbit Controls */}
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Orbit className="w-4 h-4 text-cyan-400" />
-                Orbital Baseline
-              </span>
-              <button
-                onClick={resetMission}
-                className="text-[10px] text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer"
-              >
-                <RotateCw className="w-3 h-3 text-cyan-400" /> RESET
-              </button>
-            </div>
-
-                        <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold text-[10px]">FLIGHT REGIME ARCHITECTURE</label>
-              <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                {[
-                  "LEO / SSO",
-                  "MEO Navigation",
-                  "GEO Telecom",
-                  "Lunar Gateway / TLI"
-                ].map((reg) => (
-                  <button
-                    key={reg}
-                    type="button"
-                    onClick={() => updateMission({ targetOrbit: reg as any })}
-                    className={`p-2 rounded border text-left transition-all cursor-pointer ${
-                      mission.targetOrbit === reg
-                        ? "bg-cyan-950 border-cyan-500 text-cyan-300 font-bold"
-                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {reg}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">SPACECRAFT NAME</label>
-              <input
-                type="text"
-                value={mission.missionName}
-                onChange={e => updateMission({ missionName: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">ORBIT ALTITUDE</label>
-                <span className="text-cyan-400 font-bold">{mission.altitudeKm} KM</span>
-              </div>
-              <input
-                type="range"
-                min={300}
-                max={1200}
-                step={25}
-                value={mission.altitudeKm}
-                onChange={e => updateMission({ altitudeKm: Number(e.target.value) })}
-                className="w-full accent-cyan-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>300 km (VLEO)</span>
-                <span>550 km (SSO)</span>
-                <span>1200 km</span>
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">INCLINATION</label>
-                <span className="text-purple-400 font-bold">{mission.inclinationDeg}&deg;</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={0.5}
-                value={mission.inclinationDeg}
-                onChange={e => updateMission({ inclinationDeg: Number(e.target.value) })}
-                className="w-full accent-purple-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>28.5&deg; (Cape)</span>
-                <span>51.6&deg; (ISS)</span>
-                <span>97.6&deg; (Sun-Sync)</span>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-sans text-slate-400">
-              <strong className="text-cyan-400 block font-mono">ORBIT CASCADE:</strong>
-              Velocity is <strong className="text-white">{analysis.vOrbKmS} km/s</strong> (Period: {analysis.orbitPeriodMin}m). The spacecraft spends <strong className="text-white">{analysis.eclipseDurationMin}m</strong> in shadow per orbit.
-            </div>
-          </div>
-
-          {/* Center Column: Mass & Power Parameters */}
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
-            <div className="border-b border-slate-800 pb-3">
-              <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-amber-400" />
-                Mass &amp; Power Budgets
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 block uppercase font-bold">DRY MASS (kg)</label>
-                <input
-                  type="number"
-                  step={10}
-                  value={mission.dryMassKg}
-                  onChange={e => updateMission({ dryMassKg: Math.max(10, Number(e.target.value)) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 block uppercase font-bold">PROP MASS (kg)</label>
-                <input
-                  type="number"
-                  step={5}
-                  value={mission.propellantMassKg}
-                  onChange={e => updateMission({ propellantMassKg: Math.max(0, Number(e.target.value)) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 block uppercase font-bold">PAYLOAD (W)</label>
-                <input
-                  type="number"
-                  step={10}
-                  value={mission.payloadPowerW}
-                  onChange={e => updateMission({ payloadPowerW: Math.max(0, Number(e.target.value)) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 block uppercase font-bold">BUS POWER (W)</label>
-                <input
-                  type="number"
-                  step={10}
-                  value={mission.busPowerW}
-                  onChange={e => updateMission({ busPowerW: Math.max(10, Number(e.target.value)) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">HARDWARE HERITAGE</label>
-                <span className="text-emerald-400 font-bold">{mission.heritagePct}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={90}
-                step={5}
-                value={mission.heritagePct}
-                onChange={e => updateMission({ heritagePct: Number(e.target.value) })}
-                className="w-full accent-emerald-400 cursor-pointer"
-              />
-              <span className="text-[10px] text-slate-500 block">Reduces non-recurring engineering (NRE) costs</span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-sans text-slate-400">
-              <strong className="text-amber-400 block font-mono">ENERGY EQUILIBRIUM:</strong>
-              Requires <strong className="text-white">{analysis.batteryCapacityWh} Wh</strong> battery capacity to restrict eclipse cycling to 25% DoD, requiring a <strong className="text-white">{analysis.totalSolarArrayDemandW} W</strong> solar array.
-            </div>
-          </div>
-
-          {/* Right Column: Cascaded Subsystem Clearance Matrix */}
-          <div className="space-y-4">
-            <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="font-bold text-white uppercase text-xs flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Active Subsystem Direct Links
-                </span>
-                <span className="text-[10px] text-emerald-400 font-bold">ALL SYNCHRONIZED</span>
-              </div>
-
-              <div className="space-y-2 text-[11px]">
-                <Link
-                  href="/visualizer"
-                  className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 flex items-center justify-between group transition-all"
+        <div className="space-y-8 font-mono text-xs">
+          
+          {/* Bus Selection */}
+          <div className="space-y-3">
+            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+              <Cpu className="w-3.5 h-3.5 text-cyan-400" /> Chassis Class
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["NANO", "MICRO", "ESPA", "HEAVY"] as BusClass[]).map(b => (
+                <button
+                  key={b}
+                  onClick={() => setBusClass(b)}
+                  className={`py-2 rounded border transition-all ${busClass === b ? "bg-cyan-950/50 border-cyan-500 text-cyan-400 font-bold" : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600"}`}
                 >
-                  <span className="text-slate-300 group-hover:text-white">3D Spatial Tracking ({mission.altitudeKm}km)</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                </Link>
-
-                <Link
-                  href="/launch-vehicle"
-                  className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 flex items-center justify-between group transition-all"
-                >
-                  <span className="text-slate-300 group-hover:text-white">Booster Sizing ({totalWetMassKg}kg Wet)</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                </Link>
-
-                <Link
-                  href="/eps"
-                  className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 flex items-center justify-between group transition-all"
-                >
-                  <span className="text-slate-300 group-hover:text-white">Power System ({analysis.totalSolarArrayDemandW}W Array)</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                </Link>
-
-                <Link
-                  href="/cost"
-                  className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 flex items-center justify-between group transition-all"
-                >
-                  <span className="text-slate-300 group-hover:text-white">Parametric Cost (${analysis.totalProgramCostM}M P80)</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                </Link>
-
-                <Link
-                  href="/compliance"
-                  className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 flex items-center justify-between group transition-all"
-                >
-                  <span className="text-slate-300 group-hover:text-white">VCRM Flight Verification Matrix</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
-                </Link>
-              </div>
+                  {b}
+                </button>
+              ))}
             </div>
+          </div>
 
-            <div className="p-5 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 text-xs text-slate-300 space-y-2">
-              <div className="font-bold text-cyan-400 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                CONCURRENT DESIGN VERDICT
-              </div>
-              <p className="text-[11px] leading-relaxed text-slate-400">
-                The architecture maintains a positive propulsion delta-V reserve of <strong className="text-emerald-400">+{analysis.propMarginMs} m/s</strong> and an orbital energy balance margin. All system variables are persisted to the global mission store.
-              </p>
+          {/* Payload Selection */}
+          <div className="space-y-3">
+            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5 text-fuchsia-400" /> Primary Payload
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["OPTICAL", "SAR", "SIGINT", "COMM"] as PayloadType[]).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPayloadType(p)}
+                  className={`py-2 rounded border transition-all ${payloadType === p ? "bg-fuchsia-950/50 border-fuchsia-500 text-fuchsia-400 font-bold" : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600"}`}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
+          </div>
+
+          {/* Redundancy Toggle */}
+          <div className="space-y-3">
+            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+              <Scale className="w-3.5 h-3.5 text-amber-400" /> Avionics Redundancy
+            </label>
+            <div className="flex bg-slate-900 rounded border border-slate-800 p-1">
+              {(["SINGLE", "DUAL"] as const).map(r => (
+                <button
+                  key={r}
+                  onClick={() => setRedundancy(r)}
+                  className={`flex-1 py-1.5 rounded transition-all ${redundancy === r ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"}`}
+                >
+                  {r} STRING
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-500">Dual string adds 40% dry mass and cost penalties but ensures Class A mission reliability.</p>
           </div>
 
         </div>
-
       </div>
 
-      
-        {/* Master Mission Timeline & Propellant Depletion Sequence (SOE) */}
-        <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4 font-mono text-xs print:hidden">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <span className="font-bold text-white uppercase tracking-wider text-xs flex items-center gap-2">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              Mission Sequence of Events (SOE) &amp; Mass Depletion Timeline
-            </span>
-            <span className="text-[10px] text-emerald-400 font-bold">5 MISSION PHASES MAPPED</span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {[
-              { phase: "PHASE 01: INSERTION", duration: "T+0 to T+45m", action: "Clampband sep, B-dot detumble & solar wing deployment", propKg: 0, status: "AUTONOMOUS" },
-              { phase: "PHASE 02: LEOP TRIM", duration: "Day 1 to 5", action: "Arg-perigee & RAAN phasing burn (35 m/s delta-V)", propKg: 8.5, status: "THRUSTING" },
-              { phase: "PHASE 03: PAYLOAD COMM", duration: "Day 6 to 30", action: "Star tracker alignment & optical calibration passes", propKg: 1.2, status: "NOMINAL" },
-              { phase: "PHASE 04: SCIENCE OPS", duration: "Year 1 to 5", action: "Drag makeup cycles & collision avoidance CAM maneuvers", propKg: 28.0, status: "ON-STATION" },
-              { phase: "PHASE 05: DE-ORBIT", duration: "End of Life", action: "Targeted retro-burn (110 m/s) into South Pacific (SPOUA)", propKg: 27.3, status: "DISPOSAL" }
-            ].map((p, idx) => (
-              <div key={idx} className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-1.5">
-                <div className="text-[10px] text-cyan-400 font-bold">{p.phase}</div>
-                <div className="text-white font-bold text-xs">{p.duration}</div>
-                <div className="text-[10px] text-slate-400 font-sans leading-tight">{p.action}</div>
-                <div className="pt-1.5 border-t border-slate-800/60 flex justify-between text-[10px]">
-                  <span className="text-slate-500">Prop Used:</span>
-                  <span className="text-amber-400 font-bold">{p.propKg} kg</span>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* CENTER PANEL: 3D CAD VISUALIZER */}
+      <div className="flex-1 h-full relative flex flex-col">
+        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+        
+        {/* Save/Export Bar */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/80 backdrop-blur-md border border-slate-800 p-2 rounded-xl shadow-2xl">
+          <button className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black tracking-widest text-sm uppercase transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(5,150,105,0.4)]">
+            <Save className="w-4 h-4" /> Save Architecture
+          </button>
         </div>
+      </div>
 
-        {/* FORMAL NASA PDR REVIEW SHEET MODAL & PRINT VIEW */}
-      {showReviewSheet && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/90 backdrop-blur-md p-4 sm:p-10 flex justify-center print:p-0 print:bg-white print:static">
-          <div className="w-full max-w-4xl bg-white text-slate-900 rounded-2xl shadow-2xl overflow-hidden font-mono text-xs border border-slate-200 print:border-none print:shadow-none print:max-w-none">
-            
-            {/* Modal Action Header (Hidden in Print) */}
-            <div className="bg-slate-900 text-white p-4 flex items-center justify-between print:hidden">
-              <div className="flex items-center gap-2">
-                <FileCheck2 className="w-4 h-4 text-cyan-400" />
-                <span className="font-bold uppercase tracking-wider text-xs">
-                  NASA PDR / CDR PRELIMINARY DESIGN REVIEW SHEET
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  PRINT / PDF
-                </button>
-                <button
-                  onClick={() => setShowReviewSheet(false)}
-                  className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition-all cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+      {/* RIGHT PANEL: SYSTEM BUDGETS & FINANCIALS */}
+      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
+        
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+          <Calculator className="w-4 h-4" /> System Budgets
+        </h2>
+
+        <div className="space-y-6">
+          
+          {/* Financial Estimate */}
+          <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-4">
+            <div className="text-emerald-400/70 text-[10px] font-bold tracking-wider mb-1">ESTIMATED NRE + BUILD COST</div>
+            <div className="text-3xl font-black text-emerald-400 flex items-center">
+              <DollarSign className="w-6 h-6" />
+              {estimatedCostM.toFixed(1)}M
             </div>
-
-            {/* Document Body (Print-Optimized) */}
-            <div className="p-8 sm:p-12 space-y-8 font-sans print:p-6 text-slate-800">
-              
-              {/* Formal Document Title Block */}
-              <div className="border-b-2 border-slate-900 pb-6 flex justify-between items-start">
-                <div>
-                  <div className="text-[10px] font-mono tracking-widest text-slate-500 uppercase">
-                    NASA PROCEDURAL REQUIREMENTS NPR 7120.5F COMPLIANT
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl font-black text-slate-950 font-mono tracking-tight mt-1">
-                    FLIGHT DESIGN SPECIFICATION (PDR)
-                  </h1>
-                  <div className="text-xs text-slate-600 mt-1 font-mono">
-                    PROJECT: {mission.missionName.toUpperCase()} &middot; ARCHITECTURE BASELINE VERIFICATION
-                  </div>
-                </div>
-
-                <div className="text-right font-mono text-[10px] text-slate-600 space-y-0.5">
-                  <div>DOC ID: VEROYX-PDR-{mission.missionName.toUpperCase()}</div>
-                  <div>SECURITY: UNCLASSIFIED / FORMULATION</div>
-                  <div>DATE: {new Date().toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" })}</div>
-                </div>
-              </div>
-
-              {/* Data Table 1: Orbital Mechanics & Space Environment */}
-              <div className="space-y-2">
-                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
-                  <span>1.0 ORBITAL TRAJECTORY &amp; FLIGHT REGIME</span>
-                  <span className="text-slate-500 text-[10px]">KEPLER / J2 MODEL</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">TARGET ORBIT</span>
-                    <strong>{mission.targetOrbit}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">ALTITUDE</span>
-                    <strong>{mission.altitudeKm} km</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">INCLINATION</span>
-                    <strong>{mission.inclinationDeg}&deg;</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">ORBITAL PERIOD</span>
-                    <strong>{analysis.orbitPeriodMin} min ({analysis.vOrbKmS} km/s)</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Data Table 2: Mass, Delta-V & Launch Vehicle */}
-              <div className="space-y-2">
-                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
-                  <span>2.0 MASS PROPERTIES &amp; PROPULSION BUDGET</span>
-                  <span className="text-slate-500 text-[10px]">AIAA S-120-2015</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">DRY MASS</span>
-                    <strong>{mission.dryMassKg} kg</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">PROPELLANT</span>
-                    <strong>{mission.propellantMassKg} kg (Isp: 230s)</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">TOTAL WET MASS</span>
-                    <strong className="text-blue-700">{totalWetMassKg} kg</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">DELTA-V MARGIN</span>
-                    <strong className="text-emerald-700">+{analysis.propMarginMs} m/s ({analysis.deltaVAvailableMs} m/s total)</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Data Table 3: Electrical Power & Thermal Balance */}
-              <div className="space-y-2">
-                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
-                  <span>3.0 POWER &amp; ENERGY EQUILIBRIUM</span>
-                  <span className="text-slate-500 text-[10px]">ECSS-E-ST-20C</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">BUS LOAD (SUN/ECL)</span>
-                    <strong>{totalPowerW} W total</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">ECLIPSE DURATION</span>
-                    <strong>{analysis.eclipseDurationMin} min ({analysis.eclipseEnergyWh} Wh)</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">BATTERY (25% DoD)</span>
-                    <strong>{analysis.batteryCapacityWh} Wh Sized</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">SOLAR ARRAY DEMAND</span>
-                    <strong className="text-amber-700">{analysis.totalSolarArrayDemandW} W EOL</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Data Table 4: Lifecycle Cost & Heritage */}
-              <div className="space-y-2">
-                <div className="font-mono text-xs font-bold uppercase tracking-wider text-slate-950 border-b border-slate-300 pb-1 flex justify-between">
-                  <span>4.0 PROGRAMMATIC COST &amp; HERITAGE</span>
-                  <span className="text-slate-500 text-[10px]">NASA PCEC MODEL (P80)</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono py-1">
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">DESIGN HERITAGE</span>
-                    <strong>{mission.heritagePct}% discount</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">BUS HARDWARE</span>
-                    <strong>${analysis.busHardwareCostM}M USD</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">P80 RESERVES</span>
-                    <strong>{mission.costReservePct}% contingency</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 block">TOTAL PROGRAM COST</span>
-                    <strong className="text-purple-700">${analysis.totalProgramCostM}M USD</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* Approval Signature Block */}
-              <div className="pt-6 border-t-2 border-slate-900 grid grid-cols-3 gap-6 text-[11px] font-mono">
-                <div className="border-b border-slate-400 pb-1">
-                  <span className="text-[9px] text-slate-500 block">MISSION FORMULATION LEAD</span>
-                  <span className="font-bold text-slate-800">VEROYX AUTONOMOUS CAD/CAM</span>
-                </div>
-                <div className="border-b border-slate-400 pb-1">
-                  <span className="text-[9px] text-slate-500 block">SYSTEMS ENGINEERING (SE)</span>
-                  <span className="font-bold text-slate-800">CONCURRENT VERIFIED</span>
-                </div>
-                <div className="border-b border-slate-400 pb-1">
-                  <span className="text-[9px] text-slate-500 block">FLIGHT READINESS STATUS</span>
-                  <span className="font-bold text-emerald-700">APPROVED FOR PDR REVIEW</span>
-                </div>
-              </div>
-
-            </div>
-
           </div>
+
+          {/* Mass Budget */}
+          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="text-slate-400 font-bold tracking-wider flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="flex items-center gap-2"><Scale className="w-3.5 h-3.5" /> MASS BUDGET</span>
+              <span className="text-white">{totalDryMass.toFixed(0)} kg</span>
+            </div>
+            <div className="space-y-1.5 text-slate-300">
+              <div className="flex justify-between"><span>Bus Structure</span><span>{busSpecs.massKg} kg</span></div>
+              <div className="flex justify-between"><span>Payload</span><span>{payloadSpecs.massKg} kg</span></div>
+              <div className="flex justify-between text-amber-400"><span>Redundancy Penalty</span><span>+{((totalDryMass) - (busSpecs.massKg + payloadSpecs.massKg)).toFixed(0)} kg</span></div>
+            </div>
+          </div>
+
+          {/* Power Budget */}
+          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 space-y-3">
+            <div className="text-slate-400 font-bold tracking-wider flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="flex items-center gap-2"><Zap className="w-3.5 h-3.5" /> POWER BUDGET</span>
+              <span className="text-white">{totalPower.toFixed(0)} W</span>
+            </div>
+            <div className="space-y-1.5 text-slate-300">
+              <div className="flex justify-between"><span>Bus Avionics</span><span>{busSpecs.powerW} W</span></div>
+              <div className="flex justify-between"><span>Payload Ops</span><span>{payloadSpecs.powerW} W</span></div>
+            </div>
+          </div>
+
+          {/* Launch Vehicle Match */}
+          <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-4">
+            <div className="text-slate-400 font-bold tracking-wider flex items-center gap-2 border-b border-slate-800 pb-2 mb-3">
+              <Rocket className="w-3.5 h-3.5 text-cyan-400" /> LAUNCH VEHICLE
+            </div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-white font-bold">FALCON 9 (SSO)</span>
+              <span className="text-emerald-400">{launchMarginPct.toFixed(1)}% MARGIN</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+              <div className="h-full bg-cyan-500" style={{ width: `${100 - launchMarginPct}%` }} />
+            </div>
+          </div>
+
         </div>
-      )}
+      </div>
 
     </div>
   )
