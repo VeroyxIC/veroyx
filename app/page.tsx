@@ -36,12 +36,12 @@ export default function RootGateway() {
     container.appendChild(renderer.domElement)
 
     const globeGroup = new THREE.Group()
-    const sphereGeo = new THREE.SphereGeometry(2, 32, 32)
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.05 })
+    const sphereGeo = new THREE.SphereGeometry(2, 48, 48)
+    const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.04 })
     globeGroup.add(new THREE.Mesh(sphereGeo, wireMat))
     
-    const ringGeo = new THREE.RingGeometry(2.2, 2.21, 64)
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.1 })
+    const ringGeo = new THREE.RingGeometry(2.2, 2.205, 128)
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.15 })
     const ring = new THREE.Mesh(ringGeo, ringMat)
     ring.rotation.x = Math.PI / 2
     globeGroup.add(ring)
@@ -51,8 +51,8 @@ export default function RootGateway() {
     let animId: number
     const animate = () => {
       animId = requestAnimationFrame(animate)
-      globeGroup.rotation.y += 0.001
-      globeGroup.rotation.x = Math.sin(Date.now() * 0.0005) * 0.05
+      globeGroup.rotation.y += 0.0008
+      globeGroup.rotation.x = Math.sin(Date.now() * 0.0003) * 0.05
       renderer.render(scene, camera)
     }
     animate()
@@ -76,7 +76,9 @@ export default function RootGateway() {
     {
       title: "Flight Dynamics & Physics",
       icon: <Rocket className="w-5 h-5 text-cyan-400" />,
-      color: "border-cyan-500/30 hover:border-cyan-500 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]",
+      borderColor: "border-cyan-500/30 hover:border-cyan-400/60 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:shadow-[0_0_40px_rgba(6,182,212,0.15)]",
+      accentLine: "from-cyan-500/80 to-transparent",
+      hoverIconColor: "text-cyan-400",
       links: [
         { label: "Ascent & Trajectory", path: "/trajectory" },
         { label: "Attitude Control (ADCS)", path: "/adcs" },
@@ -89,7 +91,9 @@ export default function RootGateway() {
     {
       title: "Space Domain Awareness",
       icon: <Crosshair className="w-5 h-5 text-fuchsia-400" />,
-      color: "border-fuchsia-500/30 hover:border-fuchsia-500 hover:shadow-[0_0_15px_rgba(217,70,239,0.2)]",
+      borderColor: "border-fuchsia-500/30 hover:border-fuchsia-400/60 shadow-[0_0_30px_rgba(217,70,239,0.05)] hover:shadow-[0_0_40px_rgba(217,70,239,0.15)]",
+      accentLine: "from-fuchsia-500/80 to-transparent",
+      hoverIconColor: "text-fuchsia-400",
       links: [
         { label: "3D Orbital Visualizer", path: "/visualizer" },
         { label: "2D Mercator Ground Track", path: "/ground-track" },
@@ -102,7 +106,9 @@ export default function RootGateway() {
     {
       title: "Enterprise Command & Control",
       icon: <Briefcase className="w-5 h-5 text-emerald-400" />,
-      color: "border-emerald-500/30 hover:border-emerald-500 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]",
+      borderColor: "border-emerald-500/30 hover:border-emerald-400/60 shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:shadow-[0_0_40px_rgba(16,185,129,0.15)]",
+      accentLine: "from-emerald-500/80 to-transparent",
+      hoverIconColor: "text-emerald-400",
       links: [
         { label: "Constellation Watchlist", path: "/watchlist" },
         { label: "Telemetry & Analytics", path: "/telemetry" },
@@ -114,34 +120,39 @@ export default function RootGateway() {
   ]
 
   return (
-    <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-100 overflow-y-auto flex items-center justify-center py-12">
+    <div className="relative w-full min-h-screen bg-[#020617] font-sans text-slate-100 overflow-y-auto flex items-center justify-center py-12">
       
-      {/* Background WebGL (Fixed so it doesn't scroll away) */}
+      {/* Tactical Grid Overlay */}
+      <div className="fixed inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3rem_3rem] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)] opacity-20 pointer-events-none z-0" />
+
+      {/* Background WebGL */}
       <div ref={mountRef} className="fixed inset-0 z-0 pointer-events-none" />
 
       {/* Main Terminal Overlay */}
-      <div className="relative z-10 w-full max-w-6xl p-6 md:p-8 flex flex-col items-center">
+      <div className="relative z-10 w-full max-w-7xl p-6 md:p-8 flex flex-col items-center">
         
         {/* Branding & Auth Header */}
-        <div className="flex flex-col items-center mb-12">
-          <div className="flex items-center justify-center w-20 h-20 bg-slate-900 border-2 border-slate-700 rounded-2xl shadow-2xl mb-6 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-transparent" />
-            <BrandLogo className="w-12 h-12 relative z-10" />
+        <div className="flex flex-col items-center mb-16">
+          <div className="flex items-center justify-center w-24 h-24 bg-slate-950/80 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-[0_0_40px_rgba(56,189,248,0.15)] mb-8 relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
+            <BrandLogo className="w-14 h-14 relative z-10 drop-shadow-[0_0_10px_rgba(56,189,248,0.4)]" />
           </div>
           
-          <h1 className="text-4xl md:text-5xl font-black text-white tracking-widest uppercase mb-4">
+          <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 tracking-[0.3em] uppercase mb-6 drop-shadow-lg">
             Veroyx
           </h1>
           
-          <div className="flex flex-wrap justify-center items-center gap-4 md:gap-6 font-mono text-[10px] md:text-xs">
+          <div className="flex flex-wrap justify-center items-center gap-4 md:gap-8 font-mono text-[10px] md:text-xs bg-slate-900/40 backdrop-blur-md border border-slate-800/60 px-6 py-2.5 rounded-full">
             <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 1 ? "opacity-100 text-emerald-400" : "opacity-0"}`}>
-              <ShieldCheck className="w-3.5 h-3.5 md:w-4 md:h-4" /> TLS 1.3 SECURED
+              <ShieldCheck className="w-4 h-4" /> TLS 1.3 SECURED
             </div>
+            <span className="text-slate-700">|</span>
             <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 2 ? "opacity-100 text-cyan-400" : "opacity-0"}`}>
-              <Lock className="w-3.5 h-3.5 md:w-4 md:h-4" /> ZERO-TRUST ENFORCED
+              <Lock className="w-4 h-4" /> ZERO-TRUST ENFORCED
             </div>
+            <span className="text-slate-700">|</span>
             <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 3 ? "opacity-100 text-indigo-400" : "opacity-0"}`}>
-              <Database className="w-3.5 h-3.5 md:w-4 md:h-4" /> KERNEL ONLINE
+              <Database className="w-4 h-4" /> KERNEL ONLINE
             </div>
           </div>
         </div>
@@ -149,21 +160,29 @@ export default function RootGateway() {
         {/* Directory Grid */}
         <div className={`w-full grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 transition-all duration-1000 transform ${bootSequence >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
           {DIRECTORY.map((section, idx) => (
-            <div key={idx} className={`bg-slate-900/70 backdrop-blur-md border rounded-2xl p-6 transition-all duration-300 ${section.color}`}>
-              <div className="flex items-center gap-3 border-b border-slate-800 pb-4 mb-4">
-                {section.icon}
-                <h2 className="text-xs md:text-sm font-bold text-white uppercase tracking-widest">{section.title}</h2>
+            <div key={idx} className={`relative overflow-hidden bg-slate-900/30 backdrop-blur-xl border rounded-2xl p-6 md:p-8 transition-all duration-500 hover:-translate-y-1 ${section.borderColor}`}>
+              
+              {/* Neon Top Border Accent */}
+              <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${section.accentLine}`} />
+
+              <div className="flex items-center gap-3 border-b border-slate-800/60 pb-5 mb-5">
+                <div className="p-2 bg-slate-950/50 rounded-lg border border-slate-800/80 shadow-inner">
+                  {section.icon}
+                </div>
+                <h2 className="text-sm font-bold text-white uppercase tracking-widest">{section.title}</h2>
               </div>
               
-              <div className="flex flex-col gap-1 md:gap-2 font-mono text-[11px] md:text-xs">
+              <div className="flex flex-col gap-1.5 font-mono text-[11px] md:text-xs">
                 {section.links.map((link, linkIdx) => (
                   <Link 
                     key={linkIdx} 
                     href={link.path}
-                    className="flex items-center justify-between p-2.5 rounded hover:bg-slate-800/80 text-slate-400 hover:text-white transition-colors group"
+                    className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-white transition-all duration-300 group"
                   >
-                    <span>{link.label}</span>
-                    <span className="opacity-0 group-hover:opacity-100 text-slate-500 transition-opacity">/</span>
+                    <span className="group-hover:translate-x-1 transition-transform duration-300">{link.label}</span>
+                    <span className={`opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-x-2 group-hover:translate-x-0 font-black ${section.hoverIconColor}`}>
+                      &rarr;
+                    </span>
                   </Link>
                 ))}
               </div>
@@ -172,7 +191,7 @@ export default function RootGateway() {
         </div>
 
         {/* Footer */}
-        <div className={`mt-12 font-mono text-[9px] md:text-[10px] text-slate-600 uppercase tracking-widest transition-opacity duration-1000 delay-500 text-center ${bootSequence >= 3 ? "opacity-100" : "opacity-0"}`}>
+        <div className={`mt-16 font-mono text-[9px] md:text-[10px] text-slate-500/80 uppercase tracking-widest transition-opacity duration-1000 delay-500 text-center ${bootSequence >= 3 ? "opacity-100" : "opacity-0"}`}>
           Veroyx Flight Dynamics Facility &copy; 2026-2027 | Authorized Personnel Only
         </div>
 
