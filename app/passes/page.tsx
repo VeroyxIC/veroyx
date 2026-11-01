@@ -1,299 +1,793 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
+import { useMission } from "@/lib/missionStore"
+import * as THREE from "three"
 import { 
-  Satellite, 
-  MapPin, 
-  Eye, 
-  Compass, 
-  Clock, 
+  Play, 
+  Pause, 
+  RotateCcw, 
   Radio, 
-  ArrowRight, 
-  ShieldCheck, 
-  Sun, 
-  Moon, 
-  RefreshCw 
+  Activity, 
+  Compass, 
+  Globe, 
+  Signal, 
+  Wifi, 
+  CheckCircle2, 
+  Clock, 
+  Maximize2,
+  ChevronRight,
+  TrendingDown,
+  Volume2
 } from "lucide-react"
 
 interface GroundStation {
-  id: string
   name: string
-  lat: number
-  lng: number
   code: string
+  lat: number
+  lon: number
+  elevMaskDeg: number
+  carrierFreqGhz: number
+  color: string
 }
 
-interface MonitoredAsset {
-  id: string
-  name: string
-  operator: string
-  altitudeKm: number
-  inclinationDeg: number
-  periodMin: number
-  regime: string
-}
-
-const GROUND_STATIONS: GroundStation[] = [
-  { id: "ksc", name: "Kennedy Space Center / CCSFS", code: "CCSFS-FL", lat: 28.57, lng: -80.65 },
-  { id: "vsfb", name: "Vandenberg Space Force Base", code: "VSFB-CA", lat: 34.63, lng: -120.61 },
-  { id: "wff", name: "Wallops Flight Facility / MARS", code: "WFF-VA", lat: 37.84, lng: -75.48 },
-  { id: "mahia", name: "Rocket Lab LC-1 Mahia", code: "LC1-NZ", lat: -39.26, lng: 177.86 },
-  { id: "dc", name: "Pentagon / NRO Operations Center", code: "NCR-DC", lat: 38.87, lng: -77.05 },
-  { id: "saxa", name: "SaxaVord Spaceport", code: "SXV-UK", lat: 60.81, lng: -0.83 },
+const STATIONS: GroundStation[] = [
+  { name: "DSN Goldstone", code: "GDS-14", lat: 35.42, lon: -116.88, elevMaskDeg: 10, carrierFreqGhz: 8.45, color: "#38bdf8" },
+  { name: "DSN Madrid", code: "MDR-65", lat: 40.43, lon: -4.25, elevMaskDeg: 10, carrierFreqGhz: 8.45, color: "#a855f7" },
+  { name: "DSN Canberra", code: "CBR-43", lat: -35.40, lon: 148.98, elevMaskDeg: 10, carrierFreqGhz: 8.45, color: "#f59e0b" },
+  { name: "KSAT Svalbard", code: "SG3-POL", lat: 78.23, lon: 15.40, elevMaskDeg: 5, carrierFreqGhz: 2.25, color: "#10b981" },
+  { name: "Wallops Flight Facility", code: "WFF-1", lat: 37.94, lon: -75.46, elevMaskDeg: 7, carrierFreqGhz: 2.21, color: "#ec4899" }
 ]
 
-const ORBITAL_ASSETS: MonitoredAsset[] = [
-  { id: "starlink", name: "Starlink Gen2 (Shell 1)", operator: "SpaceX", altitudeKm: 530, inclinationDeg: 53.2, periodMin: 95.2, regime: "LEO" },
-  { id: "kuiper", name: "Project Kuiper Flight-Proto", operator: "Amazon", altitudeKm: 590, inclinationDeg: 51.9, periodMin: 96.5, regime: "LEO" },
-  { id: "pelican", name: "Planet Pelican Hyperspectral", operator: "Planet Labs", altitudeKm: 500, inclinationDeg: 97.4, periodMin: 94.6, regime: "SSO" },
-  { id: "bluebird", name: "BlueBird Cell-Array 1", operator: "AST SpaceMobile", altitudeKm: 510, inclinationDeg: 53.0, periodMin: 94.8, regime: "LEO" },
-  { id: "nrol", name: "NROL-186 Recon Asset", operator: "USSF / NRO", altitudeKm: 650, inclinationDeg: 63.4, periodMin: 97.8, regime: "Classified LEO" },
-]
+export default function PassesPage() {
+  const { mission } = useMission()
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-export default function OverflightPredictorPage() {
-  const [selectedStation, setSelectedStation] = useState<string>("ksc")
-  const [selectedAsset, setSelectedAsset] = useState<string>("pelican")
-  const [minElevation, setMinElevation] = useState<number>(20)
-  const [syncing, setSyncing] = useState<boolean>(false)
+  // Simulation controls
+  const [isPlaying, setIsPlaying] = useState<boolean>(true)
+  const [timeScale, setTimeScale] = useState<number>(10)
+  const [selectedStationIndex, setSelectedStationIndex] = useState<number>(0)
 
-  const station = GROUND_STATIONS.find((s) => s.id === selectedStation)!
-  const asset = ORBITAL_ASSETS.find((a) => a.id === selectedAsset)!
+  const activeStation = STATIONS[selectedStationIndex]
 
-  const syncCelesTrak = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch("/api/cron/sync-ephemeris?key=vx_cron_secret_internal_2026")
-      const data = await res.json()
-      if (data.status === "success") {
-        alert(`CELESTRAK SYNC SUCCESS: Ingested ${data.ingestedCount} orbital records.`)
-      } else {
-        alert("Failed to sync ephemeris data.")
-      }
-    } catch {
-      alert("Failed to communicate with CelesTrak upstream.")
-    } finally {
-      setSyncing(false)
+  // Kinetic state for decoupled 60 FPS animation
+  const simStateRef = useRef({
+    isPlaying: true,
+    timeScale: 10,
+    simTimeSec: 0,
+    selectedStationIndex: 0,
+    yaw: 1.2,
+    pitch: 0.35,
+    targetYaw: 1.2,
+    targetPitch: 0.35,
+    distance: 5.6,
+    targetDistance: 5.6,
+    isDragging: false,
+    prevMouse: { x: 0, y: 0 },
+    dragVelocity: { x: 0, y: 0 }
+  })
+
+  // Throttled UI Telemetry (4 Hz)
+  const [telemetryUI, setTelemetryUI] = useState({
+    simTimeSec: 0,
+    isAosActive: false,
+    currentStationName: "DSN Goldstone",
+    currentElevationDeg: 0,
+    currentAzimuthDeg: 0,
+    slantRangeKm: 3420,
+    rangeRateKmS: "0.00",
+    dopplerShiftKhz: "0.0",
+    pathLossDb: 182.4,
+    linkMarginDb: 8.4,
+    nextAosSec: 640
+  })
+
+  const [rfHistory, setRfHistory] = useState<number[]>(Array(28).fill(0))
+
+  useEffect(() => {
+    simStateRef.current.isPlaying = isPlaying
+    simStateRef.current.timeScale = timeScale
+    simStateRef.current.selectedStationIndex = selectedStationIndex
+  }, [isPlaying, timeScale, selectedStationIndex])
+
+  // Orbital Mechanics
+  const orbit = useMemo(() => {
+    const mu = 398600.4418
+    const rEarthKm = 6378.137
+    const a = rEarthKm + mission.altitudeKm
+    const incRad = (mission.inclinationDeg * Math.PI) / 180
+    const n = Math.sqrt(mu / Math.pow(a, 3))
+    const periodSec = (2 * Math.PI) / n
+    const j2 = 0.00108263
+    const dRaanDt = -1.5 * ((j2 * Math.sqrt(mu) * Math.pow(rEarthKm, 2)) / Math.pow(a, 3.5)) * Math.cos(incRad)
+    const velocityKmS = Math.sqrt(mu / a)
+
+    return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
+  }, [mission.altitudeKm, mission.inclinationDeg])
+
+  // Master WebGL Scene
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
+
+    const width = container.clientWidth
+    const height = container.clientHeight
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#01040a")
+
+    const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 3000)
+    camera.position.set(0, 2.0, 5.6)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.2
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    // Deep Cosmic Starfield
+    const starCount = 3000
+    const starGeo = new THREE.BufferGeometry()
+    const starPos = new Float32Array(starCount * 3)
+    for (let i = 0; i < starCount * 3; i += 3) {
+      starPos[i] = (Math.random() - 0.5) * 180
+      starPos[i + 1] = (Math.random() - 0.5) * 180
+      starPos[i + 2] = (Math.random() - 0.5) * 180
     }
-  }
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
+    const starMat = new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.12, transparent: true, opacity: 0.85 })
+    scene.add(new THREE.Points(starGeo, starMat))
 
-  // Deterministic overflight pass calculation
-  const predictedPasses = useMemo(() => {
-    const passes = []
-    const baseTime = Date.now() + 1000 * 60 * 18 // First pass 18 mins from now
+    // Directional Sunlight
+    const sunDir = new THREE.Vector3(7.0, 2.5, 6.0).normalize()
+    const sunLight = new THREE.DirectionalLight(0xfff7ed, 3.0)
+    sunLight.position.copy(sunDir.clone().multiplyScalar(40))
+    scene.add(sunLight)
 
-    for (let i = 0; i < 5; i++) {
-      const passStart = new Date(baseTime + i * (asset.periodMin * 60 * 1000) * 1.6)
-      const durationSec = Math.round(380 + ((i * 37) % 240))
-      const maxEl = Math.min(88, Math.max(minElevation, Math.round(25 + ((i * 47) % 64))))
-      
-      const entryAz = Math.round((45 + i * 72) % 360)
-      const exitAz = Math.round((entryAz + 140 + (i * 15)) % 360)
+    const ambientLight = new THREE.AmbientLight(0x061224, 0.45)
+    scene.add(ambientLight)
 
-      const isNight = i % 2 === 1
-      const isVisibleOptically = isNight && maxEl > 30
+    const earthRadius = 1.75
+    const textureLoader = new THREE.TextureLoader()
 
-      passes.push({
-        id: `pass-${i + 1}`,
-        startTime: passStart,
-        durationSec,
-        maxElevationDeg: maxEl,
-        entryAzimuth: entryAz,
-        exitAzimuth: exitAz,
-        isNight,
-        isVisibleOptically,
-        signalQuality: maxEl > 60 ? "OPTIMAL LINE-OF-SIGHT" : maxEl > 35 ? "NOMINAL MARGIN" : "LOW HORIZON INTERCEPT",
+    const dayTexture = textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
+      () => renderer.render(scene, camera)
+    )
+    dayTexture.colorSpace = THREE.SRGBColorSpace
+
+    const nightTexture = textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-night.jpg",
+      () => renderer.render(scene, camera)
+    )
+    nightTexture.colorSpace = THREE.SRGBColorSpace
+
+    // Physically-calibrated Earth Material
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 96, 96)
+    const earthShaderMat = new THREE.ShaderMaterial({
+      uniforms: {
+        dayTexture: { value: dayTexture },
+        nightTexture: { value: nightTexture },
+        sunDirection: { value: sunDir }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vSunDir;
+        varying vec3 vViewDir;
+        uniform vec3 sunDirection;
+
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayTexture;
+        uniform sampler2D nightTexture;
+        varying vec2 vUv;
+        varying vec3 vNormal;
+        varying vec3 vSunDir;
+        varying vec3 vViewDir;
+
+        void main() {
+          vec4 dayColor = texture2D(dayTexture, vUv);
+          vec4 nightColor = texture2D(nightTexture, vUv);
+
+          if (dayColor.r > 0.85 && dayColor.g > 0.85 && dayColor.b > 0.85) {
+            dayColor.rgb *= 0.82;
+          }
+
+          float cosTheta = dot(vNormal, vSunDir);
+          float dayFactor = smoothstep(-0.04, 0.14, cosTheta);
+
+          vec3 nightLights = nightColor.rgb * vec3(1.7, 1.4, 0.95) * 2.2;
+          vec3 dayAlbedo = dayColor.rgb;
+
+          if (dayColor.b > dayColor.r * 1.12 && cosTheta > 0.0) {
+            vec3 halfVector = normalize(vSunDir + vViewDir);
+            float spec = pow(max(dot(vNormal, halfVector), 0.0), 32.0);
+            float fresnel = 0.03 + 0.97 * pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 5.0);
+            dayAlbedo += vec3(0.5, 0.8, 1.0) * spec * fresnel * 2.2;
+          }
+
+          vec3 finalColor = mix(nightLights, dayAlbedo, dayFactor);
+          gl_FragColor = vec4(finalColor, 1.0);
+        }
+      `
+    })
+
+    const earthGroup = new THREE.Group()
+    earthGroup.rotation.z = (23.44 * Math.PI) / 180
+    scene.add(earthGroup)
+
+    const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
+    earthGroup.add(earthMesh)
+
+    // Tropospheric Clouds
+    const cloudsTexture = textureLoader.load(
+      "https://unpkg.com/three-globe/example/img/earth-clouds.png",
+      () => renderer.render(scene, camera)
+    )
+    cloudsTexture.colorSpace = THREE.SRGBColorSpace
+
+    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.006, 96, 96)
+    const cloudsMat = new THREE.MeshStandardMaterial({
+      map: cloudsTexture,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      roughness: 1.0
+    })
+    const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
+    earthGroup.add(cloudsMesh)
+
+    // Rayleigh Atmosphere Limb
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.012, 96, 96)
+    const atmosMat = new THREE.ShaderMaterial({
+      transparent: true,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+        void main() {
+          float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+          float rayleigh = pow(rim, 4.5) * 1.2;
+          vec3 atmosColor = vec3(0.18, 0.65, 1.0) * rayleigh;
+          gl_FragColor = vec4(atmosColor, rayleigh * 0.7);
+        }
+      `
+    })
+    earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
+
+    // 3D INVERTED GROUND STATION ELEVATION CONES & SURFACE PINS
+    const stationNodes: { group: THREE.Group; coneMesh: THREE.Mesh; posVec: THREE.Vector3; station: GroundStation }[] = []
+
+    STATIONS.forEach((gs) => {
+      const phi = (90 - gs.lat) * (Math.PI / 180)
+      const theta = (gs.lon + 180) * (Math.PI / 180)
+      const x = -(earthRadius * Math.sin(phi) * Math.cos(theta))
+      const z = earthRadius * Math.sin(phi) * Math.sin(theta)
+      const y = earthRadius * Math.cos(phi)
+
+      const stGroup = new THREE.Group()
+      stGroup.position.set(x, y, z)
+      stGroup.lookAt(x * 2, y * 2, z * 2) // Orient outward along surface normal
+
+      // Base Pin
+      const pinMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.02, 0.03, 16),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(gs.color), metalness: 0.8, roughness: 0.2 })
+      )
+      pinMesh.rotation.x = Math.PI / 2
+      stGroup.add(pinMesh)
+
+      // Inverted 3D Elevation Cone (Horizon Mask Volume)
+      const coneHeight = 0.85
+      const halfAngleRad = ((90 - gs.elevMaskDeg) * Math.PI) / 180
+      const coneTopRadius = coneHeight * Math.tan(halfAngleRad * 0.45)
+
+      const coneGeo = new THREE.ConeGeometry(coneTopRadius, coneHeight, 24, 1, true)
+      const coneMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(gs.color),
+        transparent: true,
+        opacity: 0.15,
+        wireframe: true,
+        side: THREE.DoubleSide
       })
+      const coneMesh = new THREE.Mesh(coneGeo, coneMat)
+      coneMesh.position.set(0, 0, coneHeight / 2)
+      coneMesh.rotation.x = Math.PI / 2
+      stGroup.add(coneMesh)
+
+      earthMesh.add(stGroup)
+      stationNodes.push({ group: stGroup, coneMesh, posVec: new THREE.Vector3(x, y, z), station: gs })
+    })
+
+    // Primary Satellite Trajectory Ring
+    const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
+    const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
+    const orbitPoints = orbitCurve.getPoints(180)
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85, linewidth: 2 })
+    const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat)
+    orbitLine.rotation.x = orbit.incRad
+    scene.add(orbitLine)
+
+    // Primary Spacecraft Vehicle Assembly
+    const satGroup = new THREE.Group()
+
+    const busMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.08, 0.12),
+      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.15, metalness: 0.95 })
+    )
+    satGroup.add(busMesh)
+
+    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.15, metalness: 0.85 })
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
+    leftWing.position.set(0.16, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
+    rightWing.position.set(-0.16, 0, 0)
+    satGroup.add(leftWing)
+    satGroup.add(rightWing)
+
+    // Parabolic High-Gain Antenna (HGA) Dish
+    const dishGeo = new THREE.ConeGeometry(0.04, 0.02, 16, 1, true)
+    const dishMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.85 })
+    const dishMesh = new THREE.Mesh(dishGeo, dishMat)
+    dishMesh.position.set(0, 0.05, 0)
+    dishMesh.rotation.x = Math.PI
+    satGroup.add(dishMesh)
+
+    scene.add(satGroup)
+
+    // Real-Time Active RF Contact Laser Beam (Sat -> Ground Station)
+    const rfBeamGeo = new THREE.BufferGeometry()
+    rfBeamGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3))
+    const rfBeamMat = new THREE.LineDashedMaterial({
+      color: 0x10b981,
+      dashSize: 0.08,
+      gapSize: 0.04,
+      transparent: true,
+      opacity: 0.95
+    })
+    const rfBeamLine = new THREE.Line(rfBeamGeo, rfBeamMat)
+    scene.add(rfBeamLine)
+
+    // Mouse Interaction with Damping
+    const onMouseDown = (e: MouseEvent) => {
+      simStateRef.current.isDragging = true
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
     }
 
-    return passes
-  }, [asset, minElevation])
+    const onMouseMove = (e: MouseEvent) => {
+      if (!simStateRef.current.isDragging) return
+      const dx = e.clientX - simStateRef.current.prevMouse.x
+      const dy = e.clientY - simStateRef.current.prevMouse.y
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+
+      simStateRef.current.dragVelocity = { x: dx, y: dy }
+      simStateRef.current.targetYaw += dx * 0.005
+      simStateRef.current.targetPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetPitch + dy * 0.005))
+    }
+
+    const onMouseUp = () => {
+      simStateRef.current.isDragging = false
+    }
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const zoomDelta = e.deltaY * 0.003
+      simStateRef.current.targetDistance = Math.max(2.4, Math.min(20.0, simStateRef.current.targetDistance + zoomDelta))
+    }
+
+    const dom = renderer.domElement
+    dom.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    dom.addEventListener("wheel", onWheel, { passive: false })
+
+    // Decoupled 60fps Loop
+    let animId: number
+    let lastTime = performance.now()
+    let lastUiSync = performance.now()
+
+    const animate = (now: number) => {
+      animId = requestAnimationFrame(animate)
+      const dt = Math.min((now - lastTime) / 1000, 0.1)
+      lastTime = now
+
+      if (simStateRef.current.isPlaying) {
+        simStateRef.current.simTimeSec += dt * simStateRef.current.timeScale
+      }
+
+      const t = simStateRef.current.simTimeSec
+
+      // Rotate Earth (ECEF frame)
+      earthMesh.rotation.y = t * 0.012
+      cloudsMesh.rotation.y = t * 0.015
+
+      // Propagate Primary Spacecraft (ECI frame)
+      const u = (orbit.n * t) % (2 * Math.PI)
+      const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
+
+      const xOrb = orbitRadius * Math.cos(u)
+      const zOrb = orbitRadius * Math.sin(u)
+
+      const xE = xOrb * Math.cos(raan) - zOrb * Math.cos(orbit.incRad) * Math.sin(raan)
+      const zE = xOrb * Math.sin(raan) + zOrb * Math.cos(orbit.incRad) * Math.cos(raan)
+      const yE = zOrb * Math.sin(orbit.incRad)
+
+      satGroup.position.set(xE, yE, zE)
+      satGroup.lookAt(0, 0, 0) // Nadir pointing
+
+      // Calculate Target Ground Station position in world coordinates
+      const activeNode = stationNodes[simStateRef.current.selectedStationIndex]
+      let stationWorldPos = new THREE.Vector3()
+      let isInContact = false
+      let elevationDeg = 0
+      let azimuthDeg = 0
+      let slantRangeKm = 3000
+      let rangeRateKmS = 0
+
+      if (activeNode) {
+        activeNode.group.getWorldPosition(stationWorldPos)
+
+        const satWorldPos = new THREE.Vector3(xE, yE, zE)
+        const rhoVec = satWorldPos.clone().sub(stationWorldPos)
+        slantRangeKm = Math.round(rhoVec.length() * (orbit.rEarthKm / earthRadius))
+
+        // Surface normal at station
+        const stationZenith = stationWorldPos.clone().normalize()
+        const rhoNorm = rhoVec.clone().normalize()
+
+        // Elevation angle
+        const sinElev = rhoNorm.dot(stationZenith)
+        elevationDeg = Math.round((Math.asin(Math.max(-1, Math.min(1, sinElev))) * 180) / Math.PI)
+
+        // Contact condition
+        isInContact = elevationDeg >= activeNode.station.elevMaskDeg
+
+        // Point satellite dish toward active station if in contact
+        if (isInContact) {
+          dishMesh.lookAt(stationWorldPos)
+        } else {
+          dishMesh.rotation.set(Math.PI, 0, 0)
+        }
+
+        // Update RF contact beam
+        const beamPos = rfBeamGeo.attributes.position as THREE.BufferAttribute
+        beamPos.setXYZ(0, xE, yE, zE)
+        beamPos.setXYZ(1, stationWorldPos.x, stationWorldPos.y, stationWorldPos.z)
+        beamPos.needsUpdate = true
+        rfBeamLine.computeLineDistances()
+        rfBeamLine.visible = isInContact
+
+        // Station cone highlight (safely bypass ASI)
+        const coneMat = activeNode.coneMesh.material as THREE.MeshBasicMaterial
+        coneMat.opacity = isInContact ? 0.35 : 0.12
+      }
+
+      // Camera Damping
+      if (!simStateRef.current.isDragging) {
+        simStateRef.current.targetYaw += simStateRef.current.dragVelocity.x * 0.002
+        simStateRef.current.targetPitch += simStateRef.current.dragVelocity.y * 0.002
+        simStateRef.current.dragVelocity.x *= 0.92
+        simStateRef.current.dragVelocity.y *= 0.92
+      }
+
+      simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.08
+      simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.08
+      simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.08
+
+      const curDist = simStateRef.current.distance
+      camera.position.x = curDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+      camera.position.y = curDist * Math.sin(simStateRef.current.pitch)
+      camera.position.z = curDist * Math.cos(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
+      camera.lookAt(0, 0, 0)
+
+      renderer.render(scene, camera)
+
+      // UI Dispatch (4 Hz = 250ms)
+      if (now - lastUiSync > 250) {
+        lastUiSync = now
+
+        // Calculate Doppler shift
+        const cKmS = 299792.458
+        const f0Mhz = (activeNode?.station.carrierFreqGhz || 8.45) * 1000
+        const vRadialApprox = isInContact ? (orbit.velocityKmS * (1 - (elevationDeg / 90)) * (t % 2 === 0 ? -1 : 1)) : 0
+        const dopplerKhz = (-(f0Mhz * (vRadialApprox / cKmS)) * 1000).toFixed(1)
+
+        // Free Space Path Loss
+        const fsplDb = Math.round(20 * Math.log10(Math.max(100, slantRangeKm)) + 20 * Math.log10(activeNode?.station.carrierFreqGhz || 8.45) + 92.45)
+        const linkMargin = isInContact ? (22.5 - (fsplDb - 170) * 0.15).toFixed(1) : "0.0"
+
+        setTelemetryUI({
+          simTimeSec: Math.round(t),
+          isAosActive: isInContact,
+          currentStationName: activeNode?.station.name || "DSN Goldstone",
+          currentElevationDeg: Math.max(0, elevationDeg),
+          currentAzimuthDeg: Math.round(((t * 3) % 360)),
+          slantRangeKm,
+          rangeRateKmS: vRadialApprox.toFixed(2),
+          dopplerShiftKhz: dopplerKhz,
+          pathLossDb: fsplDb,
+          linkMarginDb: parseFloat(linkMargin),
+          nextAosSec: isInContact ? 0 : Math.round(Math.max(30, 900 - (t % 900)))
+        })
+
+        setRfHistory(prev => [...prev.slice(1), isInContact ? parseFloat(linkMargin) : 0])
+      }
+    }
+
+    animId = requestAnimationFrame(animate)
+
+    const onResize = () => {
+      if (!container) return
+      const w = container.clientWidth
+      const h = container.clientHeight
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      renderer.setSize(w, h)
+    }
+    window.addEventListener("resize", onResize)
+
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      dom.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      dom.removeEventListener("wheel", onWheel)
+      renderer.dispose()
+    }
+  }, [orbit])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-6xl mx-auto space-y-10">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
+      
+      {/* 1. FULL VIEWPORT THREE.JS WEBGL ENGINE */}
+      <div
+        ref={mountRef}
+        className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0"
+        title="Click and drag to orbit camera, wheel to zoom"
+      />
 
-        {/* Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Satellite className="w-3.5 h-3.5 animate-spin" />
-              Keplerian Ground-Track & Overflight Geometry
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              SATELLITE PASS PREDICTOR
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Calculate exact overflight interception windows, azimuth flight corridors, maximum elevation angles, and optical/RF down-link geometry over monitored ground stations.
-            </p>
+      {/* 2. TOP TACTICAL FLIGHT BAR */}
+      <div className="absolute top-4 left-6 right-6 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-none">
+        
+        <div className="flex items-center gap-3 pointer-events-auto">
+          <Link
+            href="/"
+            className="px-3.5 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm tracking-wider hover:border-cyan-500/50 transition-all shadow-xl"
+          >
+            VEROYX
+          </Link>
+          <div className="px-3 py-1 rounded-full bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 text-cyan-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
+            <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+            GROUND NETWORK &middot; 3D PASS &amp; RF CONTACT SCHEDULER
           </div>
+        </div>
 
-          <div className="flex flex-wrap items-center gap-3 font-mono text-xs">
+        {/* Time Scrub Controls */}
+        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto shadow-xl">
+          <button
+            onClick={() => setIsPlaying(!isPlaying)}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+          >
+            {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
+            <span>{isPlaying ? "PAUSE" : "RESUME"}</span>
+          </button>
+
+          {[1, 5, 25, 100].map(scale => (
             <button
-              onClick={syncCelesTrak}
-              disabled={syncing}
-              className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              key={scale}
+              onClick={() => setTimeScale(scale)}
+              className={`px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                timeScale === scale 
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20" 
+                  : "text-slate-400 hover:text-white"
+              }`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "POLLING NORAD..." : "SYNC CELESTRAK TLEs"}
+              {scale}x
             </button>
+          ))}
 
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 text-cyan-400">
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-              EPHEMERIS: EPOCH 2026.302
+          <button
+            onClick={() => { simStateRef.current.simTimeSec = 0 }}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+            title="Reset Epoch"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+      </div>
+
+      {/* 3. FLOATING LEFT TACTICAL HUD: GROUND NETWORK & CONTACT STATUS */}
+      <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
+        
+        {/* Active Contact State Alert */}
+        <div className={`p-4 rounded-xl backdrop-blur-md border shadow-2xl space-y-2.5 transition-all ${
+          telemetryUI.isAosActive 
+            ? "bg-slate-950/85 border-emerald-500/60 shadow-emerald-500/10" 
+            : "bg-slate-950/75 border-slate-800/80"
+        }`}>
+          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Wifi className={`w-4 h-4 ${telemetryUI.isAosActive ? "text-emerald-400 animate-pulse" : "text-slate-500"}`} />
+              CONTACT STATE
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+              telemetryUI.isAosActive 
+                ? "bg-emerald-950 border border-emerald-500/40 text-emerald-300" 
+                : "bg-slate-900 border border-slate-800 text-slate-400"
+            }`}>
+              {telemetryUI.isAosActive ? "AOS (CARRIER LOCKED)" : "LOS (STANDBY)"}
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">ACTIVE GROUND NODE</span>
+              <span className="text-white font-bold">{activeStation.name} ({activeStation.code})</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">ANTENNA ELEVATION</span>
+              <span className={telemetryUI.isAosActive ? "text-emerald-400 font-bold" : "text-white font-bold"}>
+                {telemetryUI.currentElevationDeg}&deg; (MASK: {activeStation.elevMaskDeg}&deg;)
+              </span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">ANTENNA AZIMUTH</span>
+              <span className="text-cyan-400 font-bold">{telemetryUI.currentAzimuthDeg}&deg;</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">SLANT RANGE (ρ)</span>
+              <span className="text-white font-bold">{telemetryUI.slantRangeKm.toLocaleString()} km</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">NEXT PASS AOS IN</span>
+              <span className="text-amber-400 font-bold">
+                {telemetryUI.isAosActive ? "CURRENTLY ACTIVE" : `${telemetryUI.nextAosSec} s`}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Config Control Array */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
-          
-          {/* Ground Station Selection */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-2">
-            <label className="text-slate-400 block uppercase font-bold flex items-center gap-2">
-              <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-              Target Ground Station / Site
-            </label>
-            <select
-              value={selectedStation}
-              onChange={(e) => setSelectedStation(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-            >
-              {GROUND_STATIONS.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.code})
-                </option>
-              ))}
-            </select>
-            <div className="text-[10px] text-slate-500">
-              Coordinates: {station.lat.toFixed(2)}° N, {station.lng.toFixed(2)}° E
-            </div>
+        {/* Ground Station Selection List */}
+        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
+          <div className="border-b border-slate-800 pb-1.5 text-white font-bold uppercase text-[11px] flex justify-between">
+            <span>NETWORK SITES (5 NODES)</span>
+            <span className="text-[10px] text-slate-500">DSN / KSAT</span>
           </div>
 
-          {/* Orbital Asset Selection */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-2">
-            <label className="text-slate-400 block uppercase font-bold flex items-center gap-2">
-              <Satellite className="w-3.5 h-3.5 text-cyan-400" />
-              Monitored Orbital Asset
-            </label>
-            <select
-              value={selectedAsset}
-              onChange={(e) => setSelectedAsset(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500"
-            >
-              {ORBITAL_ASSETS.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} • {a.operator}
-                </option>
-              ))}
-            </select>
-            <div className="text-[10px] text-slate-500">
-              {asset.regime} • {asset.altitudeKm} km • Incl: {asset.inclinationDeg}° • Period: {asset.periodMin}m
-            </div>
-          </div>
-
-          {/* Elevation Threshold */}
-          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-slate-400 block uppercase font-bold flex items-center gap-2">
-                <Compass className="w-3.5 h-3.5 text-purple-400" />
-                Min Elevation Cutoff
-              </label>
-              <span className="text-purple-400 font-bold">{minElevation}°</span>
-            </div>
-            <input
-              type="range"
-              min={10}
-              max={45}
-              value={minElevation}
-              onChange={(e) => setMinElevation(Number(e.target.value))}
-              className="w-full accent-purple-400 cursor-pointer"
-            />
-            <div className="flex justify-between text-[10px] text-slate-500">
-              <span>10° (Horizon Scan)</span>
-              <span>25° (Nominal RF)</span>
-              <span>45° (High Zenith)</span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Prediction Results Table */}
-        <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6 font-mono">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-            <div>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Clock className="w-4 h-4 text-cyan-400" />
-                Calculated Line-of-Sight Windows (Next 24 Hours)
-              </h3>
-              <p className="text-xs text-slate-400 font-sans mt-0.5">
-                Target: <strong className="text-white">{station.name}</strong> • Asset: <strong className="text-cyan-400">{asset.name}</strong>
-              </p>
-            </div>
-
-            <div className="text-[11px] text-slate-500">
-              5 INTERCEPTIONS IDENTIFIED
-            </div>
-          </div>
-
-          <div className="space-y-3 text-xs">
-            {predictedPasses.map((pass) => (
-              <div
-                key={pass.id}
-                className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-cyan-500/40 transition-all space-y-3"
+          <div className="space-y-1">
+            {STATIONS.map((gs, idx) => (
+              <button
+                key={idx}
+                onClick={() => setSelectedStationIndex(idx)}
+                className={`w-full px-2.5 py-2 rounded text-left transition-all cursor-pointer flex items-center justify-between text-xs ${
+                  selectedStationIndex === idx 
+                    ? "bg-cyan-950/90 border border-cyan-500/80 text-white font-bold shadow-md shadow-cyan-500/20" 
+                    : "bg-slate-900/40 border border-slate-800/60 text-slate-400 hover:text-white"
+                }`}
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-3">
-                    <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/30 text-cyan-300 font-bold text-[10px]">
-                      {pass.startTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                    </span>
-                    <span className="font-bold text-white">
-                      MAX ELEVATION: <span className="text-cyan-400">{pass.maxElevationDeg}°</span>
-                    </span>
-                    <span className="text-slate-500 text-[11px]">
-                      ({Math.floor(pass.durationSec / 60)}m {pass.durationSec % 60}s duration)
-                    </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: gs.color }} />
+                    <span className="text-slate-200">{gs.name}</span>
                   </div>
-
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <span className={`flex items-center gap-1 font-bold ${pass.maxElevationDeg > 60 ? "text-emerald-400" : "text-amber-400"}`}>
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      {pass.signalQuality}
-                    </span>
-                    {pass.isVisibleOptically ? (
-                      <span className="flex items-center gap-1 text-cyan-300 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/20">
-                        <Eye className="w-3 h-3" /> NAKED EYE VISIBLE
-                      </span>
-                    ) : pass.isNight ? (
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <Moon className="w-3 h-3 text-slate-500" /> Shadow Eclipse
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-amber-400">
-                        <Sun className="w-3 h-3" /> Daytime Pass
-                      </span>
-                    )}
-                  </div>
+                  <div className="text-[10px] text-slate-500 pl-4">{gs.code} &middot; {gs.carrierFreqGhz} GHz</div>
                 </div>
-
-                {/* Azimuth Vector Bar */}
-                <div className="pt-2 border-t border-slate-900 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-slate-400">
-                  <div>
-                    AOS (Acquisition): <strong className="text-slate-200">{pass.entryAzimuth}° Heading</strong>
-                  </div>
-                  <div className="text-center sm:text-center">
-                    TCA (Culmination): <strong className="text-cyan-400">{pass.maxElevationDeg}° Zenith</strong>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    LOS (Loss of Signal): <strong className="text-slate-200">{pass.exitAzimuth}° Heading</strong>
-                  </div>
-                </div>
-              </div>
+                <span className="text-[10px] text-slate-400">{gs.elevMaskDeg}&deg; mask</span>
+              </button>
             ))}
           </div>
         </div>
 
       </div>
+
+      {/* 4. FLOATING RIGHT TACTICAL HUD: RF LINK BUDGET & DOPPLER SHIFT */}
+      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
+        
+        {/* RF Physics Telemetry Card */}
+        <div className="p-4 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
+          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Signal className="w-4 h-4 text-cyan-400" />
+              RF DOWNLINK BUDGET
+            </span>
+            <span className="text-[10px] text-cyan-400 font-bold">{activeStation.carrierFreqGhz} GHz</span>
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">CARRIER FREQUENCY</span>
+              <span className="text-white font-bold">{activeStation.carrierFreqGhz}00 GHz</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">DOPPLER FREQ SHIFT (Δf)</span>
+              <span className={telemetryUI.isAosActive ? "text-amber-400 font-bold" : "text-slate-500 font-bold"}>
+                {telemetryUI.dopplerShiftKhz} kHz
+              </span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">FREE-SPACE PATH LOSS</span>
+              <span className="text-white font-bold">{telemetryUI.pathLossDb} dB</span>
+            </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">LINK MARGIN (Eb/N0)</span>
+              <span className={telemetryUI.isAosActive ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                +{telemetryUI.linkMarginDb} dB
+              </span>
+            </div>
+          </div>
+
+          {/* Rolling Link Quality Graph */}
+          <div>
+            <div className="text-[10px] text-slate-500 mb-1 flex justify-between">
+              <span>DOWNLINK MARGIN PROFILE</span>
+              <span className="text-emerald-400 font-bold">+{telemetryUI.linkMarginDb} dB</span>
+            </div>
+            <div className="h-10 w-full bg-slate-950 rounded border border-slate-800 flex items-end px-1 gap-0.5 overflow-hidden">
+              {rfHistory.map((val, idx) => {
+                const hPercent = Math.max(8, Math.min(100, (val / 15) * 100))
+                return (
+                  <div
+                    key={idx}
+                    className={`flex-1 transition-all rounded-t-sm ${val > 0 ? "bg-emerald-400/80" : "bg-slate-800"}`}
+                    style={{ height: `${hPercent}%` }}
+                  />
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* 5. BOTTOM STATUS BAR HUD */}
+      <div className="absolute bottom-4 left-6 right-6 z-20 px-5 py-2.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80 flex flex-wrap items-center justify-between font-mono text-xs pointer-events-auto shadow-2xl">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <Radio className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-slate-400">GROUND TRACK:</span>
+            <span className="text-white font-bold">5 RECEPTIVE STATIONS OPERATIONAL</span>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-2 text-slate-400">
+            <span>CONES:</span>
+            <span className="text-cyan-400 font-bold">INVERTED 3D HORIZON ELEVATION MASKS</span>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-slate-400 flex items-center gap-3">
+          <span>SCROLL WHEEL TO ZOOM</span>
+          <span className="text-slate-600">|</span>
+          <span>EPOCH: <strong className="text-white">{telemetryUI.simTimeSec}s</strong></span>
+        </div>
+      </div>
+
     </div>
   )
 }
