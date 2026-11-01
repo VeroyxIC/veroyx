@@ -1,420 +1,557 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import Link from "next/link"
+import { useMission } from "@/lib/missionStore"
+import * as THREE from "three"
 import { 
-  Sun, 
-  Compass, 
+  Play, 
+  Pause, 
+  RotateCcw, 
   Activity, 
   ShieldAlert, 
-  ShieldCheck, 
-  AlertTriangle, 
-  Download, 
-  ArrowRight, 
-  Gauge, 
-  Wind, 
   Zap, 
-  Radio, 
-  Globe 
+  
+  CloudLightning,
+  Sun,
+  Globe2,
+  Crosshair
 } from "lucide-react"
 
-interface SpaceWeatherPreset {
-  name: string
-  solarCyclePhase: string
-  f107Sfu: number
-  kpIndex: number
-  apIndex: number
-  protonFluxPfU: number // >10 MeV protons / (cm2*s*sr)
-  xrayFlareClass: "Quiet (< C1)" | "Moderate (C1 - M1)" | "Severe (M5 - X1)" | "Extreme (> X10)"
-  description: string
-}
-
-const WEATHER_PRESETS: Record<string, SpaceWeatherPreset> = {
-  solar_maximum_storm: {
-    name: "Solar Maximum Geomagnetic Storm (G3 / S2)",
-    solarCyclePhase: "Solar Maximum Peak",
-    f107Sfu: 220,
-    kpIndex: 7.0,
-    apIndex: 110,
-    protonFluxPfU: 450,
-    xrayFlareClass: "Severe (M5 - X1)",
-    description: "Intense coronal mass ejection impact producing high thermospheric drag expansion and energetic proton SEU risk.",
-  },
-  solar_minimum_quiet: {
-    name: "Solar Minimum Baseline (Quiet Sun)",
-    solarCyclePhase: "Solar Minimum Baseline",
-    f107Sfu: 72,
-    kpIndex: 1.5,
-    apIndex: 5,
-    protonFluxPfU: 0.8,
-    xrayFlareClass: "Quiet (< C1)",
-    description: "Contracted upper atmosphere with minimum aerodynamic drag, but peak galactic cosmic ray (GCR) background flux.",
-  },
-  halloween_carrington_extreme: {
-    name: "Extreme Solar Superstorm (G5 / S4 Carrington Analogue)",
-    solarCyclePhase: "Extreme Super-Flare Event",
-    f107Sfu: 310,
-    kpIndex: 9.0,
-    apIndex: 380,
-    protonFluxPfU: 12500,
-    xrayFlareClass: "Extreme (> X10)",
-    description: "Historical benchmark event causing severe dielectric charging, global RF blackouts, and emergency safe-mode triggers.",
-  },
-}
-
 export default function SpaceWeatherPage() {
-  const [selectedKey, setSelectedKey] = useState<string>("solar_maximum_storm")
-  const [f107Sfu, setF107Sfu] = useState<number>(220)
-  const [kpIndex, setKpIndex] = useState<number>(7.0)
-  const [protonFluxPfU, setProtonFluxPfU] = useState<number>(450)
-  const [targetAltitudeKm, setTargetAltitudeKm] = useState<number>(500)
+  const { mission } = useMission()
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-  const activePreset = WEATHER_PRESETS[selectedKey]
+  const [isPlaying, setIsPlaying] = useState<boolean>(true)
+  const [timeScale, setTimeScale] = useState<number>(10)
+  const [kpIndex, setKpIndex] = useState<number>(2) // Geomagnetic storm scale 0-9
 
-  const applyPreset = (key: string) => {
-    const p = WEATHER_PRESETS[key]
-    setSelectedKey(key)
-    setF107Sfu(p.f107Sfu)
-    setKpIndex(p.kpIndex)
-    setProtonFluxPfU(p.protonFluxPfU)
-  }
+  // Physics Constants
+  const EARTH_RADIUS_KM = 6378.137
+  const SAA_LAT_DEG = -25.0
+  const SAA_LON_DEG = -45.0
+  const SAA_RADIUS_KM = 2800
+  const NOMINAL_FLUX = 15 // protons/cm^2/s
+  const SAA_FLUX = 25000 // Severe trapped proton flux
+  const VAN_ALLEN_FLUX = 120000
 
-  // Atmospheric Density & Space Weather Operational Impact Models
-  const metrics = useMemo(() => {
-    // 1. Thermospheric Expansion Ratio based on F10.7
-    // Baseline F10.7 = 70 sfu
-    const dragMultiplier = Math.round(Math.pow(f107Sfu / 70, 1.45) * 10) / 10
+  // Kinetic state
+  const simStateRef = useRef({
+    isPlaying: true,
+    timeScale: 10,
+    kpIndex: 2,
+    simTimeSec: 0,
+    cameraYaw: 1.1,
+    cameraPitch: 0.3,
+    targetCameraYaw: 1.1,
+    targetCameraPitch: 0.3,
+    cameraDistance: 6.5,
+    targetCameraDistance: 6.5,
+    isDragging: false,
+    prevMouse: { x: 0, y: 0 },
+    dragVelocity: { x: 0, y: 0 },
+    accumulatedDoseKrad: 2.45 // Starting degraded state
+  })
 
-    // 2. Local Atmospheric Density at Altitude (kg/m3)
-    // Scale height expands with high F10.7
-    const baseDensity = 6.0e-12 * Math.exp(-(targetAltitudeKm - 400) / 55.0)
-    const effectiveDensity = baseDensity * dragMultiplier
+  // Throttled UI Telemetry (4 Hz)
+  const [telemetryUI, setTelemetryUI] = useState({
+    simTimeSec: 0,
+    environmentState: "NOMINAL LEO PLASMA",
+    fluxDensity: "15",
+    doseRateRadHr: "0.01",
+    totalDoseKrad: "2.450",
+    seuProbability: "0.0001",
+    isInsideSAA: false,
+    isInsideBelt: false
+  })
 
-    // 3. NOAA Space Weather Scale Categorization
-    // Geomagnetic Storm (G-Scale based on Kp)
-    let gScale = "G0 (Quiet)"
-    if (kpIndex >= 9) gScale = "G5 (Extreme Storm)"
-    else if (kpIndex >= 8) gScale = "G4 (Severe Storm)"
-    else if (kpIndex >= 7) gScale = "G3 (Strong Storm)"
-    else if (kpIndex >= 6) gScale = "G2 (Moderate Storm)"
-    else if (kpIndex >= 5) gScale = "G1 (Minor Storm)"
+  const [fluxHistory, setFluxHistory] = useState<number[]>(Array(40).fill(NOMINAL_FLUX))
 
-    // Solar Radiation Storm (S-Scale based on >10 MeV Proton Flux)
-    let sScale = "S0 (Quiet)"
-    if (protonFluxPfU >= 100000) sScale = "S5 (Extreme)"
-    else if (protonFluxPfU >= 10000) sScale = "S4 (Severe)"
-    else if (protonFluxPfU >= 1000) sScale = "S3 (Strong)"
-    else if (protonFluxPfU >= 100) sScale = "S2 (Moderate)"
-    else if (protonFluxPfU >= 10) sScale = "S1 (Minor)"
+  useEffect(() => {
+    simStateRef.current.isPlaying = isPlaying
+    simStateRef.current.timeScale = timeScale
+    simStateRef.current.kpIndex = kpIndex
+  }, [isPlaying, timeScale, kpIndex])
 
-    // 4. Mission Operational Hazard Assessment
-    const highDragAlert = dragMultiplier >= 2.5
-    const seuRiskElevated = protonFluxPfU >= 100
-    const chargingHazard = kpIndex >= 6.0
+  const orbit = useMemo(() => {
+    const mu = 398600.4418
+    const a = EARTH_RADIUS_KM + mission.altitudeKm
+    const incRad = (mission.inclinationDeg * Math.PI) / 180
+    const n = Math.sqrt(mu / Math.pow(a, 3))
+    return { a, incRad, n }
+  }, [mission.altitudeKm, mission.inclinationDeg])
 
-    return {
-      dragMultiplier,
-      effectiveDensity: effectiveDensity.toExponential(2),
-      gScale,
-      sScale,
-      highDragAlert,
-      seuRiskElevated,
-      chargingHazard,
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
+
+    const width = container.clientWidth
+    const height = container.clientHeight
+
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#010308")
+
+    const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 2000)
+    camera.position.set(0, 2.0, 6.5)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.15
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    // Deep Space Starfield
+    const starGeo = new THREE.BufferGeometry()
+    const starPos = new Float32Array(3000 * 3)
+    for (let i = 0; i < 9000; i++) starPos[i] = (Math.random() - 0.5) * 200
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xdbeafe, size: 0.1, transparent: true, opacity: 0.6 })))
+
+    const sunDir = new THREE.Vector3(7.0, 3.0, 5.0).normalize()
+    const sunLight = new THREE.DirectionalLight(0xfff7ed, 2.5)
+    sunLight.position.copy(sunDir.clone().multiplyScalar(40))
+    scene.add(sunLight)
+    scene.add(new THREE.AmbientLight(0x061224, 0.5))
+
+    const earthRadius = 1.75
+    const textureLoader = new THREE.TextureLoader()
+    const dayTexture = textureLoader.load("https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg", () => renderer.render(scene, camera))
+    dayTexture.colorSpace = THREE.SRGBColorSpace
+    const nightTexture = textureLoader.load("https://unpkg.com/three-globe/example/img/earth-night.jpg", () => renderer.render(scene, camera))
+    nightTexture.colorSpace = THREE.SRGBColorSpace
+
+    // Earth Shader
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 96, 96)
+    const earthMat = new THREE.ShaderMaterial({
+      uniforms: { dayTexture: { value: dayTexture }, nightTexture: { value: nightTexture }, sunDirection: { value: sunDir } },
+      vertexShader: `
+        varying vec2 vUv; varying vec3 vNormal; varying vec3 vSunDir;
+        uniform vec3 sunDirection;
+        void main() {
+          vUv = uv; vNormal = normalize(normalMatrix * normal);
+          vSunDir = normalize((viewMatrix * vec4(sunDirection, 0.0)).xyz);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D dayTexture; uniform sampler2D nightTexture;
+        varying vec2 vUv; varying vec3 vNormal; varying vec3 vSunDir;
+        void main() {
+          vec4 dayC = texture2D(dayTexture, vUv); vec4 nightC = texture2D(nightTexture, vUv);
+          if (dayC.r > 0.85 && dayC.g > 0.85 && dayC.b > 0.85) { dayC.rgb *= 0.82; }
+          float cosTheta = dot(vNormal, vSunDir);
+          float dayFactor = smoothstep(-0.04, 0.14, cosTheta);
+          vec3 finalC = mix(nightC.rgb * vec3(1.7, 1.4, 0.95) * 2.2, dayC.rgb, dayFactor);
+          gl_FragColor = vec4(finalC, 1.0);
+        }
+      `
+    })
+    const earthGroup = new THREE.Group()
+    earthGroup.rotation.z = (23.44 * Math.PI) / 180
+    scene.add(earthGroup)
+    const earthMesh = new THREE.Mesh(earthGeo, earthMat); earthGroup.add(earthMesh)
+
+    // Magnetic Dipole Frame (Tilted 11 degrees from rotation axis)
+    const magFrame = new THREE.Group()
+    magFrame.rotation.z = (11 * Math.PI) / 180
+    earthGroup.add(magFrame)
+
+    // Volumetric Van Allen Belt (Plasma Glow Shader)
+    const beltGeo = new THREE.TorusGeometry(earthRadius * 1.8, earthRadius * 0.4, 32, 100)
+    const beltMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      vertexShader: `
+        varying vec3 vNormal; varying vec3 vViewDir;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal; varying vec3 vViewDir;
+        void main() {
+          float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
+          float intensity = pow(rim, 2.5);
+          gl_FragColor = vec4(0.8, 0.2, 1.0, intensity * 0.4); // Purple/Violet plasma
+        }
+      `
+    })
+    const beltMesh = new THREE.Mesh(beltGeo, beltMat)
+    beltMesh.rotation.x = Math.PI / 2
+    magFrame.add(beltMesh)
+
+    // South Atlantic Anomaly (SAA) Volume
+    const saaPhi = (90 - SAA_LAT_DEG) * (Math.PI / 180)
+    const saaTheta = (SAA_LON_DEG + 180) * (Math.PI / 180)
+    const saaX = -(earthRadius * Math.sin(saaPhi) * Math.cos(saaTheta))
+    const saaZ = earthRadius * Math.sin(saaPhi) * Math.sin(saaTheta)
+    const saaY = earthRadius * Math.cos(saaPhi)
+
+    const saaGeo = new THREE.SphereGeometry(earthRadius * (SAA_RADIUS_KM / EARTH_RADIUS_KM), 32, 32)
+    const saaMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: `
+        varying vec3 vNormal; varying vec3 vViewDir;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+          vViewDir = normalize(-mvPos.xyz);
+          gl_Position = projectionMatrix * mvPos;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vNormal; varying vec3 vViewDir;
+        void main() {
+          float rim = 1.0 - abs(dot(vNormal, vViewDir));
+          float pulse = 0.5 + 0.5 * sin(gl_FragCoord.w * 10.0); // simple pulse
+          gl_FragColor = vec4(1.0, 0.2, 0.0, pow(rim, 3.0) * 0.5);
+        }
+      `
+    })
+    const saaMesh = new THREE.Mesh(saaGeo, saaMat)
+    saaMesh.position.set(saaX, saaY, saaZ)
+    earthGroup.add(saaMesh)
+
+    // Orbit Ring
+    const orbitRadius = earthRadius * (orbit.a / EARTH_RADIUS_KM)
+    const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
+    const orbitPoints = orbitCurve.getPoints(180)
+    const orbitLineGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
+    const orbitLineMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.4 })
+    const orbitLine = new THREE.LineLoop(orbitLineGeo, orbitLineMat)
+    orbitLine.rotation.x = orbit.incRad
+    scene.add(orbitLine)
+
+    // Satellite
+    const satMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.1, 0.15),
+      new THREE.MeshStandardMaterial({ color: 0xf1f5f9, metalness: 0.8, roughness: 0.2 })
+    )
+    scene.add(satMesh)
+
+    // Interaction
+    const onMouseDown = (e: MouseEvent) => {
+      simStateRef.current.isDragging = true
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
     }
-  }, [f107Sfu, kpIndex, protonFluxPfU, targetAltitudeKm])
+    const onMouseMove = (e: MouseEvent) => {
+      if (!simStateRef.current.isDragging) return
+      const dx = e.clientX - simStateRef.current.prevMouse.x
+      const dy = e.clientY - simStateRef.current.prevMouse.y
+      simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
+      simStateRef.current.dragVelocity = { x: dx, y: dy }
+      simStateRef.current.targetCameraYaw += dx * 0.005
+      simStateRef.current.targetCameraPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetCameraPitch + dy * 0.005))
+    }
+    const onMouseUp = () => { simStateRef.current.isDragging = false }
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const zoomDelta = e.deltaY * 0.003
+      simStateRef.current.targetCameraDistance = Math.max(2.0, Math.min(15.0, simStateRef.current.targetCameraDistance + zoomDelta))
+    }
 
-  const exportWeatherCSV = () => {
-    const csv = `SPACECRAFT SPACE WEATHER & HELIOSPHERIC TELEMETRY
-Scenario Profile,${activePreset.name}
-Solar Cycle Regime,${activePreset.solarCyclePhase}
-Solar 10.7cm Radio Flux (F10.7),${f107Sfu} sfu
-Planetary Kp Index,${kpIndex}
-NOAA Geomagnetic Storm Level,${metrics.gScale}
-Solar Proton Flux (>10 MeV),${protonFluxPfU} pfu
-NOAA Radiation Storm Level,${metrics.sScale}
-Monitored Orbit Altitude,${targetAltitudeKm} km
-Thermospheric Drag Expansion Factor,${metrics.dragMultiplier}x normal baseline
-Effective Atmospheric Density,${metrics.effectiveDensity} kg/m3
-Avionics SEU Bit-Flip Risk,${metrics.seuRiskElevated ? "ELEVATED (AUTONOMOUS SCRUB REQUIRED)" : "NORMAL BASELINE"}
-Spacecraft Charging Alert,${metrics.chargingHazard ? "CRITICAL ESD DISCHARGE HAZARD" : "NOMINAL"}
-Aerodynamic Altitude Drop Warning,${metrics.highDragAlert ? "ACCELERATED ORBIT DECAY" : "STANDARD TRACK"}`
+    const dom = renderer.domElement
+    dom.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    dom.addEventListener("wheel", onWheel, { passive: false })
 
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `veroyx-space-weather-${selectedKey}.csv`
-    a.click()
-  }
+    let animId: number
+    let lastTime = performance.now()
+    let lastUiSync = performance.now()
+
+    const animate = (now: number) => {
+      animId = requestAnimationFrame(animate)
+      const dt = Math.min((now - lastTime) / 1000, 0.1)
+      lastTime = now
+
+      const timeStep = dt * simStateRef.current.timeScale
+      if (simStateRef.current.isPlaying) {
+        simStateRef.current.simTimeSec += timeStep
+      }
+
+      const t = simStateRef.current.simTimeSec
+
+      // Rotate Earth ECEF
+      earthMesh.rotation.y = t * 0.012
+      saaMesh.rotation.y = t * 0.012 // Lock SAA to Earth's surface
+      earthMesh.updateMatrixWorld()
+
+      // Expand/Contract Belts based on Kp-Index Storm Severity
+      const scaleFactor = 1.0 + (simStateRef.current.kpIndex * 0.05)
+      beltMesh.scale.set(scaleFactor, scaleFactor, 1)
+
+      // Propagate Satellite in ECI
+      const u = (orbit.n * t) % (2 * Math.PI)
+      const xOrb = orbitRadius * Math.cos(u)
+      const zOrb = orbitRadius * Math.sin(u)
+      
+      const raan = (0 - 0.0001 * t) % (2 * Math.PI) // Simplified nodal precession
+      const xE = xOrb * Math.cos(raan) - zOrb * Math.cos(orbit.incRad) * Math.sin(raan)
+      const zE = xOrb * Math.sin(raan) + zOrb * Math.cos(orbit.incRad) * Math.cos(raan)
+      const yE = zOrb * Math.sin(orbit.incRad)
+
+      satMesh.position.set(xE, yE, zE)
+      satMesh.lookAt(0, 0, 0)
+
+      // Radiation Hazard Intersection Logic
+      const satWorldPos = satMesh.position.clone()
+      
+      // 1. SAA Intersection (Earth coordinates)
+      const saaWorldPos = new THREE.Vector3()
+      saaMesh.getWorldPosition(saaWorldPos)
+      const distToSaaKm = satWorldPos.distanceTo(saaWorldPos) * (EARTH_RADIUS_KM / earthRadius)
+      const isInsideSAA = distToSaaKm < SAA_RADIUS_KM
+
+      // 2. Van Allen Belt Intersection (Geomagnetic altitude constraint)
+      const isInsideBelt = mission.altitudeKm > 1000 * (1 - simStateRef.current.kpIndex * 0.08)
+
+      let currentFlux = NOMINAL_FLUX
+      let envState = "NOMINAL LEO PLASMA"
+      
+      if (isInsideSAA) {
+        currentFlux = SAA_FLUX * (1 - distToSaaKm / SAA_RADIUS_KM)
+        envState = "CRITICAL: SOUTH ATLANTIC ANOMALY"
+        satMesh.material.color.setHex(0xef4444) // Glow red
+      } else if (isInsideBelt) {
+        currentFlux = VAN_ALLEN_FLUX * (simStateRef.current.kpIndex / 5)
+        envState = "WARNING: INNER RADIATION BELT"
+        satMesh.material.color.setHex(0xa855f7) // Glow purple
+      } else {
+        satMesh.material.color.setHex(0xf1f5f9) // Nominal
+      }
+
+      // Add ambient Kp noise
+      currentFlux += currentFlux * (simStateRef.current.kpIndex * 0.1 * Math.random())
+
+      // Integration of Total Ionizing Dose (TID)
+      // Shielding coefficient based on typical 4mm Aluminum equivalent
+      const shieldingAttenuation = 0.00000002 
+      const doseRateRadSec = currentFlux * shieldingAttenuation
+      
+      if (simStateRef.current.isPlaying) {
+        simStateRef.current.accumulatedDoseKrad += (doseRateRadSec * timeStep) / 1000
+      }
+
+      // Camera Damping
+      if (!simStateRef.current.isDragging) {
+        simStateRef.current.targetCameraYaw += simStateRef.current.dragVelocity.x * 0.002
+        simStateRef.current.targetCameraPitch += simStateRef.current.dragVelocity.y * 0.002
+        simStateRef.current.dragVelocity.x *= 0.92
+        simStateRef.current.dragVelocity.y *= 0.92
+      }
+      simStateRef.current.cameraYaw += (simStateRef.current.targetCameraYaw - simStateRef.current.cameraYaw) * 0.08
+      simStateRef.current.cameraPitch += (simStateRef.current.targetCameraPitch - simStateRef.current.cameraPitch) * 0.08
+      simStateRef.current.cameraDistance += (simStateRef.current.targetCameraDistance - simStateRef.current.cameraDistance) * 0.08
+
+      const curDist = simStateRef.current.cameraDistance
+      camera.position.x = curDist * Math.sin(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
+      camera.position.y = curDist * Math.sin(simStateRef.current.cameraPitch)
+      camera.position.z = curDist * Math.cos(simStateRef.current.cameraYaw) * Math.cos(simStateRef.current.cameraPitch)
+      camera.lookAt(0, 0, 0)
+
+      renderer.render(scene, camera)
+
+      if (now - lastUiSync > 250) {
+        lastUiSync = now
+        
+        // Single Event Upset (SEU) Probability Model (Weibull approximation)
+        const seuProb = (currentFlux / 1000000) * 100
+
+        setTelemetryUI({
+          simTimeSec: Math.round(t),
+          environmentState: envState,
+          fluxDensity: Math.round(currentFlux).toLocaleString(),
+          doseRateRadHr: (doseRateRadSec * 3600).toFixed(2),
+          totalDoseKrad: simStateRef.current.accumulatedDoseKrad.toFixed(4),
+          seuProbability: seuProb.toFixed(4),
+          isInsideSAA,
+          isInsideBelt
+        })
+
+        setFluxHistory(prev => [...prev.slice(1), currentFlux])
+      }
+    }
+
+    animId = requestAnimationFrame(animate)
+
+    const onResize = () => {
+      if (!container) return
+      camera.aspect = container.clientWidth / container.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(container.clientWidth, container.clientHeight)
+    }
+    window.addEventListener("resize", onResize)
+
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      dom.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      dom.removeEventListener("wheel", onWheel)
+      renderer.dispose()
+    }
+  }, [orbit])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
+      <div ref={mountRef} className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0" />
 
-        {/* Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Sun className="w-3.5 h-3.5 animate-pulse text-amber-400" />
-              NOAA Space Weather Scales &amp; Dynamic Atmospheric Density Engine
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              SPACE WEATHER &amp; OPERATIONS
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
-              Model real-time solar radio flux ($F_{10.7}$), geomagnetic storm indices ($Kp$), energetic proton flux ($pfu$), and thermospheric drag expansions across operational satellite orbits.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <button
-              onClick={exportWeatherCSV}
-              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              EXPORT WEATHER SPEC
-            </button>
+      {/* TOP TACTICAL FLIGHT BAR */}
+      <div className="absolute top-4 left-6 right-6 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-none">
+        <div className="flex items-center gap-3 pointer-events-auto">
+          <Link href="/" className="px-3.5 py-1.5 rounded-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 text-white font-mono font-black text-sm hover:border-fuchsia-500/50 transition-all shadow-xl">
+            VEROYX
+          </Link>
+          <div className="px-3 py-1 rounded-full bg-fuchsia-950/80 backdrop-blur-md border border-fuchsia-500/40 text-fuchsia-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
+            <Activity className="w-3.5 h-3.5 text-fuchsia-400" />
+            SPACE WEATHER &amp; RADIATION DOSIMETRY
           </div>
         </div>
 
-        {/* Preset Selector */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 font-mono text-xs">
-          {Object.entries(WEATHER_PRESETS).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap ${
-                selectedKey === k
-                  ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
-                  : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
-              }`}
-            >
-              {v.name}
+        <div className="flex items-center gap-2 font-mono text-xs bg-slate-900/80 backdrop-blur-md p-1.5 rounded-xl border border-slate-800 pointer-events-auto shadow-xl">
+          <button onClick={() => setIsPlaying(!isPlaying)} className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center gap-1.5 transition-all">
+            {isPlaying ? <Pause className="w-3.5 h-3.5 text-amber-400" /> : <Play className="w-3.5 h-3.5 text-emerald-400" />}
+          </button>
+          {[1, 10, 50, 100].map(scale => (
+            <button key={scale} onClick={() => setTimeScale(scale)} className={`px-2 py-1 rounded-lg transition-all ${timeScale === scale ? "bg-fuchsia-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"}`}>
+              {scale}x
             </button>
           ))}
+          <button onClick={() => { simStateRef.current.simTimeSec = 0; }} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
         </div>
+      </div>
 
-        {/* Primary KPI Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Sun className="w-3 h-3 text-amber-400" /> SOLAR FLUX (F10.7)
-            </div>
-            <div className="text-3xl font-black text-amber-400">{f107Sfu} sfu</div>
-            <div className="text-[10px] text-slate-400">{metrics.dragMultiplier}x Thermospheric Expansion</div>
+      {/* FLOATING LEFT HUD: DOSIMETRY & SAA */}
+      <div className="absolute top-20 left-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
+        
+        {/* Environment Alert Box */}
+        <div className={`p-4 rounded-xl backdrop-blur-md border shadow-2xl space-y-2.5 transition-all ${
+          telemetryUI.isInsideSAA ? "bg-rose-950/80 border-rose-500/60 shadow-rose-500/20" : 
+          telemetryUI.isInsideBelt ? "bg-fuchsia-950/80 border-fuchsia-500/60 shadow-fuchsia-500/20" : 
+          "bg-slate-950/75 border-slate-800/80"
+        }`}>
+          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
+            <span className={`font-bold uppercase flex items-center gap-1.5 ${telemetryUI.isInsideSAA ? "text-rose-400 animate-pulse" : telemetryUI.isInsideBelt ? "text-fuchsia-400" : "text-emerald-400"}`}>
+              <ShieldAlert className="w-4 h-4" />
+              FLIGHT ENVIRONMENT
+            </span>
           </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Compass className="w-3 h-3 text-cyan-400" /> GEOMAGNETIC INDEX
-            </div>
-            <div className="text-3xl font-black text-cyan-400">Kp {kpIndex}</div>
-            <div className="text-[10px] text-slate-400">{metrics.gScale}</div>
+          <div className={`font-black tracking-wide text-sm ${telemetryUI.isInsideSAA ? "text-rose-400" : telemetryUI.isInsideBelt ? "text-fuchsia-400" : "text-emerald-400"}`}>
+            {telemetryUI.environmentState}
           </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Zap className="w-3 h-3 text-purple-400" /> PROTON FLUX (&gt;10 MeV)
-            </div>
-            <div className="text-3xl font-black text-purple-400">{protonFluxPfU} pfu</div>
-            <div className="text-[10px] text-slate-400">{metrics.sScale}</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Wind className="w-3 h-3 text-rose-400" /> AIR DENSITY @ {targetAltitudeKm}KM
-            </div>
-            <div className="text-3xl font-black text-white">{metrics.effectiveDensity}</div>
-            <div className="text-[10px] text-slate-400">kg / m³ in upper thermosphere</div>
+          <div className="flex justify-between py-0.5 border-t border-slate-800/40 pt-1.5 mt-1.5">
+            <span className="text-slate-400">PROTON FLUX DENSITY</span>
+            <span className="text-white font-bold">{telemetryUI.fluxDensity} p/cm&sup2;/s</span>
           </div>
         </div>
 
-        {/* Workspace Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
-
-          {/* Configuration Form */}
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
-            <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
-              <Gauge className="w-4 h-4 text-cyan-400" />
-              Heliospheric Conditions
-            </div>
-
-            {/* F10.7 Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">SOLAR RADIO FLUX (F10.7)</label>
-                <span className="text-amber-400 font-bold">{f107Sfu} SFU</span>
-              </div>
-              <input
-                type="range"
-                min={65}
-                max={350}
-                step={5}
-                value={f107Sfu}
-                onChange={(e) => setF107Sfu(Number(e.target.value))}
-                className="w-full accent-amber-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>70 (Min)</span>
-                <span>150 (Nominal)</span>
-                <span>350 (Extreme)</span>
-              </div>
-            </div>
-
-            {/* Kp Slider */}
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">GEOMAGNETIC KP INDEX</label>
-                <span className="text-cyan-400 font-bold">Kp {kpIndex}</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={9}
-                step={0.5}
-                value={kpIndex}
-                onChange={(e) => setKpIndex(Number(e.target.value))}
-                className="w-full accent-cyan-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>0 (Quiet)</span>
-                <span>5 (Storm Minor)</span>
-                <span>9 (Extreme)</span>
-              </div>
-            </div>
-
-            {/* Proton Flux Slider */}
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">SOLAR PROTON FLUX</label>
-                <span className="text-purple-400 font-bold">{protonFluxPfU} PFU</span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={20000}
-                step={50}
-                value={protonFluxPfU}
-                onChange={(e) => setProtonFluxPfU(Number(e.target.value))}
-                className="w-full accent-purple-400 cursor-pointer"
-              />
-              <span className="text-[10px] text-slate-500 block">&gt;10 MeV energetic protons / (cm²&middot;s&middot;sr)</span>
-            </div>
-
-            {/* Monitored Altitude */}
-            <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
-              <label className="text-slate-400 block uppercase font-bold">MONITORED ORBIT ALTITUDE</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  step={25}
-                  value={targetAltitudeKm}
-                  onChange={(e) => setTargetAltitudeKm(Math.max(200, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
-                />
-                <span className="text-slate-500">km</span>
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-sans text-slate-400">
-              <strong className="text-cyan-400 block font-mono">OPERATIONAL TELEMETRY:</strong>
-              Dynamic solar flux actively feeds into aerodynamic drag decay, ATOX surface erosion, and spacecraft electrostatic charging risk.
-            </div>
+        {/* Dosimetry Accumulator */}
+        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2.5">
+          <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-cyan-400" />
+              TOTAL IONIZING DOSE (TID)
+            </span>
           </div>
 
-          {/* Results Telemetry Desk */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Hazard Assessment Panel */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
-                  <ShieldAlert className="w-4 h-4 text-cyan-400" />
-                  Flight Hazard &amp; Subsystem Vulnerability Audit
-                </span>
-                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded border uppercase ${
-                  !metrics.chargingHazard && !metrics.highDragAlert
-                    ? "bg-emerald-950 border-emerald-500/40 text-emerald-300"
-                    : "bg-red-950 border-red-500/40 text-red-300"
-                }`}>
-                  {!metrics.chargingHazard && !metrics.highDragAlert ? "NOMINAL SPACE WEATHER" : "ACTIVE SPACE WEATHER ALERT"}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className={`p-4 rounded-xl border space-y-1 ${
-                  metrics.highDragAlert ? "bg-amber-950/30 border-amber-500/40" : "bg-slate-950/70 border-slate-800"
-                }`}>
-                  <div className="text-[10px] text-slate-400 uppercase">ORBITAL DRAG DECAY</div>
-                  <div className={`text-base font-bold ${metrics.highDragAlert ? "text-amber-400" : "text-emerald-400"}`}>
-                    {metrics.highDragAlert ? "EXPANDED DRAG (HIGH)" : "BASELINE DRAG"}
-                  </div>
-                  <div className="text-[10px] text-slate-400">{metrics.dragMultiplier}x density multiplier</div>
-                </div>
-
-                <div className={`p-4 rounded-xl border space-y-1 ${
-                  metrics.seuRiskElevated ? "bg-purple-950/30 border-purple-500/40" : "bg-slate-950/70 border-slate-800"
-                }`}>
-                  <div className="text-[10px] text-slate-400 uppercase">AVIONICS SEU RISK</div>
-                  <div className={`text-base font-bold ${metrics.seuRiskElevated ? "text-purple-400" : "text-emerald-400"}`}>
-                    {metrics.seuRiskElevated ? "ELEVATED FLUX" : "QUIET BACKGROUND"}
-                  </div>
-                  <div className="text-[10px] text-slate-400">Proton storm {metrics.sScale}</div>
-                </div>
-
-                <div className={`p-4 rounded-xl border space-y-1 ${
-                  metrics.chargingHazard ? "bg-rose-950/30 border-rose-500/40" : "bg-slate-950/70 border-slate-800"
-                }`}>
-                  <div className="text-[10px] text-slate-400 uppercase">DIELECTRIC CHARGING</div>
-                  <div className={`text-base font-bold ${metrics.chargingHazard ? "text-rose-400" : "text-emerald-400"}`}>
-                    {metrics.chargingHazard ? "ESD DISCHARGE RISK" : "NOMINAL POTENTIAL"}
-                  </div>
-                  <div className="text-[10px] text-slate-400">Storm level {metrics.gScale}</div>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-xs font-sans text-slate-300 leading-relaxed space-y-2">
-                <p>
-                  At <strong className="text-white">{targetAltitudeKm} km</strong>, solar radio flux of <strong className="text-amber-400">{f107Sfu} sfu</strong> heats and inflates the upper thermosphere, yielding an atmospheric density of <strong className="text-white">{metrics.effectiveDensity} kg/m³</strong> (<strong className="text-amber-400">{metrics.dragMultiplier}x normal quiet-sun levels</strong>). 
-                  Stations operating in this regime will experience rapid orbital decay, requiring compensatory propulsive stationkeeping burns.
-                </p>
-                {metrics.chargingHazard && (
-                  <p className="text-rose-300">
-                    Geomagnetic storm state (<strong className="text-rose-400">{metrics.gScale}</strong>) accelerates auroral electrons into magnetospheric field lines. Ground operations should monitor spacecraft chassis differential charging and suspend critical firmware uplinks.
-                  </p>
-                )}
-              </div>
+          <div className="space-y-1.5 pt-1">
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">EXPOSURE RATE</span>
+              <span className="text-amber-400 font-bold">{telemetryUI.doseRateRadHr} Rad/hr</span>
             </div>
-
-            {/* Direct Links to Impacted Engines */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3 font-mono text-xs">
-              <span className="text-slate-400 font-bold uppercase text-[10px] block">
-                IMPACTED SIMULATION KERNELS:
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">LIFETIME ACCUMULATION</span>
+              <span className="text-fuchsia-400 font-bold text-sm">{telemetryUI.totalDoseKrad} kRad</span>
+            </div>
+            <div className="flex justify-between py-0.5 pt-1">
+              <span className="text-slate-500">SEU PROBABILITY (1Hz)</span>
+              <span className={parseFloat(telemetryUI.seuProbability) > 0.05 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+                {telemetryUI.seuProbability} %
               </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
-                <Link href="/decay" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/decay (Orbit)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-                <Link href="/atox" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/atox (Erosion)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-                <Link href="/plasma" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/plasma (Charging)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-                <Link href="/rad" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/rad (TID / SEU)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-              </div>
             </div>
-
           </div>
-
         </div>
 
+      </div>
+
+      {/* FLOATING RIGHT HUD: GEOMAGNETIC STORM Kp-INDEX */}
+      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
+        
+        <div className="p-4 rounded-xl bg-slate-950/85 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-3">
+          <div className="border-b border-slate-800 pb-2 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <CloudLightning className="w-4 h-4 text-amber-400" />
+              GEOMAGNETIC Kp-INDEX
+            </span>
+            <span className="text-[10px] text-amber-400 bg-amber-950/50 border border-amber-500/20 px-2 py-0.5 rounded font-bold">
+              Kp {kpIndex}
+            </span>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <div className="flex justify-between text-[11px]">
+              <span className="text-slate-400">STORM INTENSITY (0-9)</span>
+              <span className={kpIndex > 5 ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
+                {kpIndex < 4 ? "QUIET" : kpIndex < 6 ? "ACTIVE" : "SEVERE STORM (CME)"}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="0" max="9" step="1"
+              value={kpIndex}
+              onChange={(e) => setKpIndex(Number(e.target.value))}
+              className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+            />
+            <p className="text-[10px] text-slate-500 leading-tight pt-1">
+              High Kp values compress the magnetosphere, pushing the Van Allen belts down into LEO altitudes and severely increasing radiation flux.
+            </p>
+          </div>
+        </div>
+
+        {/* Flux History Graph */}
+        <div className="p-4 rounded-xl bg-slate-950/75 backdrop-blur-md border border-slate-800/80 shadow-2xl space-y-2">
+          <div className="border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+            <span className="font-bold text-white uppercase flex items-center gap-1.5">
+              <Activity className="w-4 h-4 text-fuchsia-400" />
+              FLUX PROFILE
+            </span>
+          </div>
+          <div className="h-16 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-0.5 gap-px overflow-hidden relative">
+            {fluxHistory.map((val, idx) => {
+              const maxScale = Math.max(30000, val)
+              const hPercent = Math.max(2, Math.min(100, (val / maxScale) * 100))
+              return (
+                <div key={idx} className="flex-1 h-full relative flex items-end">
+                  <div 
+                    className={`w-full rounded-t-sm transition-all ${val > 20000 ? "bg-rose-500/90" : val > 1000 ? "bg-fuchsia-500/80" : "bg-emerald-500/60"}`}
+                    style={{ height: `${hPercent}%` }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+      </div>
+
+      <div className="absolute bottom-4 left-6 right-6 z-20 px-5 py-2.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/80 flex items-center justify-between font-mono text-xs pointer-events-auto shadow-2xl">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">VOLUMETRIC DATA:</span>
+            <span className="text-rose-400 font-bold">RED = S.A.A.</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-fuchsia-400 font-bold">PURPLE = VAN ALLEN BELT</span>
+          </div>
+        </div>
       </div>
     </div>
   )
