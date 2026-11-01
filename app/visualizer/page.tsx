@@ -13,15 +13,12 @@ import {
   Compass, 
   Globe, 
   Crosshair, 
-  Eye, 
-  ShieldAlert, 
   Target, 
-  Layers, 
   Video,
-  Sun,
-  Maximize2,
+  Layers,
   Zap,
-  Navigation
+  ShieldCheck,
+  ChevronRight
 } from "lucide-react"
 
 const TARGET_PRESETS = [
@@ -50,8 +47,8 @@ export default function VisualizerPage() {
     pitch: 0.35,
     targetYaw: 1.1,
     targetPitch: 0.35,
-    distance: 5.2,
-    targetDistance: 5.2,
+    distance: 5.6,
+    targetDistance: 5.6,
     isDragging: false,
     prevMouse: { x: 0, y: 0 }
   })
@@ -79,7 +76,7 @@ export default function VisualizerPage() {
     simStateRef.current.cameraMode = cameraMode
   }, [isPlaying, timeScale, cameraMode])
 
-  // Keplerian Orbital Core
+  // Keplerian Orbital Mechanics
   const orbit = useMemo(() => {
     const mu = 398600.4418
     const rEarthKm = 6378.137
@@ -94,7 +91,7 @@ export default function VisualizerPage() {
     return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
   }, [mission.altitudeKm, mission.inclinationDeg])
 
-  // Master Three.js Engine
+  // Three.js Photorealistic PBR Engine
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -104,59 +101,60 @@ export default function VisualizerPage() {
 
     // Scene & Viewport
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#01030a")
+    scene.background = new THREE.Color("#020611")
 
-    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000)
-    camera.position.set(0, 2.2, 5.2)
+    // Calibrated near/far planes to prevent clipping artifacts
+    const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 2000)
+    camera.position.set(0, 2.0, 5.6)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.3
+    renderer.toneMappingExposure = 1.15
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep Cosmic Starfield (Multi-Magnitude)
-    const starCount = 3500
+    // Deep Cosmic Starfield
+    const starCount = 3000
     const starGeo = new THREE.BufferGeometry()
     const starPos = new Float32Array(starCount * 3)
     const starColors = new Float32Array(starCount * 3)
 
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 200
-      starPos[i + 1] = (Math.random() - 0.5) * 200
-      starPos[i + 2] = (Math.random() - 0.5) * 200
+      starPos[i] = (Math.random() - 0.5) * 180
+      starPos[i + 1] = (Math.random() - 0.5) * 180
+      starPos[i + 2] = (Math.random() - 0.5) * 180
 
       const cRand = Math.random()
-      if (cRand > 0.75) {
-        starColors[i] = 0.75; starColors[i + 1] = 0.88; starColors[i + 2] = 1.0 // Blue-White
-      } else if (cRand > 0.35) {
-        starColors[i] = 1.0; starColors[i + 1] = 0.95; starColors[i + 2] = 0.85 // Warm White
+      if (cRand > 0.7) {
+        starColors[i] = 0.8; starColors[i + 1] = 0.9; starColors[i + 2] = 1.0
+      } else if (cRand > 0.3) {
+        starColors[i] = 1.0; starColors[i + 1] = 0.98; starColors[i + 2] = 0.9
       } else {
-        starColors[i] = 1.0; starColors[i + 1] = 0.8; starColors[i + 2] = 0.6 // Amber
+        starColors[i] = 1.0; starColors[i + 1] = 0.82; starColors[i + 2] = 0.65
       }
     }
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3))
     starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
-    const starMat = new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, opacity: 0.9 })
+    const starMat = new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true, opacity: 0.85 })
     scene.add(new THREE.Points(starGeo, starMat))
 
-    // Calibrated Directional Sunlight Vector
-    const sunDir = new THREE.Vector3(8.0, 2.5, 7.0).normalize()
+    // Physically-calibrated Directional Sunlight
+    const sunDir = new THREE.Vector3(7.0, 2.5, 6.0).normalize()
     const sunLight = new THREE.DirectionalLight(0xfff7ed, 3.2)
     sunLight.position.copy(sunDir.clone().multiplyScalar(30))
     scene.add(sunLight)
 
-    // Soft Ambient Earthshine
-    const ambientLight = new THREE.AmbientLight(0x061120, 0.45)
+    // Soft Deep-Space Cosmic Ambient
+    const ambientLight = new THREE.AmbientLight(0x061224, 0.45)
     scene.add(ambientLight)
 
     const earthRadius = 1.75
     const textureLoader = new THREE.TextureLoader()
 
-    // High-Resolution NASA Assets
+    // High-Resolution NASA Textures
     const dayTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
       () => renderer.render(scene, camera)
@@ -169,7 +167,7 @@ export default function VisualizerPage() {
     )
     nightTexture.colorSpace = THREE.SRGBColorSpace
 
-    // Physically-Based Earth Shader (True Day/Night Blending + Water Specular Glint)
+    // Custom Physically-Based Shader Material (Smooth Daylight + NASA Black Marble + Specular Water)
     const earthGeo = new THREE.SphereGeometry(earthRadius, 96, 96)
     const earthShaderMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -207,27 +205,29 @@ export default function VisualizerPage() {
 
           float cosTheta = dot(vNormal, vSunDir);
           
-          // Smooth, physical twilight transition curve
-          float dayFactor = smoothstep(-0.12, 0.22, cosTheta);
-          float twilightFringe = smoothstep(-0.15, 0.02, cosTheta) * (1.0 - smoothstep(0.02, 0.18, cosTheta));
+          // Natural atmospheric cosine falloff (zero fake orange bands)
+          float dayFactor = clamp(cosTheta * 2.0 + 0.1, 0.0, 1.0);
 
-          // Night urban networks (warm golden sodium-vapor emission)
-          vec3 nightLights = nightColor.rgb * vec3(1.8, 1.45, 0.95) * 2.2;
+          // Subtle warm sunset transition right at the terminator
+          float terminatorLine = smoothstep(-0.08, 0.0, cosTheta) * (1.0 - smoothstep(0.0, 0.08, cosTheta));
+
+          // Night side city lights
+          vec3 nightLights = nightColor.rgb * vec3(1.7, 1.4, 0.95) * 2.2;
 
           // Day surface
           vec3 dayAlbedo = dayColor.rgb;
 
-          // Specular Ocean Glint (Fresnel Water Reflection)
-          if (dayColor.b > dayColor.r * 1.15 && cosTheta > 0.0) {
+          // Physically-based water specular glint (Oceans only)
+          if (dayColor.b > dayColor.r * 1.12 && cosTheta > 0.0) {
             vec3 halfVector = normalize(vSunDir + vViewDir);
-            float spec = pow(max(dot(vNormal, halfVector), 0.0), 36.0);
-            float fresnel = 0.04 + 0.96 * pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 5.0);
-            dayAlbedo += vec3(0.45, 0.75, 1.0) * spec * fresnel * 2.4;
+            float spec = pow(max(dot(vNormal, halfVector), 0.0), 32.0);
+            float fresnel = 0.03 + 0.97 * pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 5.0);
+            dayAlbedo += vec3(0.5, 0.8, 1.0) * spec * fresnel * 2.2;
           }
 
-          // Composite Earth surface with twilight atmospheric fringe
+          // Composite Earth surface
           vec3 finalColor = mix(nightLights, dayAlbedo, dayFactor);
-          finalColor += vec3(0.85, 0.35, 0.08) * twilightFringe * 0.55;
+          finalColor += vec3(0.75, 0.35, 0.1) * terminatorLine * 0.35;
 
           gl_FragColor = vec4(finalColor, 1.0);
         }
@@ -235,32 +235,32 @@ export default function VisualizerPage() {
     })
 
     const earthGroup = new THREE.Group()
-    earthGroup.rotation.z = (23.44 * Math.PI) / 180 // Real axial obliquity
+    earthGroup.rotation.z = (23.44 * Math.PI) / 180
     scene.add(earthGroup)
 
     const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
     earthGroup.add(earthMesh)
 
-    // Elevated Tropospheric Cloud Deck (Parallax Slip)
+    // Elevated Tropospheric Cloud Deck
     const cloudsTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-clouds.png",
       () => renderer.render(scene, camera)
     )
     cloudsTexture.colorSpace = THREE.SRGBColorSpace
 
-    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.009, 96, 96)
+    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.007, 96, 96)
     const cloudsMat = new THREE.MeshStandardMaterial({
       map: cloudsTexture,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.38,
       blending: THREE.AdditiveBlending,
       roughness: 1.0
     })
     const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
     earthGroup.add(cloudsMesh)
 
-    // Physical Rayleigh Atmosphere Limb Glow (Electric Cerulean Horizon)
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.032, 96, 96)
+    // Screen-space Rayleigh Limb Glow (Calculated via Fresnel, zero clipping)
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.018, 96, 96)
     const atmosMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.BackSide,
@@ -280,44 +280,52 @@ export default function VisualizerPage() {
         varying vec3 vViewDir;
         void main() {
           float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-          float rayleigh = pow(rim, 3.2) * 2.2;
-          float mie = pow(rim, 6.5) * 1.0;
-          vec3 atmosColor = vec3(0.12, 0.65, 1.0) * rayleigh + vec3(0.4, 0.75, 1.0) * mie;
-          gl_FragColor = vec4(atmosColor, min(1.0, rayleigh + mie));
+          float rayleigh = pow(rim, 3.8) * 1.8;
+          vec3 atmosColor = vec3(0.15, 0.65, 1.0) * rayleigh;
+          gl_FragColor = vec4(atmosColor, min(0.85, rayleigh));
         }
       `
     })
     earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
 
-    // Primary Mission Trajectory Ring
+    // Primary Mission Trajectory Line
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
     const orbitPoints = orbitCurve.getPoints(180)
     const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
-    const orbitMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.9, linewidth: 2 })
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85, linewidth: 2 })
     const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat)
     orbitLine.rotation.x = orbit.incRad
     scene.add(orbitLine)
 
-    // Primary Spacecraft Assembly
+    // Primary Spacecraft Assembly (Detailed Satellite Bus)
     const satGroup = new THREE.Group()
 
     const busMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.09, 0.13),
+      new THREE.BoxGeometry(0.08, 0.08, 0.12),
       new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.15, metalness: 0.95 })
     )
     satGroup.add(busMesh)
 
-    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.9 })
-    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
-    leftWing.position.set(0.18, 0, 0)
-    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.012, 0.075), solarWingMat)
-    rightWing.position.set(-0.18, 0, 0)
+    // Solar Wings
+    const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.15, metalness: 0.85 })
+    const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
+    leftWing.position.set(0.16, 0, 0)
+    const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
+    rightWing.position.set(-0.16, 0, 0)
     satGroup.add(leftWing)
     satGroup.add(rightWing)
 
+    // High Gain Antenna Dish
+    const dishGeo = new THREE.ConeGeometry(0.035, 0.02, 16, 1, true)
+    const dishMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.8 })
+    const dishMesh = new THREE.Mesh(dishGeo, dishMat)
+    dishMesh.position.set(0, 0.05, 0)
+    dishMesh.rotation.x = Math.PI
+    satGroup.add(dishMesh)
+
     const beaconMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 16, 16),
+      new THREE.SphereGeometry(0.03, 16, 16),
       new THREE.MeshBasicMaterial({ color: 0xf59e0b })
     )
     satGroup.add(beaconMesh)
@@ -329,13 +337,13 @@ export default function VisualizerPage() {
 
     const targetGroup = new THREE.Group()
     const targetMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, 0.08, 0.08),
+      new THREE.BoxGeometry(0.07, 0.07, 0.07),
       new THREE.MeshStandardMaterial({ color: new THREE.Color(targetPreset.color), roughness: 0.3 })
     )
     targetGroup.add(targetMesh)
 
     const covGeo = new THREE.SphereGeometry(0.12, 16, 16)
-    covGeo.scale(2.0, 0.8, 1.0)
+    covGeo.scale(1.8, 0.7, 0.9)
     const covMat = new THREE.MeshBasicMaterial({
       color: 0xef4444,
       transparent: true,
@@ -360,7 +368,7 @@ export default function VisualizerPage() {
     const rangefinderLine = new THREE.Line(rangefinderGeo, rangefinderMat)
     scene.add(rangefinderLine)
 
-    // Mouse Interaction
+    // Smooth Damped Mouse Orbit Controls
     const onMouseDown = (e: MouseEvent) => {
       simStateRef.current.isDragging = true
       simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
@@ -383,7 +391,8 @@ export default function VisualizerPage() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const zoomDelta = e.deltaY * 0.003
-      simStateRef.current.targetDistance = Math.max(2.4, Math.min(18.0, simStateRef.current.targetDistance + zoomDelta))
+      // Bounded distance to prevent near-plane clipping
+      simStateRef.current.targetDistance = Math.max(2.4, Math.min(16.0, simStateRef.current.targetDistance + zoomDelta))
     }
 
     const dom = renderer.domElement
@@ -446,7 +455,7 @@ export default function VisualizerPage() {
       rfPos.needsUpdate = true
       rangefinderLine.computeLineDistances()
 
-      // Camera Perspective Handling
+      // Camera Handling
       if (simStateRef.current.cameraMode === "CHASE") {
         const forward = new THREE.Vector3(-Math.sin(u), 0, Math.cos(u)).normalize()
         const camPos = satGroup.position.clone().add(forward.clone().multiplyScalar(-0.7)).add(new THREE.Vector3(0, 0.35, 0))
@@ -532,7 +541,7 @@ export default function VisualizerPage() {
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
       
-      {/* 1. FULL VIEWPORT EDGE-TO-EDGE 3D WEBGL KERNEL */}
+      {/* 1. FULL VIEWPORT THREE.JS WEBGL KERNEL */}
       <div
         ref={mountRef}
         className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing z-0"
