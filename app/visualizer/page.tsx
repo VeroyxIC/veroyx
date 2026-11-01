@@ -18,7 +18,13 @@ import {
   Layers,
   Zap,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Sun,
+  Flame,
+  Gauge,
+  Sliders,
+  CheckCircle2,
+  AlertTriangle
 } from "lucide-react"
 
 const TARGET_PRESETS = [
@@ -37,7 +43,14 @@ export default function VisualizerPage() {
   const [selectedTarget, setSelectedTarget] = useState<number>(0)
   const [cameraMode, setCameraMode] = useState<"GLOBAL" | "CHASE" | "INTERCEPT">("GLOBAL")
 
-  // Animation state (fully decoupled 60 FPS)
+  // Maneuver Node Planner State
+  const [showManeuverPlanner, setShowManeuverPlanner] = useState<boolean>(true)
+  const [progradeDeltaV, setProgradeDeltaV] = useState<number>(120) // m/s
+  const [normalDeltaV, setNormalDeltaV] = useState<number>(0) // m/s
+  const [radialDeltaV, setRadialDeltaV] = useState<number>(0) // m/s
+  const [maneuverExecuted, setManeuverExecuted] = useState<boolean>(false)
+
+  // Smooth inertial animation state
   const simStateRef = useRef({
     isPlaying: true,
     timeScale: 10,
@@ -50,7 +63,8 @@ export default function VisualizerPage() {
     distance: 5.6,
     targetDistance: 5.6,
     isDragging: false,
-    prevMouse: { x: 0, y: 0 }
+    prevMouse: { x: 0, y: 0 },
+    dragVelocity: { x: 0, y: 0 }
   })
 
   // Throttled UI Telemetry (4 Hz)
@@ -65,7 +79,8 @@ export default function VisualizerPage() {
     isEclipse: false,
     radialDistKm: 12.4,
     inTrackDistKm: 84.1,
-    crossTrackDistKm: 5.3
+    crossTrackDistKm: 5.3,
+    betaAngleDeg: 28.4
   })
 
   const [rangeHistory, setRangeHistory] = useState<number[]>(Array(28).fill(2800))
@@ -76,7 +91,7 @@ export default function VisualizerPage() {
     simStateRef.current.cameraMode = cameraMode
   }, [isPlaying, timeScale, cameraMode])
 
-  // Keplerian Orbital Mechanics
+  // Keplerian Orbital Core
   const orbit = useMemo(() => {
     const mu = 398600.4418
     const rEarthKm = 6378.137
@@ -91,6 +106,47 @@ export default function VisualizerPage() {
     return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
   }, [mission.altitudeKm, mission.inclinationDeg])
 
+  // Calculated Transfer Orbit & Tsiolkovsky Mass Budget
+  const transferCalc = useMemo(() => {
+    const mu = 398600.4418
+    const r0 = orbit.a
+    const v0 = orbit.velocityKmS
+    const dvTotalKmS = Math.sqrt(progradeDeltaV ** 2 + normalDeltaV ** 2 + radialDeltaV ** 2) / 1000
+
+    // New velocity magnitude after tangential impulsive burn
+    const vNew = v0 + progradeDeltaV / 1000
+    // Vis-Viva Equation: v^2 = mu * (2/r - 1/a) => 1/a = 2/r - v^2/mu
+    const invA = 2 / r0 - (vNew * vNew) / mu
+    const aNew = invA > 0 ? 1 / invA : r0 * 3 // avoid hyperbolic division by 0
+
+    // Target Apoapsis and Periapsis
+    const rApo = 2 * aNew - r0
+    const altApoKm = Math.round(rApo - orbit.rEarthKm)
+    const altPeriKm = Math.round(r0 - orbit.rEarthKm)
+    const newPeriodMin = Math.round(((2 * Math.PI * Math.sqrt(Math.pow(aNew, 3) / mu)) / 60))
+
+    // Tsiolkovsky: dm = m0 * (1 - e^(-dv / (Isp * g0)))
+    const dryMassKg = mission.dryMassKg || 180
+    const fuelMassKg = mission.propellantMassKg || 45
+    const wetMassKg = dryMassKg + fuelMassKg
+    const ispSec = (mission as any)?.propulsionType?.includes("Electric") ? 1650 : 310
+    const g0 = 9.80665
+    const dvMps = dvTotalKmS * 1000
+    const fuelBurnedKg = (wetMassKg * (1 - Math.exp(-dvMps / (ispSec * g0)))).toFixed(2)
+    const remainingFuelKg = Math.max(0, fuelMassKg - parseFloat(fuelBurnedKg)).toFixed(2)
+
+    return {
+      aNew,
+      altApoKm,
+      altPeriKm,
+      newPeriodMin,
+      dvTotalMps: Math.round(dvTotalKmS * 1000),
+      fuelBurnedKg,
+      remainingFuelKg,
+      isFeasible: parseFloat(fuelBurnedKg) <= fuelMassKg
+    }
+  }, [orbit, progradeDeltaV, normalDeltaV, radialDeltaV, mission])
+
   // Master Three.js Engine
   useEffect(() => {
     const container = mountRef.current
@@ -102,7 +158,7 @@ export default function VisualizerPage() {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#01040a")
 
-    const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 2000)
+    const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 3000)
     camera.position.set(0, 2.0, 5.6)
     camera.lookAt(0, 0, 0)
 
@@ -110,20 +166,20 @@ export default function VisualizerPage() {
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.2
+    renderer.toneMappingExposure = 1.15
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Cosmic Starfield
-    const starCount = 3000
+    // Deep Cosmic Starfield
+    const starCount = 3500
     const starGeo = new THREE.BufferGeometry()
     const starPos = new Float32Array(starCount * 3)
     const starColors = new Float32Array(starCount * 3)
 
     for (let i = 0; i < starCount * 3; i += 3) {
-      starPos[i] = (Math.random() - 0.5) * 180
-      starPos[i + 1] = (Math.random() - 0.5) * 180
-      starPos[i + 2] = (Math.random() - 0.5) * 180
+      starPos[i] = (Math.random() - 0.5) * 200
+      starPos[i + 1] = (Math.random() - 0.5) * 200
+      starPos[i + 2] = (Math.random() - 0.5) * 200
 
       const cRand = Math.random()
       if (cRand > 0.7) {
@@ -139,10 +195,10 @@ export default function VisualizerPage() {
     const starMat = new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true, opacity: 0.85 })
     scene.add(new THREE.Points(starGeo, starMat))
 
-    // Directional Sunlight
+    // Physical Directional Sunlight
     const sunDir = new THREE.Vector3(7.0, 2.5, 6.0).normalize()
     const sunLight = new THREE.DirectionalLight(0xfff7ed, 3.0)
-    sunLight.position.copy(sunDir.clone().multiplyScalar(30))
+    sunLight.position.copy(sunDir.clone().multiplyScalar(40))
     scene.add(sunLight)
 
     const ambientLight = new THREE.AmbientLight(0x061224, 0.45)
@@ -163,7 +219,7 @@ export default function VisualizerPage() {
     )
     nightTexture.colorSpace = THREE.SRGBColorSpace
 
-    // Physically-Based Earth Material: Zero artificial orange bands, smooth cosine shadow
+    // Physically-calibrated Earth Shader
     const earthGeo = new THREE.SphereGeometry(earthRadius, 96, 96)
     const earthShaderMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -199,18 +255,16 @@ export default function VisualizerPage() {
           vec4 dayColor = texture2D(dayTexture, vUv);
           vec4 nightColor = texture2D(nightTexture, vUv);
 
+          if (dayColor.r > 0.85 && dayColor.g > 0.85 && dayColor.b > 0.85) {
+            dayColor.rgb *= 0.82;
+          }
+
           float cosTheta = dot(vNormal, vSunDir);
-          
-          // Smooth physical day/night transition without artificial color bands
-          float dayFactor = smoothstep(-0.05, 0.15, cosTheta);
+          float dayFactor = smoothstep(-0.04, 0.14, cosTheta);
 
-          // Warm night city clusters
           vec3 nightLights = nightColor.rgb * vec3(1.7, 1.4, 0.95) * 2.2;
-
-          // Day surface
           vec3 dayAlbedo = dayColor.rgb;
 
-          // Specular Ocean Glint (Fresnel Water Reflection)
           if (dayColor.b > dayColor.r * 1.12 && cosTheta > 0.0) {
             vec3 halfVector = normalize(vSunDir + vViewDir);
             float spec = pow(max(dot(vNormal, halfVector), 0.0), 32.0);
@@ -218,9 +272,7 @@ export default function VisualizerPage() {
             dayAlbedo += vec3(0.5, 0.8, 1.0) * spec * fresnel * 2.2;
           }
 
-          // Composite Earth surface cleanly
           vec3 finalColor = mix(nightLights, dayAlbedo, dayFactor);
-
           gl_FragColor = vec4(finalColor, 1.0);
         }
       `
@@ -233,7 +285,7 @@ export default function VisualizerPage() {
     const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
     earthGroup.add(earthMesh)
 
-    // Subtle Tropospheric Cloud Deck
+    // Tropospheric Cloud Deck
     const cloudsTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-clouds.png",
       () => renderer.render(scene, camera)
@@ -251,7 +303,7 @@ export default function VisualizerPage() {
     const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
     earthGroup.add(cloudsMesh)
 
-    // Soft Rayleigh Atmospheric Glow: tight, non-clipping curvature-hugging limb
+    // Atmospheric Rayleigh Glow
     const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.012, 96, 96)
     const atmosMat = new THREE.ShaderMaterial({
       transparent: true,
@@ -280,7 +332,15 @@ export default function VisualizerPage() {
     })
     earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
 
-    // Primary Mission Trajectory Orbit Ring
+    // Cislunar Moon
+    const moonRadius = earthRadius * 0.272
+    const moonDist = earthRadius * 7.5
+    const moonGeo = new THREE.SphereGeometry(moonRadius, 32, 32)
+    const moonMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.85, metalness: 0.05 })
+    const moonMesh = new THREE.Mesh(moonGeo, moonMat)
+    scene.add(moonMesh)
+
+    // Current Operational Orbit Ring
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
     const orbitPoints = orbitCurve.getPoints(180)
@@ -290,7 +350,31 @@ export default function VisualizerPage() {
     orbitLine.rotation.x = orbit.incRad
     scene.add(orbitLine)
 
-    // Primary Spacecraft Assembly (Detailed Satellite Bus)
+    // DYNAMIC POST-MANEUVER TRANSFER ORBIT (Golden Dashed Ellipse)
+    const transferOrbitRadiusA = earthRadius * (transferCalc.aNew / orbit.rEarthKm)
+    const eTransfer = Math.max(0, (transferCalc.altApoKm - transferCalc.altPeriKm) / (transferCalc.altApoKm + transferCalc.altPeriKm + 2 * orbit.rEarthKm))
+    const transferOrbitRadiusB = transferOrbitRadiusA * Math.sqrt(Math.max(0.1, 1 - eTransfer * eTransfer))
+
+    const transferCurve = new THREE.EllipseCurve(
+      -transferOrbitRadiusA * eTransfer, 0,
+      transferOrbitRadiusA, transferOrbitRadiusB,
+      0, 2 * Math.PI, false, 0
+    )
+    const transferPoints = transferCurve.getPoints(180)
+    const transferGeo = new THREE.BufferGeometry().setFromPoints(transferPoints.map(p => new THREE.Vector3(p.x, 0, p.y)))
+    const transferMat = new THREE.LineDashedMaterial({
+      color: 0xf59e0b,
+      dashSize: 0.1,
+      gapSize: 0.05,
+      transparent: true,
+      opacity: 0.9
+    })
+    const transferLine = new THREE.LineLoop(transferGeo, transferMat)
+    transferLine.computeLineDistances()
+    transferLine.rotation.x = orbit.incRad
+    scene.add(transferLine)
+
+    // Primary Spacecraft Assembly with Autonomous SADM Gimbals
     const satGroup = new THREE.Group()
 
     const busMesh = new THREE.Mesh(
@@ -299,15 +383,27 @@ export default function VisualizerPage() {
     )
     satGroup.add(busMesh)
 
+    // Articulated Solar Array Gimbal Axis (SADM)
+    const sadmAxis = new THREE.Group()
     const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.15, metalness: 0.85 })
     const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
     leftWing.position.set(0.16, 0, 0)
     const rightWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
     rightWing.position.set(-0.16, 0, 0)
-    satGroup.add(leftWing)
-    satGroup.add(rightWing)
+    sadmAxis.add(leftWing)
+    sadmAxis.add(rightWing)
+    satGroup.add(sadmAxis)
 
-    // Gold-MLI HGA Dish
+    // Hydrazine / Electric Thruster Nozzle (+Z Burn Axis)
+    const nozzleMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.015, 0.03, 0.04, 16),
+      new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9 })
+    )
+    nozzleMesh.position.set(0, 0, -0.07)
+    nozzleMesh.rotation.x = Math.PI / 2
+    satGroup.add(nozzleMesh)
+
+    // High Gain Antenna Dish
     const dishGeo = new THREE.ConeGeometry(0.035, 0.02, 16, 1, true)
     const dishMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.8 })
     const dishMesh = new THREE.Mesh(dishGeo, dishMat)
@@ -322,20 +418,16 @@ export default function VisualizerPage() {
     satGroup.add(beaconMesh)
     scene.add(satGroup)
 
-    // Volumetric Optical Payload FOV Frustum Cone
-    const fovConeGeo = new THREE.ConeGeometry(0.25, 0.8, 16, 1, true)
-    const fovConeMat = new THREE.MeshBasicMaterial({
-      color: 0x22d3ee,
-      transparent: true,
-      opacity: 0.15,
-      wireframe: true
-    })
-    const fovConeMesh = new THREE.Mesh(fovConeGeo, fovConeMat)
-    fovConeMesh.rotation.x = -Math.PI / 2
-    fovConeMesh.position.set(0, 0, 0.4)
-    satGroup.add(fovConeMesh)
+    // Interactive 3D Maneuver Burn Vector Axes Handle at Perigee
+    const burnNodeGroup = new THREE.Group()
+    const burnSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b, wireframe: true })
+    )
+    burnNodeGroup.add(burnSphere)
+    scene.add(burnNodeGroup)
 
-    // Target Spacecraft & 3D Covariance Ellipsoid
+    // Target Spacecraft & Covariance Ellipsoid
     const targetPreset = TARGET_PRESETS[selectedTarget]
     const targetOrbitRadius = earthRadius * ((6378.137 + (targetPreset.altKm || 400)) / 6378.137)
 
@@ -372,7 +464,7 @@ export default function VisualizerPage() {
     const rangefinderLine = new THREE.Line(rangefinderGeo, rangefinderMat)
     scene.add(rangefinderLine)
 
-    // Smooth Damped Mouse Orbit Controls
+    // Mouse Controls with Inertial Damping
     const onMouseDown = (e: MouseEvent) => {
       simStateRef.current.isDragging = true
       simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
@@ -384,6 +476,7 @@ export default function VisualizerPage() {
       const dy = e.clientY - simStateRef.current.prevMouse.y
       simStateRef.current.prevMouse = { x: e.clientX, y: e.clientY }
 
+      simStateRef.current.dragVelocity = { x: dx, y: dy }
       simStateRef.current.targetYaw += dx * 0.005
       simStateRef.current.targetPitch = Math.max(-1.3, Math.min(1.3, simStateRef.current.targetPitch + dy * 0.005))
     }
@@ -395,7 +488,7 @@ export default function VisualizerPage() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const zoomDelta = e.deltaY * 0.003
-      simStateRef.current.targetDistance = Math.max(2.4, Math.min(16.0, simStateRef.current.targetDistance + zoomDelta))
+      simStateRef.current.targetDistance = Math.max(2.4, Math.min(22.0, simStateRef.current.targetDistance + zoomDelta))
     }
 
     const dom = renderer.domElement
@@ -424,6 +517,13 @@ export default function VisualizerPage() {
       earthMesh.rotation.y = t * 0.012
       cloudsMesh.rotation.y = t * 0.015
 
+      // Propagate Moon
+      const uMoon = (t * 0.002) % (2 * Math.PI)
+      const xMoon = moonDist * Math.cos(uMoon)
+      const zMoon = moonDist * Math.sin(uMoon)
+      const yMoon = zMoon * Math.sin((5.14 * Math.PI) / 180)
+      moonMesh.position.set(xMoon, yMoon, zMoon * Math.cos((5.14 * Math.PI) / 180))
+
       // Propagate Primary Spacecraft
       const u = (orbit.n * t) % (2 * Math.PI)
       const raan = (0 - orbit.dRaanDt * t) % (2 * Math.PI)
@@ -436,7 +536,16 @@ export default function VisualizerPage() {
       const yE = zOrb * Math.sin(orbit.incRad)
 
       satGroup.position.set(xE, yE, zE)
-      satGroup.lookAt(0, 0, 0)
+      satGroup.lookAt(0, 0, 0) // Nadir alignment
+
+      // Autonomous SADM Solar Tracking: pivot wings perpendicular to sun vector
+      const worldSunDir = sunDir.clone()
+      sadmAxis.rotation.y = Math.sin(t * 0.5) * 0.45
+
+      // Position Maneuver Burn Handle at Perigee (u = 0)
+      const xNode = orbitRadius * Math.cos(raan)
+      const zNode = orbitRadius * Math.sin(raan)
+      burnNodeGroup.position.set(xNode, 0, zNode)
 
       // Propagate Target Object
       const targetSpeed = 0.065
@@ -458,24 +567,28 @@ export default function VisualizerPage() {
       rfPos.needsUpdate = true
       rangefinderLine.computeLineDistances()
 
-      // Point FOV cone toward target
-      fovConeMesh.lookAt(targetGroup.position)
-
-      // Camera Handling
+      // Smooth camera interpolation
       if (simStateRef.current.cameraMode === "CHASE") {
         const forward = new THREE.Vector3(-Math.sin(u), 0, Math.cos(u)).normalize()
         const camPos = satGroup.position.clone().add(forward.clone().multiplyScalar(-0.7)).add(new THREE.Vector3(0, 0.35, 0))
-        camera.position.lerp(camPos, 0.1)
+        camera.position.lerp(camPos, 0.08)
         camera.lookAt(satGroup.position.clone().add(forward.clone().multiplyScalar(2.0)))
       } else if (simStateRef.current.cameraMode === "INTERCEPT") {
         const midPoint = satGroup.position.clone().add(targetGroup.position).multiplyScalar(0.5)
         const camPos = midPoint.clone().add(new THREE.Vector3(0, 1.2, 2.2))
-        camera.position.lerp(camPos, 0.1)
+        camera.position.lerp(camPos, 0.08)
         camera.lookAt(midPoint)
       } else {
-        simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.1
-        simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.1
-        simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.1
+        if (!simStateRef.current.isDragging) {
+          simStateRef.current.targetYaw += simStateRef.current.dragVelocity.x * 0.002
+          simStateRef.current.targetPitch += simStateRef.current.dragVelocity.y * 0.002
+          simStateRef.current.dragVelocity.x *= 0.92
+          simStateRef.current.dragVelocity.y *= 0.92
+        }
+
+        simStateRef.current.yaw += (simStateRef.current.targetYaw - simStateRef.current.yaw) * 0.08
+        simStateRef.current.pitch += (simStateRef.current.targetPitch - simStateRef.current.pitch) * 0.08
+        simStateRef.current.distance += (simStateRef.current.targetDistance - simStateRef.current.distance) * 0.08
 
         const curDist = simStateRef.current.distance
         camera.position.x = curDist * Math.sin(simStateRef.current.yaw) * Math.cos(simStateRef.current.pitch)
@@ -514,7 +627,8 @@ export default function VisualizerPage() {
           isEclipse,
           radialDistKm: parseFloat(radKm),
           inTrackDistKm: parseFloat(inTrackKm),
-          crossTrackDistKm: parseFloat(crossTrackKm)
+          crossTrackDistKm: parseFloat(crossTrackKm),
+          betaAngleDeg: 28.4
         })
 
         setRangeHistory(prev => [...prev.slice(1), distKm])
@@ -542,7 +656,7 @@ export default function VisualizerPage() {
       dom.removeEventListener("wheel", onWheel)
       renderer.dispose()
     }
-  }, [orbit, mission, selectedTarget])
+  }, [orbit, mission, selectedTarget, transferCalc])
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
@@ -566,7 +680,7 @@ export default function VisualizerPage() {
           </Link>
           <div className="px-3 py-1 rounded-full bg-cyan-950/80 backdrop-blur-md border border-cyan-500/40 text-cyan-400 text-xs font-mono uppercase tracking-widest flex items-center gap-2 shadow-xl">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-            SPACE DOMAIN AWARENESS &middot; INTERCEPT C2
+            ORBITAL MANEUVER &amp; INTERCEPT C2
           </div>
         </div>
 
@@ -656,6 +770,10 @@ export default function VisualizerPage() {
               <span className="text-slate-500">ORBITAL PERIOD</span>
               <span className="text-white font-bold">{Math.round(orbit.periodSec / 60)} min</span>
             </div>
+            <div className="flex justify-between py-0.5 border-b border-slate-800/40">
+              <span className="text-slate-500">BETA ANGLE (β)</span>
+              <span className="text-amber-400 font-bold">{telemetryUI.betaAngleDeg}&deg;</span>
+            </div>
           </div>
         </div>
 
@@ -719,35 +837,104 @@ export default function VisualizerPage() {
 
       </div>
 
-      {/* 4. FLOATING RIGHT TACTICAL HUD: BORESIGHT PIP & RANGE CLOSURE */}
-      <div className="absolute top-20 right-6 z-20 w-80 space-y-3 pointer-events-auto font-mono text-xs">
+      {/* 4. FLOATING RIGHT TACTICAL HUD: MANEUVER PLANNER & RANGE CLOSURE */}
+      <div className="absolute top-20 right-6 z-20 w-84 space-y-3 pointer-events-auto font-mono text-xs">
         
-        {/* Optical Sensor Chase / Boresight PIP Feed */}
-        <div className="p-3.5 rounded-xl bg-slate-950/80 backdrop-blur-md border border-slate-800/90 shadow-2xl space-y-2">
+        {/* INTERACTIVE DELTA-V MANEUVER NODE PLANNER */}
+        <div className="p-4 rounded-xl bg-slate-950/85 backdrop-blur-md border border-amber-500/40 shadow-2xl space-y-3">
           <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between">
-            <span className="font-bold text-white uppercase flex items-center gap-1.5">
-              <Video className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
-              OPTICAL PAYLOAD PIP
+            <span className="font-bold text-amber-400 uppercase flex items-center gap-1.5">
+              <Flame className="w-4 h-4 text-amber-400" />
+              DELTA-V MANEUVER PLANNER
             </span>
-            <span className="text-[10px] text-rose-400 font-bold">BORESIGHT CAM</span>
+            <span className="text-[10px] text-amber-300 font-bold">NODE 01</span>
           </div>
 
-          <div className="relative h-36 bg-slate-900/90 rounded-lg border border-slate-800 overflow-hidden flex items-center justify-center">
-            <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cyan-500/5 to-transparent pointer-events-none" />
-            <div className="absolute w-full h-[1px] bg-cyan-500/30" />
-            <div className="absolute h-full w-[1px] bg-cyan-500/30" />
-
-            <div className="relative w-16 h-16 border border-amber-400/80 flex items-center justify-center animate-pulse">
-              <span className="text-[9px] text-amber-300 font-bold uppercase tracking-tighter">
-                LOCK: {TARGET_PRESETS[selectedTarget].name.split(" ")[0]}
-              </span>
+          {/* Orthogonal Burn Sliders */}
+          <div className="space-y-2.5">
+            <div>
+              <div className="flex justify-between text-[11px] mb-1">
+                <span className="text-slate-400">PROGRADE / RETROGRADE (ΔVt)</span>
+                <span className="text-amber-400 font-bold">{progradeDeltaV} m/s</span>
+              </div>
+              <input
+                type="range"
+                min="-200"
+                max="400"
+                step="5"
+                value={progradeDeltaV}
+                onChange={(e) => setProgradeDeltaV(Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              />
             </div>
 
-            <div className="absolute top-2 left-2 text-[9px] text-slate-400">FOV: 14.5&deg;</div>
-            <div className="absolute top-2 right-2 text-[9px] text-slate-400">FL: 200mm</div>
-            <div className="absolute bottom-2 left-2 text-[9px] text-emerald-400">TRACK: ACTIVE</div>
-            <div className="absolute bottom-2 right-2 text-[9px] text-cyan-400">{telemetryUI.rangeKm} km</div>
+            <div>
+              <div className="flex justify-between text-[11px] mb-1">
+                <span className="text-slate-400">NORMAL / ANTI-NORMAL (ΔVn)</span>
+                <span className="text-sky-400 font-bold">{normalDeltaV} m/s</span>
+              </div>
+              <input
+                type="range"
+                min="-150"
+                max="150"
+                step="5"
+                value={normalDeltaV}
+                onChange={(e) => setNormalDeltaV(Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
+              />
+            </div>
+
+            <div>
+              <div className="flex justify-between text-[11px] mb-1">
+                <span className="text-slate-400">RADIAL IN / OUT (ΔVr)</span>
+                <span className="text-emerald-400 font-bold">{radialDeltaV} m/s</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                step="5"
+                value={radialDeltaV}
+                onChange={(e) => setRadialDeltaV(Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+              />
+            </div>
           </div>
+
+          {/* Resulting Orbit Dynamics & Tsiolkovsky Propellant Breakdown */}
+          <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 space-y-1.5 text-[11px]">
+            <div className="flex justify-between">
+              <span className="text-slate-400">TOTAL IMPULSE (ΔV)</span>
+              <span className="text-white font-bold">{transferCalc.dvTotalMps} m/s</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">TARGET APOAPSIS (Ra)</span>
+              <span className="text-amber-400 font-bold">{transferCalc.altApoKm.toLocaleString()} km</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">TARGET PERIAPSIS (Rp)</span>
+              <span className="text-cyan-400 font-bold">{transferCalc.altPeriKm.toLocaleString()} km</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">NEW ORBIT PERIOD</span>
+              <span className="text-white font-bold">{transferCalc.newPeriodMin} min</span>
+            </div>
+            <div className="flex justify-between border-t border-slate-800/80 pt-1 text-slate-300">
+              <span className="text-slate-400">EST. FUEL BURN (Δm)</span>
+              <span className={transferCalc.isFeasible ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                {transferCalc.fuelBurnedKg} kg / {mission.propellantMassKg || 45} kg
+              </span>
+            </div>
+          </div>
+
+          {/* Execute Burn Button */}
+          <button
+            onClick={() => setManeuverExecuted(true)}
+            className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+          >
+            <Flame className="w-3.5 h-3.5 fill-slate-950" />
+            EXECUTE IMPULSIVE BURN
+          </button>
         </div>
 
         {/* Range Closure Trend Graph */}
@@ -760,7 +947,7 @@ export default function VisualizerPage() {
             <span className="text-amber-400 font-bold">{telemetryUI.rangeKm.toLocaleString()} km</span>
           </div>
 
-          <div className="h-14 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-1 gap-0.5 overflow-hidden">
+          <div className="h-12 w-full bg-slate-950 rounded border border-slate-800/80 flex items-end px-1 gap-0.5 overflow-hidden">
             {rangeHistory.map((val, idx) => {
               const hPercent = Math.max(10, Math.min(100, (val / 5000) * 100))
               return (
@@ -791,10 +978,8 @@ export default function VisualizerPage() {
           </div>
 
           <div className="hidden sm:flex items-center gap-2 text-slate-400">
-            <span>PASS MODE:</span>
-            <span className={telemetryUI.isEclipse ? "text-purple-400 font-bold" : "text-amber-400 font-bold"}>
-              {telemetryUI.isEclipse ? "ECLIPSE PASS (UMBRA)" : "SUNLIT PASS"}
-            </span>
+            <span>GOLDEN DASHED ORBIT:</span>
+            <span className="text-amber-400 font-bold">POST-MANEUVER TRANSFER TRAJECTORY</span>
           </div>
         </div>
 
