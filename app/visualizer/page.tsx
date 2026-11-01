@@ -91,7 +91,7 @@ export default function VisualizerPage() {
     return { a, incRad, n, periodSec, dRaanDt, velocityKmS, rEarthKm }
   }, [mission.altitudeKm, mission.inclinationDeg])
 
-  // Three.js Photorealistic PBR Engine
+  // Master Three.js Engine
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -99,11 +99,9 @@ export default function VisualizerPage() {
     const width = container.clientWidth
     const height = container.clientHeight
 
-    // Scene & Viewport
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#020611")
+    scene.background = new THREE.Color("#01040a")
 
-    // Calibrated near/far planes to prevent clipping artifacts
     const camera = new THREE.PerspectiveCamera(36, width / height, 0.05, 2000)
     camera.position.set(0, 2.0, 5.6)
     camera.lookAt(0, 0, 0)
@@ -112,11 +110,11 @@ export default function VisualizerPage() {
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.15
+    renderer.toneMappingExposure = 1.2
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep Cosmic Starfield
+    // Cosmic Starfield
     const starCount = 3000
     const starGeo = new THREE.BufferGeometry()
     const starPos = new Float32Array(starCount * 3)
@@ -141,20 +139,18 @@ export default function VisualizerPage() {
     const starMat = new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true, opacity: 0.85 })
     scene.add(new THREE.Points(starGeo, starMat))
 
-    // Physically-calibrated Directional Sunlight
+    // Directional Sunlight
     const sunDir = new THREE.Vector3(7.0, 2.5, 6.0).normalize()
-    const sunLight = new THREE.DirectionalLight(0xfff7ed, 3.2)
+    const sunLight = new THREE.DirectionalLight(0xfff7ed, 3.0)
     sunLight.position.copy(sunDir.clone().multiplyScalar(30))
     scene.add(sunLight)
 
-    // Soft Deep-Space Cosmic Ambient
     const ambientLight = new THREE.AmbientLight(0x061224, 0.45)
     scene.add(ambientLight)
 
     const earthRadius = 1.75
     const textureLoader = new THREE.TextureLoader()
 
-    // High-Resolution NASA Textures
     const dayTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg",
       () => renderer.render(scene, camera)
@@ -167,7 +163,7 @@ export default function VisualizerPage() {
     )
     nightTexture.colorSpace = THREE.SRGBColorSpace
 
-    // Custom Physically-Based Shader Material (Smooth Daylight + NASA Black Marble + Specular Water)
+    // Physically-Based Earth Material: Zero artificial orange bands, smooth cosine shadow
     const earthGeo = new THREE.SphereGeometry(earthRadius, 96, 96)
     const earthShaderMat = new THREE.ShaderMaterial({
       uniforms: {
@@ -205,19 +201,16 @@ export default function VisualizerPage() {
 
           float cosTheta = dot(vNormal, vSunDir);
           
-          // Natural atmospheric cosine falloff (zero fake orange bands)
-          float dayFactor = clamp(cosTheta * 2.0 + 0.1, 0.0, 1.0);
+          // Smooth physical day/night transition without artificial color bands
+          float dayFactor = smoothstep(-0.05, 0.15, cosTheta);
 
-          // Subtle warm sunset transition right at the terminator
-          float terminatorLine = smoothstep(-0.08, 0.0, cosTheta) * (1.0 - smoothstep(0.0, 0.08, cosTheta));
-
-          // Night side city lights
+          // Warm night city clusters
           vec3 nightLights = nightColor.rgb * vec3(1.7, 1.4, 0.95) * 2.2;
 
           // Day surface
           vec3 dayAlbedo = dayColor.rgb;
 
-          // Physically-based water specular glint (Oceans only)
+          // Specular Ocean Glint (Fresnel Water Reflection)
           if (dayColor.b > dayColor.r * 1.12 && cosTheta > 0.0) {
             vec3 halfVector = normalize(vSunDir + vViewDir);
             float spec = pow(max(dot(vNormal, halfVector), 0.0), 32.0);
@@ -225,9 +218,8 @@ export default function VisualizerPage() {
             dayAlbedo += vec3(0.5, 0.8, 1.0) * spec * fresnel * 2.2;
           }
 
-          // Composite Earth surface
+          // Composite Earth surface cleanly
           vec3 finalColor = mix(nightLights, dayAlbedo, dayFactor);
-          finalColor += vec3(0.75, 0.35, 0.1) * terminatorLine * 0.35;
 
           gl_FragColor = vec4(finalColor, 1.0);
         }
@@ -241,26 +233,26 @@ export default function VisualizerPage() {
     const earthMesh = new THREE.Mesh(earthGeo, earthShaderMat)
     earthGroup.add(earthMesh)
 
-    // Elevated Tropospheric Cloud Deck
+    // Subtle Tropospheric Cloud Deck
     const cloudsTexture = textureLoader.load(
       "https://unpkg.com/three-globe/example/img/earth-clouds.png",
       () => renderer.render(scene, camera)
     )
     cloudsTexture.colorSpace = THREE.SRGBColorSpace
 
-    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.007, 96, 96)
+    const cloudsGeo = new THREE.SphereGeometry(earthRadius * 1.006, 96, 96)
     const cloudsMat = new THREE.MeshStandardMaterial({
       map: cloudsTexture,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.35,
       blending: THREE.AdditiveBlending,
       roughness: 1.0
     })
     const cloudsMesh = new THREE.Mesh(cloudsGeo, cloudsMat)
     earthGroup.add(cloudsMesh)
 
-    // Screen-space Rayleigh Limb Glow (Calculated via Fresnel, zero clipping)
-    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.018, 96, 96)
+    // Soft Rayleigh Atmospheric Glow: tight, non-clipping curvature-hugging limb
+    const atmosGeo = new THREE.SphereGeometry(earthRadius * 1.012, 96, 96)
     const atmosMat = new THREE.ShaderMaterial({
       transparent: true,
       side: THREE.BackSide,
@@ -280,15 +272,15 @@ export default function VisualizerPage() {
         varying vec3 vViewDir;
         void main() {
           float rim = 1.0 - max(dot(vNormal, vViewDir), 0.0);
-          float rayleigh = pow(rim, 3.8) * 1.8;
-          vec3 atmosColor = vec3(0.15, 0.65, 1.0) * rayleigh;
-          gl_FragColor = vec4(atmosColor, min(0.85, rayleigh));
+          float rayleigh = pow(rim, 4.5) * 1.2;
+          vec3 atmosColor = vec3(0.18, 0.65, 1.0) * rayleigh;
+          gl_FragColor = vec4(atmosColor, rayleigh * 0.7);
         }
       `
     })
     earthGroup.add(new THREE.Mesh(atmosGeo, atmosMat))
 
-    // Primary Mission Trajectory Line
+    // Primary Mission Trajectory Orbit Ring
     const orbitRadius = earthRadius * (orbit.a / orbit.rEarthKm)
     const orbitCurve = new THREE.EllipseCurve(0, 0, orbitRadius, orbitRadius, 0, 2 * Math.PI, false, 0)
     const orbitPoints = orbitCurve.getPoints(180)
@@ -307,7 +299,6 @@ export default function VisualizerPage() {
     )
     satGroup.add(busMesh)
 
-    // Solar Wings
     const solarWingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.15, metalness: 0.85 })
     const leftWing = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.01, 0.07), solarWingMat)
     leftWing.position.set(0.16, 0, 0)
@@ -316,7 +307,7 @@ export default function VisualizerPage() {
     satGroup.add(leftWing)
     satGroup.add(rightWing)
 
-    // High Gain Antenna Dish
+    // Gold-MLI HGA Dish
     const dishGeo = new THREE.ConeGeometry(0.035, 0.02, 16, 1, true)
     const dishMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.3, metalness: 0.8 })
     const dishMesh = new THREE.Mesh(dishGeo, dishMat)
@@ -330,6 +321,19 @@ export default function VisualizerPage() {
     )
     satGroup.add(beaconMesh)
     scene.add(satGroup)
+
+    // Volumetric Optical Payload FOV Frustum Cone
+    const fovConeGeo = new THREE.ConeGeometry(0.25, 0.8, 16, 1, true)
+    const fovConeMat = new THREE.MeshBasicMaterial({
+      color: 0x22d3ee,
+      transparent: true,
+      opacity: 0.15,
+      wireframe: true
+    })
+    const fovConeMesh = new THREE.Mesh(fovConeGeo, fovConeMat)
+    fovConeMesh.rotation.x = -Math.PI / 2
+    fovConeMesh.position.set(0, 0, 0.4)
+    satGroup.add(fovConeMesh)
 
     // Target Spacecraft & 3D Covariance Ellipsoid
     const targetPreset = TARGET_PRESETS[selectedTarget]
@@ -391,7 +395,6 @@ export default function VisualizerPage() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const zoomDelta = e.deltaY * 0.003
-      // Bounded distance to prevent near-plane clipping
       simStateRef.current.targetDistance = Math.max(2.4, Math.min(16.0, simStateRef.current.targetDistance + zoomDelta))
     }
 
@@ -417,7 +420,7 @@ export default function VisualizerPage() {
 
       const t = simStateRef.current.simTimeSec
 
-      // Independent Earth & Cloud Rotation
+      // Rotate Earth & Clouds
       earthMesh.rotation.y = t * 0.012
       cloudsMesh.rotation.y = t * 0.015
 
@@ -454,6 +457,9 @@ export default function VisualizerPage() {
       rfPos.setXYZ(1, xTE, yTE, zTE)
       rfPos.needsUpdate = true
       rangefinderLine.computeLineDistances()
+
+      // Point FOV cone toward target
+      fovConeMesh.lookAt(targetGroup.position)
 
       // Camera Handling
       if (simStateRef.current.cameraMode === "CHASE") {
