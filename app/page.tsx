@@ -5,6 +5,7 @@ import Link from "next/link"
 import * as THREE from "three"
 import { ShieldCheck, Rocket, Crosshair, Briefcase, Lock, Database, TerminalSquare, Fingerprint } from "lucide-react"
 import BrandLogo from "@/app/components/BrandLogo"
+import { SessionProvider, signIn, useSession } from "next-auth/react"
 
 const TERMINAL_LOGS = [
   "[SYS] Establishing TLS 1.3 Handshake with Gateway...",
@@ -16,13 +17,14 @@ const TERMINAL_LOGS = [
   "[C2] Constellation Watchlist polling at 10Hz."
 ]
 
-export default function RootGateway() {
+function GatewayContent() {
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const { data: session, status } = useSession()
   
-  // State 
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [bootSequence, setBootSequence] = useState(0)
   const [logIndex, setLogIndex] = useState(0)
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
 
   // WebGL Background
   useEffect(() => {
@@ -33,7 +35,6 @@ export default function RootGateway() {
     const height = container.clientHeight
     const scene = new THREE.Scene()
     
-    // Zoom camera in slightly before auth, pull back after
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000)
     camera.position.set(0, 0, isAuthenticated ? 5 : 4)
 
@@ -62,7 +63,6 @@ export default function RootGateway() {
       globeGroup.rotation.y += isAuthenticated ? 0.0008 : 0.002
       globeGroup.rotation.x = Math.sin(Date.now() * 0.0003) * 0.05
       
-      // Smooth camera transition on auth
       if (isAuthenticated && camera.position.z < 5) {
         camera.position.z += 0.02
       }
@@ -86,7 +86,6 @@ export default function RootGateway() {
     }
   }, [isAuthenticated])
 
-  // Terminal Ticker Logic
   useEffect(() => {
     if (!isAuthenticated) return
     const interval = setInterval(() => {
@@ -95,11 +94,25 @@ export default function RootGateway() {
     return () => clearInterval(interval)
   }, [isAuthenticated])
 
-  const handleAuth = () => {
-    setIsAuthenticated(true)
-    setTimeout(() => setBootSequence(1), 300)
-    setTimeout(() => setBootSequence(2), 800)
-    setTimeout(() => setBootSequence(3), 1200)
+  // REAL NEXTAUTH INTEGRATION
+  const handleAuth = async () => {
+    setIsAuthenticating(true)
+    
+    // Call the NextAuth API endpoint we generated in Step 1
+    const res = await signIn("credentials", {
+      token: "vx_admin", // Mocking the cryptographic token payload for the MVP
+      redirect: false
+    })
+
+    if (res?.ok) {
+      setIsAuthenticated(true)
+      setTimeout(() => setBootSequence(1), 300)
+      setTimeout(() => setBootSequence(2), 800)
+      setTimeout(() => setBootSequence(3), 1200)
+    } else {
+      alert("[SECURITY BREACH] Cryptographic handshake failed.")
+      setIsAuthenticating(false)
+    }
   }
 
   const DIRECTORY = [
@@ -164,10 +177,13 @@ export default function RootGateway() {
           </h1>
           <button 
             onClick={handleAuth}
-            className="group flex items-center gap-3 px-8 py-4 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 hover:border-cyan-400 rounded-full backdrop-blur-md transition-all duration-300 shadow-[0_0_30px_rgba(6,182,212,0.2)] hover:shadow-[0_0_50px_rgba(6,182,212,0.4)]"
+            disabled={isAuthenticating}
+            className="group flex items-center gap-3 px-8 py-4 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 hover:border-cyan-400 rounded-full backdrop-blur-md transition-all duration-300 shadow-[0_0_30px_rgba(6,182,212,0.2)] hover:shadow-[0_0_50px_rgba(6,182,212,0.4)] disabled:opacity-50"
           >
-            <Fingerprint className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
-            <span className="font-mono text-xs font-bold text-cyan-400 tracking-widest">INITIATE ZERO-TRUST HANDSHAKE</span>
+            <Fingerprint className={`w-5 h-5 text-cyan-400 ${isAuthenticating ? "animate-ping" : "group-hover:scale-110 transition-transform"}`} />
+            <span className="font-mono text-xs font-bold text-cyan-400 tracking-widest">
+              {isAuthenticating ? "VERIFYING CRYPTO TOKEN..." : "INITIATE ZERO-TRUST HANDSHAKE"}
+            </span>
           </button>
         </div>
       )}
@@ -192,7 +208,7 @@ export default function RootGateway() {
               </div>
               <span className="text-slate-700">|</span>
               <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 2 ? "opacity-100 text-cyan-400" : "opacity-0"}`}>
-                <Lock className="w-4 h-4" /> ZERO-TRUST ENFORCED
+                <Lock className="w-4 h-4" /> AUTH: {session?.user?.name?.toUpperCase() || "ADMIN"}
               </div>
               <span className="text-slate-700">|</span>
               <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 3 ? "opacity-100 text-indigo-400" : "opacity-0"}`}>
@@ -229,7 +245,6 @@ export default function RootGateway() {
             ))}
           </div>
 
-          {/* LIVE TERMINAL TICKER */}
           <div className={`fixed bottom-0 left-0 w-full bg-slate-950/90 border-t border-slate-800 p-2 backdrop-blur-md flex items-center gap-3 transition-opacity duration-1000 ${bootSequence >= 3 ? "opacity-100" : "opacity-0"}`}>
             <TerminalSquare className="w-4 h-4 text-cyan-500 ml-4 animate-pulse" />
             <span className="font-mono text-[10px] text-cyan-400 font-bold">LIVE</span>
@@ -240,5 +255,13 @@ export default function RootGateway() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function RootGateway() {
+  return (
+    <SessionProvider>
+      <GatewayContent />
+    </SessionProvider>
   )
 }
