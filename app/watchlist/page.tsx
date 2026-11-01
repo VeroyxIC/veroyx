@@ -1,154 +1,182 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { Bookmark, Building, Cpu, Rocket, Bell, Trash2, ArrowRight } from "lucide-react"
+import { useState } from "react"
+import { 
+  Search, 
+  Filter, 
+  Satellite, 
+  Activity, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Clock, 
+  Radio,
+  MoreHorizontal,
+  Crosshair
+} from "lucide-react"
+
+interface OrbitalAsset {
+  noradId: string
+  name: string
+  regime: string
+  apogeeKm: number
+  perigeeKm: number
+  incDeg: number
+  status: "NOMINAL" | "DEGRADED" | "CRITICAL" | "LOS"
+  lastContact: string
+  subsystemAlert?: string
+}
+
+const FLEET_DATA: OrbitalAsset[] = [
+  { noradId: "60124", name: "VXO-1 (ALPHA)", regime: "SSO", apogeeKm: 552, perigeeKm: 548, incDeg: 97.4, status: "NOMINAL", lastContact: "LIVE" },
+  { noradId: "60125", name: "VXO-2 (BETA)", regime: "SSO", apogeeKm: 554, perigeeKm: 550, incDeg: 97.4, status: "NOMINAL", lastContact: "LIVE" },
+  { noradId: "60126", name: "VXO-3 (GAMMA)", regime: "LEO", apogeeKm: 420, perigeeKm: 415, incDeg: 53.2, status: "DEGRADED", lastContact: "T- 4m 12s", subsystemAlert: "EPS: DoD > 40%" },
+  { noradId: "60127", name: "VXO-4 (DELTA)", regime: "LEO", apogeeKm: 422, perigeeKm: 418, incDeg: 53.2, status: "CRITICAL", lastContact: "T- 1m 05s", subsystemAlert: "ADCS: SAFE HOLD" },
+  { noradId: "60128", name: "VXO-5 (EPSILON)", regime: "MEO", apogeeKm: 20200, perigeeKm: 20180, incDeg: 55.0, status: "NOMINAL", lastContact: "LIVE" },
+  { noradId: "60129", name: "VXO-6 (ZETA)", regime: "MEO", apogeeKm: 20210, perigeeKm: 20195, incDeg: 55.0, status: "LOS", lastContact: "T- 45m 20s", subsystemAlert: "AOS PENDING" },
+  { noradId: "60130", name: "VXO-7 (ETA)", regime: "GEO", apogeeKm: 35786, perigeeKm: 35786, incDeg: 0.1, status: "NOMINAL", lastContact: "LIVE" },
+]
 
 export default function WatchlistPage() {
-  const [items, setItems] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filterRegime, setFilterRegime] = useState("ALL")
 
-  const loadItems = async () => {
-    try {
-      const res = await fetch("/api/v1/watchlist")
-      const data = await res.json()
-      setItems(data.items || [])
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setLoading(false)
+  const filteredFleet = FLEET_DATA.filter(asset => {
+    const matchesSearch = asset.name.toLowerCase().includes(searchTerm.toLowerCase()) || asset.noradId.includes(searchTerm)
+    const matchesRegime = filterRegime === "ALL" || asset.regime === filterRegime
+    return matchesSearch && matchesRegime
+  })
+
+  const getStatusColor = (status: OrbitalAsset["status"]) => {
+    switch (status) {
+      case "NOMINAL": return "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
+      case "DEGRADED": return "text-amber-400 bg-amber-400/10 border-amber-400/20"
+      case "CRITICAL": return "text-rose-400 bg-rose-400/10 border-rose-400/20 animate-pulse"
+      case "LOS": return "text-slate-400 bg-slate-400/10 border-slate-400/20"
+      default: return "text-slate-400 bg-slate-400/10 border-slate-400/20"
     }
   }
 
-  useEffect(() => {
-    loadItems()
-  }, [])
-
-  const removeItem = async (item: any) => {
-    try {
-      await fetch("/api/v1/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entityType: item.entity_type,
-          entityId: item.entity_id,
-          entityName: item.entity_name,
-        }),
-      })
-      localStorage.removeItem(`vx_watch_${item.entity_type}_${item.entity_id}`)
-      setItems((prev) => prev.filter((i) => i.id !== item.id))
-    } catch (err) {
-      console.error(err)
+  const getStatusIcon = (status: OrbitalAsset["status"]) => {
+    switch (status) {
+      case "NOMINAL": return <CheckCircle2 className="w-3.5 h-3.5" />
+      case "DEGRADED": return <AlertTriangle className="w-3.5 h-3.5" />
+      case "CRITICAL": return <Activity className="w-3.5 h-3.5" />
+      case "LOS": return <Clock className="w-3.5 h-3.5" />
     }
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans">
-      <div className="max-w-6xl mx-auto space-y-10">
-
-        {/* Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Bookmark className="w-3.5 h-3.5" />
-              Institutional Target Tracking
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              OPERATIONS WATCHLIST
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Curated telemetry feed monitoring prime capitalization, subsystem status changes, and imminent orbital flight manifests.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 font-mono text-xs px-3.5 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-            <Bell className="w-4 h-4 text-cyan-400" />
-            <span>DISPATCH ALERTS: <strong className="text-cyan-400">ENABLED</strong></span>
-            <Link href="/watchlist/dispatch" className="text-[11px] font-bold text-cyan-400 hover:underline ml-2">
-              OPEN DISPATCH ARRAY →
-            </Link>
-          </div>
+    <div className="w-full h-full pt-24 px-8 pb-8 overflow-y-auto bg-slate-950 font-sans text-slate-100">
+      
+      {/* Dashboard Header */}
+      <div className="flex flex-wrap items-end justify-between gap-6 mb-8">
+        <div>
+          <h1 className="text-2xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Crosshair className="w-6 h-6 text-cyan-400" />
+            Constellation Watchlist
+          </h1>
+          <p className="text-slate-400 font-mono text-xs mt-2 uppercase tracking-wider">
+            Active Space Domain Awareness & Fleet Telemetry Tracking
+          </p>
         </div>
 
-        {/* Items List */}
-        {loading ? (
-          <div className="p-12 text-center text-xs font-mono text-slate-500">
-            LOADING WATCHLIST TELEMETRY ARRAYS...
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+            <input 
+              type="text" 
+              placeholder="SEARCH NORAD ID / NAME" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-64 bg-slate-900 border border-slate-800 rounded-lg py-1.5 pl-9 pr-4 text-xs font-mono text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
+            />
           </div>
-        ) : items.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 font-mono text-xs">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 flex flex-col justify-between space-y-4 hover:border-slate-700 transition-all"
+          
+          <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1 font-mono text-xs">
+            {["ALL", "LEO", "SSO", "MEO", "GEO"].map(regime => (
+              <button
+                key={regime}
+                onClick={() => setFilterRegime(regime)}
+                className={`px-3 py-1 rounded transition-colors ${filterRegime === regime ? "bg-cyan-950 text-cyan-400 font-bold" : "text-slate-500 hover:text-slate-300"}`}
               >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 uppercase text-[10px] text-cyan-400 font-bold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-500/30">
-                      {item.entity_type === "company" && <Building className="w-3 h-3" />}
-                      {item.entity_type === "technology" && <Cpu className="w-3 h-3" />}
-                      {item.entity_type === "launch" && <Rocket className="w-3 h-3" />}
-                      {item.entity_type}
-                    </span>
-                    <button
-                      onClick={() => removeItem(item)}
-                      className="text-slate-500 hover:text-red-400 transition-colors"
-                      title="Untrack entity"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <div>
-                    <h3 className="text-base font-bold text-white tracking-tight truncate">
-                      {item.entity_name}
-                    </h3>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
-                      Tracked since: {new Date(item.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                    ACTIVE TELEMETRY
-                  </span>
-                  <Link
-                    href={
-                      item.entity_type === "company"
-                        ? `/companies/${item.entity_slug}`
-                        : item.entity_type === "technology"
-                        ? `/technologies/${item.entity_slug}`
-                        : "/launches"
-                    }
-                    className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-[11px] font-bold"
-                  >
-                    DOSSIER <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </div>
-              </div>
+                {regime}
+              </button>
             ))}
           </div>
-        ) : (
-          <div className="p-16 rounded-2xl bg-slate-900/20 border border-dashed border-slate-800 text-center space-y-4">
-            <Bookmark className="w-10 h-10 text-slate-600 mx-auto" />
-            <div className="space-y-1">
-              <h3 className="font-mono text-base font-bold text-white">NO MONITORED ENTITIES YET</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto font-sans">
-                Click &quot;TRACK ENTITY&quot; on any prime contractor dossier, flight system, or launch manifest to aggregate updates here.
-              </p>
-            </div>
-            <Link
-              href="/companies"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500 text-slate-950 font-mono text-xs font-bold hover:bg-cyan-400 transition-all"
-            >
-              BROWSE PRIMES DIRECTORY <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        )}
-
+        </div>
       </div>
+
+      {/* Enterprise Data Grid */}
+      <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden backdrop-blur-sm shadow-2xl">
+        <table className="w-full text-left font-mono text-xs">
+          <thead className="bg-slate-900/80 border-b border-slate-800 text-slate-400">
+            <tr>
+              <th className="px-6 py-4 font-bold tracking-wider">NORAD ID</th>
+              <th className="px-6 py-4 font-bold tracking-wider">ASSET IDENTIFIER</th>
+              <th className="px-6 py-4 font-bold tracking-wider">REGIME</th>
+              <th className="px-6 py-4 font-bold tracking-wider">APO / PER (km)</th>
+              <th className="px-6 py-4 font-bold tracking-wider">INC (&deg;)</th>
+              <th className="px-6 py-4 font-bold tracking-wider">LAST CONTACT</th>
+              <th className="px-6 py-4 font-bold tracking-wider">SYSTEM STATUS</th>
+              <th className="px-6 py-4 font-bold tracking-wider text-right">ACTION</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/50">
+            {filteredFleet.map((asset) => (
+              <tr key={asset.noradId} className="hover:bg-slate-800/30 transition-colors group">
+                <td className="px-6 py-4 text-slate-300">{asset.noradId}</td>
+                <td className="px-6 py-4 font-bold text-white flex items-center gap-2">
+                  <Satellite className="w-3.5 h-3.5 text-cyan-400" />
+                  {asset.name}
+                </td>
+                <td className="px-6 py-4">
+                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                    {asset.regime}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-slate-300">{asset.apogeeKm} / {asset.perigeeKm}</td>
+                <td className="px-6 py-4 text-slate-300">{asset.incDeg.toFixed(1)}</td>
+                <td className="px-6 py-4 flex items-center gap-2 text-slate-300">
+                  {asset.lastContact === "LIVE" ? (
+                    <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+                  ) : (
+                    <Clock className="w-3.5 h-3.5 text-slate-500" />
+                  )}
+                  {asset.lastContact}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex flex-col gap-1.5">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded border font-bold text-[10px] w-fit ${getStatusColor(asset.status)}`}>
+                      {getStatusIcon(asset.status)}
+                      {asset.status}
+                    </span>
+                    {asset.subsystemAlert && (
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                        {asset.subsystemAlert}
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-right">
+                  <button className="p-1.5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-950/30 transition-colors">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            
+            {filteredFleet.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                  NO ASSETS MATCHING CRITERIA
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
     </div>
   )
 }
