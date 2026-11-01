@@ -1,16 +1,14 @@
 import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
-import Navbar from "@/components/Navbar"
-import { MissionProvider } from "@/lib/missionStore"
-import CommandPalette from "@/components/CommandPalette"
 import "./globals.css"
+import FlightDeckLayout from "@/app/components/FlightDeckLayout"
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" })
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
+const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" })
 
 export const metadata: Metadata = {
-  title: "Veroyx · The Space Infrastructure Economy",
-  description: "B2B intelligence platform and programmatic directory indexing the commercial space and low-Earth orbit economy.",
+  title: "Veroyx | Flight Dynamics",
+  description: "Space Domain Awareness and Flight Dynamics Facility",
 }
 
 export default function RootLayout({
@@ -19,13 +17,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.variable} ${mono.variable} min-h-screen bg-[#05070a] font-sans antialiased text-neutral-100`}>
-        <MissionProvider>
-          <Navbar />
-        <CommandPalette />
-        {children}
-        </MissionProvider>
+    <html lang="en" className={`${inter.variable} ${jetbrains.variable} dark`}>
+      <body className="bg-slate-950 text-slate-100 overflow-hidden antialiased">
+        <FlightDeckLayout>
+          {children}
+        </FlightDeckLayout>
       </body>
     </html>
   )
