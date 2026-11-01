@@ -3,48 +3,32 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import * as THREE from "three"
-import { Search, Sparkles, Box, Rocket, Cpu, ShieldCheck, Lock, Database } from "lucide-react"
+import { ShieldCheck, Rocket, Crosshair, Briefcase, Lock, Database } from "lucide-react"
 import BrandLogo from "@/app/components/BrandLogo"
 
-const MODULES = [
-  { title: "Unified Mission Architecture", path: "/mission-builder", category: "Architecture", desc: "Coupled concurrent engineering: orbit, mass, power, battery DoD, thermal, and delta-V." },
-  { title: "Contracts & SLA Compliance", path: "/contracts", category: "Architecture", desc: "Automated flight readiness verification and financial burn rate tracking." },
-  { title: "3D Mission Visualizer", path: "/visualizer", category: "Environment & Operations", desc: "Interactive orbital tracks, attitude pointing frames, and ground swaths." },
-  { title: "Constellation Watchlist", path: "/watchlist", category: "Environment & Operations", desc: "Real-time fleet tracking, health status, and live telemetry grid." },
-  { title: "Developer API & SDK", path: "/developers", category: "Environment & Operations", desc: "Serverless calculation endpoints and WSS telemetry streams for M2M integration." },
-  { title: "RF Link Budget Analyzer", path: "/link", category: "Comms & Payloads", desc: "Live FSPL, SNR, and Shannon-Hartley downlink rate simulations." },
-  { title: "Electrical Power (EPS)", path: "/eps", category: "Power & Thermal", desc: "Solar array cosine loss, battery DoD kinetics, and eclipse detection." },
-  { title: "Thermal Control (TCS)", path: "/thermal", category: "Power & Thermal", desc: "Stefan-Boltzmann radiation physics and FLIR thermal-cam shaders." },
-  { title: "Attitude Control (ADCS)", path: "/adcs", category: "Dynamics & Orbits", desc: "Quaternion kinematics, reaction wheel speeds, and slew rates." },
-  { title: "Propulsion & Kinetics", path: "/propulsion", category: "Dynamics & Orbits", desc: "Blowdown thermodynamics and Tsiolkovsky delta-V budgeting." },
-  { title: "Space Weather & Radiation", path: "/space-weather", category: "Environment & Operations", desc: "Volumetric SAA, Van Allen belts, and TID dosimetry accumulation." },
-  { title: "Conjunction Assessment", path: "/conjunction", category: "Dynamics & Orbits", desc: "Orbital debris screening and collision probability (Pc) screening." },
-  { title: "Ground Station AOS/LOS", path: "/passes", category: "Environment & Operations", desc: "Elevation cones, slant range, and access window scheduling." },
-  { title: "Sensor Swath & GSD", path: "/swath", category: "Comms & Payloads", desc: "Multi-spectral sensor gimbal steering and Ground Sample Distance calculations." }
-]
-
-const CATEGORIES = ["All", "Architecture", "Dynamics & Orbits", "Comms & Payloads", "Power & Thermal", "Environment & Operations"]
-
-export default function RootHomepage() {
+export default function RootGateway() {
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const [searchTerm, setSearchTerm] = useState("")
-  const [activeCategory, setActiveCategory] = useState("All")
+  const [bootSequence, setBootSequence] = useState(0)
 
-  const filteredModules = MODULES.filter(m => {
-    const matchesSearch = m.title.toLowerCase().includes(searchTerm.toLowerCase()) || m.desc.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = activeCategory === "All" || m.category === activeCategory
-    return matchesSearch && matchesCategory
-  })
+  // Simulated Boot Sequence
+  useEffect(() => {
+    const timer1 = setTimeout(() => setBootSequence(1), 300)
+    const timer2 = setTimeout(() => setBootSequence(2), 800)
+    const timer3 = setTimeout(() => setBootSequence(3), 1200)
+    return () => { clearTimeout(timer1); clearTimeout(timer2); clearTimeout(timer3) }
+  }, [])
 
+  // Minimal Wireframe Globe Background
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
+
     const width = container.clientWidth
     const height = container.clientHeight
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000)
     camera.position.set(0, 0, 5)
-    
+
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -55,6 +39,13 @@ export default function RootHomepage() {
     const sphereGeo = new THREE.SphereGeometry(2, 32, 32)
     const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.05 })
     globeGroup.add(new THREE.Mesh(sphereGeo, wireMat))
+    
+    const ringGeo = new THREE.RingGeometry(2.2, 2.21, 64)
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.1 })
+    const ring = new THREE.Mesh(ringGeo, ringMat)
+    ring.rotation.x = Math.PI / 2
+    globeGroup.add(ring)
+
     scene.add(globeGroup)
 
     let animId: number
@@ -65,114 +56,124 @@ export default function RootHomepage() {
       renderer.render(scene, camera)
     }
     animate()
-    return () => { cancelAnimationFrame(animId); renderer.dispose() }
+
+    const onResize = () => {
+      if (!container) return
+      camera.aspect = container.clientWidth / container.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(container.clientWidth, container.clientHeight)
+    }
+    window.addEventListener("resize", onResize)
+
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      renderer.dispose()
+    }
   }, [])
 
+  const DIRECTORY = [
+    {
+      title: "Flight Dynamics & Physics",
+      icon: <Rocket className="w-5 h-5 text-cyan-400" />,
+      color: "border-cyan-500/30 hover:border-cyan-500 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]",
+      links: [
+        { label: "Ascent & Trajectory", path: "/trajectory" },
+        { label: "Attitude Control (ADCS)", path: "/adcs" },
+        { label: "Propulsion & Kinetics", path: "/propulsion" },
+        { label: "Power Systems (EPS)", path: "/eps" },
+        { label: "Thermal Balance (TCS)", path: "/thermal" },
+        { label: "Space Weather & Radiation", path: "/space-weather" },
+      ]
+    },
+    {
+      title: "Space Domain Awareness",
+      icon: <Crosshair className="w-5 h-5 text-fuchsia-400" />,
+      color: "border-fuchsia-500/30 hover:border-fuchsia-500 hover:shadow-[0_0_15px_rgba(217,70,239,0.2)]",
+      links: [
+        { label: "3D Orbital Visualizer", path: "/visualizer" },
+        { label: "2D Mercator Ground Track", path: "/ground-track" },
+        { label: "Conjunction Assessment", path: "/conjunction" },
+        { label: "Sensor Swath & GSD", path: "/swath" },
+        { label: "Ground Station AOS/LOS", path: "/passes" },
+        { label: "RF Link Budget", path: "/link" },
+      ]
+    },
+    {
+      title: "Enterprise Command & Control",
+      icon: <Briefcase className="w-5 h-5 text-emerald-400" />,
+      color: "border-emerald-500/30 hover:border-emerald-500 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)]",
+      links: [
+        { label: "Constellation Watchlist", path: "/watchlist" },
+        { label: "Telemetry & Analytics", path: "/telemetry" },
+        { label: "Contracts & SLA Compliance", path: "/contracts" },
+        { label: "Architecture & Cost Builder", path: "/mission-builder" },
+        { label: "M2M Developer API", path: "/developers" },
+      ]
+    }
+  ]
+
   return (
-    <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-100 overflow-y-auto">
-      {/* FIXED BACKGROUND */}
+    <div className="relative w-full min-h-screen bg-slate-950 font-sans text-slate-100 overflow-y-auto flex items-center justify-center py-12">
+      
+      {/* Background WebGL (Fixed so it doesn't scroll away) */}
       <div ref={mountRef} className="fixed inset-0 z-0 pointer-events-none" />
 
-      {/* SCROLLABLE CONTENT */}
-      <div className="relative z-10 w-full max-w-7xl mx-auto px-6 pt-24 pb-32 flex flex-col items-center">
+      {/* Main Terminal Overlay */}
+      <div className="relative z-10 w-full max-w-6xl p-6 md:p-8 flex flex-col items-center">
         
-        {/* Header Section with Complex Logo */}
-        <div className="flex flex-col items-center text-center mb-12">
-          <div className="flex items-center justify-center w-24 h-24 bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl mb-8 relative overflow-hidden group hover:border-cyan-500/50 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent" />
-            <BrandLogo className="w-14 h-14 relative z-10 animate-spin-slow" />
-          </div>
-
-          <div className="px-4 py-1.5 rounded-full border border-cyan-500/30 bg-cyan-950/40 text-cyan-400 text-[10px] font-bold tracking-widest uppercase mb-6 flex items-center gap-2 shadow-lg shadow-cyan-500/10">
-            <Sparkles className="w-3.5 h-3.5" /> Institutional Aerospace Mission Design Suite
+        {/* Branding & Auth Header */}
+        <div className="flex flex-col items-center mb-12">
+          <div className="flex items-center justify-center w-20 h-20 bg-slate-900 border-2 border-slate-700 rounded-2xl shadow-2xl mb-6 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/20 to-transparent" />
+            <BrandLogo className="w-12 h-12 relative z-10" />
           </div>
           
-          <h1 className="text-5xl md:text-7xl font-black text-white tracking-widest uppercase mb-4 drop-shadow-2xl">
+          <h1 className="text-4xl md:text-5xl font-black text-white tracking-widest uppercase mb-4">
             Veroyx
           </h1>
-
-          <div className="flex items-center gap-6 mb-8 font-mono text-[10px] tracking-wider text-slate-400 border border-slate-800 bg-slate-900/50 rounded-lg px-4 py-1.5">
-            <div className="flex items-center gap-1.5 text-emerald-400"><ShieldCheck className="w-3.5 h-3.5" /> TLS 1.3</div>
-            <span className="text-slate-800">|</span>
-            <div className="flex items-center gap-1.5 text-cyan-400"><Lock className="w-3.5 h-3.5" /> ZERO-TRUST</div>
-            <span className="text-slate-800">|</span>
-            <div className="flex items-center gap-1.5 text-indigo-400"><Database className="w-3.5 h-3.5" /> KERNEL ACTIVE</div>
-          </div>
           
-          <p className="text-slate-400 max-w-2xl text-sm md:text-base leading-relaxed mb-8">
-            The end-to-end space systems engineering platform. 14 institutional simulation engines spanning orbital mechanics, payloads, power, structures, space environment, and compliance.
-          </p>
-
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link href="/mission-builder" className="px-6 py-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(6,182,212,0.4)] flex items-center gap-2">
-              <Rocket className="w-4 h-4" /> Launch Mission Builder
-            </Link>
-            <Link href="/visualizer" className="px-6 py-3 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold text-sm tracking-wider uppercase transition-all shadow-xl flex items-center gap-2">
-              <Box className="w-4 h-4" /> 3D Visualizer
-            </Link>
-            <Link href="/developers" className="px-6 py-3 rounded-lg bg-slate-900 border border-slate-700 hover:border-indigo-500 text-indigo-400 font-bold text-sm tracking-wider uppercase transition-all shadow-xl flex items-center gap-2">
-              <Cpu className="w-4 h-4" /> API &amp; SDK
-            </Link>
-          </div>
-        </div>
-
-        {/* Search & Filter Toolbar */}
-        <div className="w-full max-w-5xl bg-slate-900/60 backdrop-blur-md border border-slate-800 rounded-2xl p-4 mb-10 shadow-2xl">
-          <div className="relative mb-4">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-            <input 
-              type="text" 
-              placeholder="Search by subsystem, equation, or keyword (e.g., 'DoD', 'link budget', 'GSD')..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl py-4 pl-12 pr-4 text-sm font-mono text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500/50 transition-colors"
-            />
-          </div>
-          
-          <div className="flex flex-wrap items-center gap-2">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-4 py-1.5 rounded-lg font-mono text-xs font-bold transition-all ${
-                  activeCategory === cat 
-                    ? "bg-cyan-950 text-cyan-400 border border-cyan-500/50" 
-                    : "bg-slate-950 text-slate-500 border border-slate-800 hover:border-slate-600 hover:text-slate-300"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Dynamic Grid */}
-        <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredModules.map((mod, idx) => (
-            <Link 
-              href={mod.path} 
-              key={idx}
-              className="group flex flex-col bg-slate-900/40 backdrop-blur border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-6 transition-all hover:-translate-y-1 hover:shadow-[0_10px_30px_rgba(6,182,212,0.1)]"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{mod.category}</span>
-                <span className="px-2 py-0.5 rounded bg-slate-800 text-[9px] font-bold text-slate-400 group-hover:bg-cyan-950 group-hover:text-cyan-400 transition-colors">
-                  ENGINE ACTIVE
-                </span>
-              </div>
-              <h3 className="text-lg font-bold text-white mb-2 group-hover:text-cyan-400 transition-colors">{mod.title}</h3>
-              <p className="text-sm text-slate-400 leading-relaxed mb-6 flex-1">{mod.desc}</p>
-              <div className="text-xs font-mono text-cyan-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
-                {mod.path} &rarr;
-              </div>
-            </Link>
-          ))}
-          
-          {filteredModules.length === 0 && (
-            <div className="col-span-full py-12 text-center text-slate-500 font-mono">
-              NO MODULES MATCHING CRITERIA
+          <div className="flex flex-wrap justify-center items-center gap-4 md:gap-6 font-mono text-[10px] md:text-xs">
+            <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 1 ? "opacity-100 text-emerald-400" : "opacity-0"}`}>
+              <ShieldCheck className="w-3.5 h-3.5 md:w-4 md:h-4" /> TLS 1.3 SECURED
             </div>
-          )}
+            <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 2 ? "opacity-100 text-cyan-400" : "opacity-0"}`}>
+              <Lock className="w-3.5 h-3.5 md:w-4 md:h-4" /> ZERO-TRUST ENFORCED
+            </div>
+            <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 3 ? "opacity-100 text-indigo-400" : "opacity-0"}`}>
+              <Database className="w-3.5 h-3.5 md:w-4 md:h-4" /> KERNEL ONLINE
+            </div>
+          </div>
+        </div>
+
+        {/* Directory Grid */}
+        <div className={`w-full grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 transition-all duration-1000 transform ${bootSequence >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
+          {DIRECTORY.map((section, idx) => (
+            <div key={idx} className={`bg-slate-900/70 backdrop-blur-md border rounded-2xl p-6 transition-all duration-300 ${section.color}`}>
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-4 mb-4">
+                {section.icon}
+                <h2 className="text-xs md:text-sm font-bold text-white uppercase tracking-widest">{section.title}</h2>
+              </div>
+              
+              <div className="flex flex-col gap-1 md:gap-2 font-mono text-[11px] md:text-xs">
+                {section.links.map((link, linkIdx) => (
+                  <Link 
+                    key={linkIdx} 
+                    href={link.path}
+                    className="flex items-center justify-between p-2.5 rounded hover:bg-slate-800/80 text-slate-400 hover:text-white transition-colors group"
+                  >
+                    <span>{link.label}</span>
+                    <span className="opacity-0 group-hover:opacity-100 text-slate-500 transition-opacity">/</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className={`mt-12 font-mono text-[9px] md:text-[10px] text-slate-600 uppercase tracking-widest transition-opacity duration-1000 delay-500 text-center ${bootSequence >= 3 ? "opacity-100" : "opacity-0"}`}>
+          Veroyx Flight Dynamics Facility &copy; 2026-2027 | Authorized Personnel Only
         </div>
 
       </div>
