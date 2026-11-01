@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useMission } from "@/lib/missionStore"
-import { Play, Pause, RotateCcw, AlertTriangle } from "lucide-react"
+import { Play, Pause, RotateCcw, AlertTriangle, ArrowLeft } from "lucide-react"
+import BrandLogo from "@/app/components/BrandLogo"
 
 export default function FlightDeckLayout({ children }: { children: React.ReactNode }) {
   const { isPlaying, timeScale, simTimeSec, alarms, setPlaying, setTimeScale, setSimTime } = useMission()
@@ -37,7 +38,7 @@ export default function FlightDeckLayout({ children }: { children: React.ReactNo
   }, [])
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-sans select-none text-slate-100 animate-fadeIn">
       
       {/* GLOBAL TOP HUD - ONLY VISIBLE IF NOT ON ROOT */}
       {pathname !== "/" && (
@@ -57,11 +58,13 @@ export default function FlightDeckLayout({ children }: { children: React.ReactNo
             <div className="flex items-center gap-3">
               <Link
                 href="/"
-                className="px-3.5 py-1.5 rounded-lg bg-slate-900/90 backdrop-blur-md border border-slate-700 text-white font-mono font-black text-sm tracking-wider hover:border-cyan-500/50 transition-all shadow-xl"
+                className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-lg bg-slate-900/95 backdrop-blur-md border border-slate-700 hover:border-cyan-500/50 text-white font-mono font-black text-sm tracking-wider transition-all shadow-xl group"
               >
+                <ArrowLeft className="w-4 h-4 text-slate-500 group-hover:text-cyan-400 transition-colors" />
+                <BrandLogo className="w-5 h-5 animate-spin-slow" />
                 VEROYX
               </Link>
-              <div className="px-3 py-1.5 rounded-lg bg-slate-900/90 backdrop-blur-md border border-slate-800 text-cyan-400 font-mono text-xs tracking-widest flex items-center gap-4 shadow-xl">
+              <div className="px-3 py-1.5 rounded-lg bg-slate-900/95 backdrop-blur-md border border-slate-800 text-cyan-400 font-mono text-xs tracking-widest flex items-center gap-4 shadow-xl">
                 <span>{timeUI.utcString}</span>
                 <span className="text-slate-600">|</span>
                 <span className="text-amber-400">JD {timeUI.julianDate}</span>
