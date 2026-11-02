@@ -8,6 +8,7 @@ import {
   AlertTriangle, Flame, Cpu, Terminal, ArrowRight, CheckCircle2, 
   Eye, Signal, Skull, Sparkles 
 } from "lucide-react"
+import { createCinematicEarth, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
 
 type KillChainStage = "FIND" | "FIX" | "TRACK" | "TARGET" | "ENGAGE" | "ASSESS"
 type ThreatScenario = "HYPERSONIC_SALVO" | "CO_ORBITAL_SWARM" | "DIRECT_ASCENT_ASAT" | "JAMMER_COMPLEX"
@@ -91,7 +92,6 @@ export default function KillChainPage() {
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [autoEngageEnabled, setAutoEngageEnabled] = useState<boolean>(true)
 
-  // Switch scenario
   const switchScenario = (key: ThreatScenario) => {
     setScenarioKey(key)
     setThreats(SCENARIOS[key].threats.map(t => ({ ...t, status: "DETECTED" })))
@@ -99,11 +99,9 @@ export default function KillChainPage() {
     setSimStep(0)
   }
 
-  // Active target being processed
   const activeThreat = threats.find(t => t.status !== "DESTROYED") || threats[0]
   const activeEffector = EFFECTORS.find(e => e.id === activeEffectorId) || EFFECTORS[0]
 
-  // Dynamic WTP Probability of Kill Engine
   const battleMetrics = useMemo(() => {
     const rangeKm = Math.sqrt(
       Math.pow((activeThreat.lat - 50) * 111, 2) + 
@@ -111,12 +109,9 @@ export default function KillChainPage() {
       Math.pow(activeThreat.altitudeKm, 2)
     )
 
-    // Range attenuation for effector
     const rangeFactor = Math.max(0.1, 1 - Math.pow(rangeKm / (activeEffector.rangeKm * 1.5), 2))
     const pKillEstimated = Number((activeEffector.pKillNominal * rangeFactor).toFixed(3))
     const timeToIntercept = Number(((rangeKm / (activeEffector.type === "DEW_ORBITAL_LASER" ? 300000 : 7.2)) + activeEffector.slewRateSec).toFixed(1))
-
-    // Expected Value of Engagement: E = Threat_Value * P_kill
     const expectedValue = Math.round(activeThreat.priorityValue * pKillEstimated)
     const isLethalEngagement = pKillEstimated >= 0.75
 
@@ -129,7 +124,6 @@ export default function KillChainPage() {
     }
   }, [activeThreat, activeEffector])
 
-  // Automated F2T2EA State Machine Cycle
   useEffect(() => {
     if (!isPlaying) return
 
@@ -143,7 +137,6 @@ export default function KillChainPage() {
           if (prev === "TRACK") return "TARGET"
           if (prev === "TARGET") return "ENGAGE"
           if (prev === "ENGAGE") {
-            // Mark threat as neutralized
             setThreats(prevThreats => prevThreats.map(t => {
               if (t.id === activeThreat.id) return { ...t, status: "DESTROYED" }
               return t
@@ -159,7 +152,6 @@ export default function KillChainPage() {
     return () => clearInterval(timer)
   }, [isPlaying, autoEngageEnabled, activeThreat.id])
 
-  // 3D Three.js Tactical Globe & Multi-Effector Firing Vectors
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -169,8 +161,8 @@ export default function KillChainPage() {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#01030a")
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 14, 26)
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 2000)
+    camera.position.set(0, 16, 28)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
@@ -179,49 +171,23 @@ export default function KillChainPage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Lighting
     scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
-    const sun = new THREE.DirectionalLight(0xfffaed, 3.0)
-    sun.position.set(25, 20, 15)
+    const sun = new THREE.DirectionalLight(0xfffaed, 3.4)
+    sun.position.set(25, 25, 20)
     scene.add(sun)
 
-    // 1. Earth Body (Radius 5.5 units)
+    const starfield = createDeepSpaceStarfield(1200, 600)
+    scene.add(starfield)
+
     const earthR = 5.5
-    const earthGeo = new THREE.SphereGeometry(earthR, 48, 48)
-    const earthMat = new THREE.MeshStandardMaterial({
-      color: 0x0369a1,
-      roughness: 0.85,
-      metalness: 0.1
-    })
-    const earth = new THREE.Mesh(earthGeo, earthMat)
-    scene.add(earth)
+    const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthR)
+    scene.add(earthGroup)
 
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.12 })
-    const earthWire = new THREE.Mesh(new THREE.SphereGeometry(earthR * 1.005, 36, 18), wireMat)
-    earth.add(earthWire)
-
-    // 2. Allied Effector Satellite (Blue Orbital Platform)
-    const effGroup = new THREE.Group()
+    const { group: effGroup } = createMilitarySatellite({ scale: 0.6 })
     const effAltitudeUnits = earthR + 2.2
     effGroup.position.set(-3.2, effAltitudeUnits * 0.9, 1.5)
     scene.add(effGroup)
 
-    const effMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 0.6, 0.9),
-      new THREE.MeshStandardMaterial({ color: 0x00f0ff, metalness: 0.9 })
-    )
-    effGroup.add(effMesh)
-
-    // Effector Director Dish/Laser Barrel
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.18, 0.6, 16),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.8 })
-    )
-    barrel.rotation.z = Math.PI / 2
-    barrel.position.set(0.4, 0, 0)
-    effGroup.add(barrel)
-
-    // 3. Threat Target Missile Meshes (Inbound Red Cones)
     const threatMeshes: THREE.Mesh[] = []
     const threatGroup = new THREE.Group()
     scene.add(threatGroup)
@@ -238,7 +204,7 @@ export default function KillChainPage() {
       )
 
       const isDead = t.status === "DESTROYED"
-      const tGeo = isDead ? new THREE.SphereGeometry(0.4, 8, 8) : new THREE.ConeGeometry(0.2, 0.8, 8)
+      const tGeo = isDead ? new THREE.SphereGeometry(0.35, 8, 8) : new THREE.ConeGeometry(0.2, 0.8, 8)
       const tMat = new THREE.MeshStandardMaterial({
         color: isDead ? 0x64748b : new THREE.Color(t.colorHex),
         wireframe: isDead,
@@ -252,7 +218,6 @@ export default function KillChainPage() {
       threatMeshes.push(tMesh)
     })
 
-    // 4. Active Directed Energy / Kinetic Firing Laser Beam
     const beamGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])
     const isFiring = currentStage === "ENGAGE" || currentStage === "ASSESS"
     const beamMat = new THREE.LineBasicMaterial({
@@ -264,7 +229,6 @@ export default function KillChainPage() {
     const beamLine = new THREE.Line(beamGeo, beamMat)
     scene.add(beamLine)
 
-    // 5. Impact Detonation Flare Particles
     const flareGeo = new THREE.SphereGeometry(0.65, 16, 16)
     const flareMat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -278,13 +242,11 @@ export default function KillChainPage() {
     const animate = () => {
       animId = requestAnimationFrame(animate)
 
-      // Aim Effector at Active Target
       if (threatMeshes.length > 0 && threatMeshes[0]) {
         const targetWorldPos = new THREE.Vector3()
         threatMeshes[0].getWorldPosition(targetWorldPos)
         effGroup.lookAt(targetWorldPos)
 
-        // Update Laser Intercept Vector
         if (isFiring) {
           const effWorldPos = new THREE.Vector3()
           effGroup.getWorldPosition(effWorldPos)
@@ -300,7 +262,8 @@ export default function KillChainPage() {
         }
       }
 
-      earth.rotation.y += 0.0006
+      earthMesh.rotation.y += 0.0006
+      cloudsMesh.rotation.y += 0.00085
 
       renderer.render(scene, camera)
     }
@@ -322,24 +285,22 @@ export default function KillChainPage() {
   }, [threats, activeEffector, currentStage, simStep])
 
   return (
-    <div className="w-full h-full pt-20 px-8 pb-8 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden">
+    <div className="w-full h-full pt-16 px-6 pb-6 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden">
       
-      {/* LEFT PANEL: F2T2EA CYCLE & SCENARIO MANAGER */}
-      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
+      {/* LEFT PANEL */}
+      <div className="w-80 h-full flex flex-col pr-6 border-r border-slate-800/80 overflow-y-auto font-mono text-xs select-none">
         <div className="mb-6">
-          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
-            <Crosshair className="w-5 h-5 text-rose-500" /> Space Kill-Chain
-          </h1>
-          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
-            Automated JADC2 F2T2EA Battle Management Engine
-          </p>
+          <div className="flex items-center gap-2 text-rose-500 font-bold uppercase tracking-widest text-[10px] mb-1">
+            <Crosshair className="w-4 h-4" /> Space Battle Management
+          </div>
+          <h1 className="text-lg font-black text-white tracking-wider">JADC2 KILL-CHAIN</h1>
+          <p className="text-[10px] text-slate-500 uppercase">Automated F2T2EA Targeting Engine</p>
         </div>
 
-        <div className="space-y-6">
-          {/* Threat Scenario Selector */}
+        <div className="space-y-5">
           <div className="space-y-2">
             <label className="text-slate-500 font-bold uppercase tracking-widest text-[10px] flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-rose-400" /> Threat Engagement Scenario
+              <Layers className="w-3.5 h-3.5 text-rose-400" /> Threat Scenario
             </label>
             <div className="grid grid-cols-2 gap-1.5">
               {(["HYPERSONIC_SALVO", "CO_ORBITAL_SWARM", "DIRECT_ASCENT_ASAT", "JAMMER_COMPLEX"] as ThreatScenario[]).map(sc => (
@@ -358,10 +319,9 @@ export default function KillChainPage() {
             </div>
           </div>
 
-          {/* F2T2EA Kill-Chain Pipeline Progress Bar */}
           <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-xl space-y-3">
             <div className="text-slate-400 font-bold uppercase text-[10px] border-b border-slate-800 pb-2 flex justify-between">
-              <span>F2T2EA Autonomous Execution Cycle</span>
+              <span>F2T2EA Autonomous Execution</span>
               <span className="text-cyan-400 font-bold">CYCLE #{simStep}</span>
             </div>
 
@@ -396,7 +356,6 @@ export default function KillChainPage() {
             </div>
           </div>
 
-          {/* Assigned Effector Arsenal */}
           <div className="space-y-2">
             <label className="text-slate-500 font-bold uppercase tracking-widest text-[10px] flex items-center justify-between">
               <span>Available Effector Arsenal</span>
@@ -434,7 +393,6 @@ export default function KillChainPage() {
             </div>
           </div>
 
-          {/* Automation Control Toggle */}
           <div className="p-3.5 bg-slate-900/60 border border-slate-800 rounded-xl space-y-2">
             <div className="flex justify-between items-center text-[11px]">
               <span className="text-slate-400 font-bold uppercase">Automated Engagement Servo</span>
@@ -471,21 +429,21 @@ export default function KillChainPage() {
         </div>
       </div>
 
-      {/* CENTER PANEL: 3D THREE.JS TACTICAL HUD & ENGAGEMENT SOLUTION */}
+      {/* CENTER PANEL */}
       <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-6 left-6 z-10 font-mono">
-          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">
+        <div className="absolute top-4 left-6 z-10 font-mono pointer-events-none">
+          <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase mb-1">
             Target Engagement Solution [Weapon-Target Pairing]
           </div>
           <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-black text-rose-500">
+            <span className="text-3xl font-black text-rose-500">
               {activeThreat.name}
             </span>
-            <span className="text-slate-500 text-sm">
+            <span className="text-slate-400 text-xs font-bold">
               [{activeThreat.type} // {activeThreat.status}]
             </span>
           </div>
-          <div className="flex gap-4 mt-2 text-[11px]">
+          <div className="flex gap-4 mt-1.5 text-[10px]">
             <span className="text-emerald-400">P(KILL): {((battleMetrics.pKillEstimated * 100).toFixed(1))}%</span>
             <span className="text-cyan-400">SLANT RANGE: {battleMetrics.rangeKm.toLocaleString()} km</span>
             <span className="text-amber-400">TIME TO INTERCEPT: {battleMetrics.timeToIntercept}s</span>
@@ -495,45 +453,43 @@ export default function KillChainPage() {
 
         <div ref={mountRef} className="flex-1 w-full cursor-move" />
 
-        {/* Tactical HUD Footer */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] bg-slate-950/85 backdrop-blur-xl border border-slate-800 p-3.5 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Crosshair className="w-5 h-5 text-rose-500" />
             <div>
               <span className="text-slate-500 block text-[9px]">ACTIVE WEAPON PAIRING</span>
-              <span className="text-white font-bold text-sm">{activeEffector.name}</span>
+              <span className="text-white font-bold text-xs">{activeEffector.name}</span>
             </div>
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">ENGAGEMENT PIPELINE PHASE</span>
-            <span className="text-cyan-400 font-bold text-sm">{currentStage} (STAGE {currentStage === "FIND" ? "1" : currentStage === "FIX" ? "2" : currentStage === "TRACK" ? "3" : currentStage === "TARGET" ? "4" : currentStage === "ENGAGE" ? "5" : "6"}/6)</span>
+            <span className="text-cyan-400 font-bold text-xs">{currentStage} (STAGE {currentStage === "FIND" ? "1" : currentStage === "FIX" ? "2" : currentStage === "TRACK" ? "3" : currentStage === "TARGET" ? "4" : currentStage === "ENGAGE" ? "5" : "6"}/6)</span>
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">BATTLE DAMAGE ASSESSMENT</span>
-            <span className={`text-sm font-bold ${activeThreat.status === "DESTROYED" ? "text-emerald-400" : "text-amber-400"}`}>
+            <span className={`text-xs font-bold ${activeThreat.status === "DESTROYED" ? "text-emerald-400" : "text-amber-400"}`}>
               {activeThreat.status === "DESTROYED" ? "CATASTROPHIC KILL (CONFIRMED)" : "ENGAGEMENT IN PROGRESS"}
             </span>
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">COLLATERAL DEBRIS RISK</span>
-            <span className="text-emerald-400 font-bold text-sm">&lt; 0.05% CASUALTY AREA</span>
+            <span className="text-emerald-400 font-bold text-xs">&lt; 0.05% CASUALTY AREA</span>
           </div>
         </div>
       </div>
 
-      {/* RIGHT PANEL: LIVE THREAT TRACK ROSTER & BDA DOSSIER */}
-      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+      {/* RIGHT PANEL */}
+      <div className="w-80 h-full flex flex-col pl-6 border-l border-slate-800/80 overflow-y-auto font-mono text-xs select-none">
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2 text-xs">
           <Activity className="w-4 h-4 text-cyan-400" /> Threat Intercept Roster
         </h2>
 
-        <div className="space-y-6">
-          {/* Active Threats Cards */}
+        <div className="space-y-5">
           <div className="space-y-2">
             {threats.map(t => (
               <div 
                 key={t.id} 
-                className={`p-3.5 rounded-xl border transition-all ${
+                className={`p-3 rounded-xl border transition-all ${
                   t.status === "DESTROYED" 
                     ? "bg-slate-950/40 border-slate-800 text-slate-500 line-through" 
                     : "bg-rose-950/20 border-rose-500/40 text-slate-200"
@@ -556,7 +512,6 @@ export default function KillChainPage() {
             ))}
           </div>
 
-          {/* Engagement Mathematics Card */}
           <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2 text-[11px]">
             <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Kill-Chain Solution Cascade</div>
             <div className="flex justify-between"><span className="text-slate-500">Threat Priority:</span><span className="text-rose-400 font-bold">CLASS 1 ({activeThreat.priorityValue} PTS)</span></div>
@@ -566,13 +521,12 @@ export default function KillChainPage() {
             <div className="flex justify-between font-black text-sm border-t border-slate-700 pt-1.5"><span className="text-white">NET PROBABILITY:</span><span className="text-emerald-400">{((battleMetrics.pKillEstimated * 100).toFixed(1))}% Pk</span></div>
           </div>
 
-          {/* JADC2 Doctrine Principle */}
           <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2">
             <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
               JADC2 Automated Pairing
             </div>
             <p className="text-[10px] text-slate-500 leading-relaxed">
-              When threats enter the Engagement Zone, automated mixed-integer linear programming pairs available effectors to targets to minimize aggregate leakage probability. Fire commands execute without human latency, while preserving manual abort override authority.
+              When threats enter the Engagement Zone, automated mixed-integer linear programming pairs available effectors to targets to minimize aggregate leakage probability.
             </p>
           </div>
         </div>
