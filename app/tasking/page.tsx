@@ -522,7 +522,7 @@ export default function SensorTaskingPage() {
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">BEAM INTEGRATION</span>
-            <span className="text-cyan-400 font-bold text-sm">+{10 * Math.log10(Math.sqrt(pulseIntegrationCount)).toFixed(1)} dB PULSE GAIN</span>
+            <span className="text-cyan-400 font-bold text-sm">+{(10 * Math.log10(Math.sqrt(pulseIntegrationCount))).toFixed(1)} dB PULSE GAIN</span>
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">NEXT SENSOR HANDOVER</span>
