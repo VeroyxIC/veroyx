@@ -18,9 +18,9 @@ export default function VisualizerPage() {
     paramsRef.current = { altitudeKm, inclinationDeg, isPlaying, isBurning }
   }, [altitudeKm, inclinationDeg, isPlaying, isBurning])
 
-  // Persistent 60 FPS NASA Blue Marble Scene Mount (Video 00:10 - 00:19)
   useEffect(() => {
     const container = mountRef.current
+    if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
@@ -37,11 +37,10 @@ export default function VisualizerPage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep-Space Stellar Skybox
     const starfield = createDeepSpaceStarfield(1600, 800)
     scene.add(starfield)
 
-    // 1. The Radiant Sun with Anamorphic Flare in Upper Left (Video 00:10)
+    // Radiant Sun with Anamorphic Flare in Upper Left (Video 00:10)
     const sunLight = new THREE.DirectionalLight(0xfffaee, 4.0)
     sunLight.position.set(-28, 22, 14)
     scene.add(sunLight)
@@ -61,19 +60,19 @@ export default function VisualizerPage() {
     const flareLine = new THREE.Line(flareLineGeo, flareLineMat)
     scene.add(flareLine)
 
-    // 2. NASA Blue Marble Earth
+    // NASA Blue Marble Earth
     const earthRadius = 5.5
     const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
     scene.add(earthGroup)
 
-    // 3. The Moon in Background Orbit (Video 00:15)
+    // The Moon in Background Orbit (Video 00:15)
     const moonGeo = new THREE.SphereGeometry(1.4, 32, 32)
     const moonMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 })
     const moonMesh = new THREE.Mesh(moonGeo, moonMat)
     moonMesh.position.set(18, 12, -22)
     scene.add(moonMesh)
 
-    // 4. Primary Military Satellite & Wingmen Formation
+    // Primary Satellite & Wingmen Formation
     const { group: satGroup, plume: ionPlume } = createMilitarySatellite({ scale: 0.55 })
     scene.add(satGroup)
 
@@ -82,7 +81,7 @@ export default function VisualizerPage() {
     const { group: wingman2 } = createMilitarySatellite({ scale: 0.35 })
     scene.add(wingman2)
 
-    // 5. Tactical Neon-Green Inter-Satellite Laser Links (OISL) (Video 00:10 - 00:19)
+    // Tactical Neon-Green Laser Links (OISL)
     const laserMat = new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2.5, transparent: true, opacity: 0.9 })
     const laserGeo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])
     const laserLine1 = new THREE.Line(laserGeo1, laserMat)
@@ -101,7 +100,7 @@ export default function VisualizerPage() {
     const orbitLine = new THREE.Line(orbitGeo, orbitMat)
     scene.add(orbitLine)
 
-    // Debris Rings Cloud (Video 00:18)
+    // Debris Cloud
     const debrisCount = 600
     const debGeo = new THREE.BufferGeometry()
     const debPos = new Float32Array(debrisCount * 3)
@@ -155,7 +154,7 @@ export default function VisualizerPage() {
         wingman2.position.set(w2X, w2Y, w2Z)
         wingman2.lookAt(0, 0, 0)
 
-        // Update Green Laser Links (OISL)
+        // Update Laser Links
         laserGeo1.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
           satX, satY, satZ,
           w1X, w1Y, w1Z
@@ -191,6 +190,7 @@ export default function VisualizerPage() {
     animate()
 
     const onResize = () => {
+      if (!container) return
       camera.aspect = container.clientWidth / container.clientHeight
       camera.updateProjectionMatrix()
       renderer.setSize(container.clientWidth, container.clientHeight)
@@ -212,7 +212,7 @@ export default function VisualizerPage() {
             <Orbit className="w-4 h-4" /> NASA Blue Marble Engine
           </div>
           <h1 className="text-lg font-black text-white tracking-wider">C2 THEATER VIEW</h1>
-          <p className="text-[10px] text-slate-500 uppercase">Sun Flare, Moon &amp; Laser Crosslinks</p>
+          <p className="text-[10px] text-slate-500 uppercase">Sun Flare, Moon & Laser Crosslinks</p>
         </div>
 
         <div className="space-y-4">
@@ -250,7 +250,6 @@ export default function VisualizerPage() {
           </div>
         </div>
 
-        {/* Live floating HUD badges (Video 00:10) */}
         <div className="absolute top-20 left-1/3 z-10 font-mono text-[9px] bg-slate-950/80 border border-emerald-500/60 text-emerald-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(34,197,94,0.4)]">
           ● 127 SGC // SAT 012
         </div>

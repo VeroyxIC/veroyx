@@ -13,7 +13,7 @@ export interface RouteItem {
 }
 
 export const ALL_CAPABILITIES: RouteItem[] = [
-  { name: "Enterprise VIP Access Portal (0K+ Seats)", route: "/access", domain: "ENTERPRISE", description: "Institutional seat licensing, ITAR compliance, and sovereign procurement", badge: "VIP" },
+  { name: "Enterprise VIP Access Portal ($10K+ Seats)", route: "/access", domain: "ENTERPRISE", description: "Institutional seat licensing, ITAR compliance, and sovereign procurement", badge: "VIP" },
   { name: "Unified Command Nexus", route: "/nexus", domain: "COMMAND", description: "Grand Unified Space Domain Awareness Multi-Tier Nexus", badge: "TIER-0" },
   { name: "C2 Tactical Deck", route: "/c2", domain: "COMMAND", description: "Joint space operations command and battle management glass", badge: "C2" },
   { name: "Threat Visualizer", route: "/visualizer", domain: "COMMAND", description: "NASA-grade Earth, Sun flare, Moon, and satellite visualizer", badge: "3D" },
@@ -40,6 +40,7 @@ export default function CommandPalette() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault()
+        setIsOpen(prev => !prev)
       } else if (e.key === "Escape" && isOpen) {
         setIsOpen(false)
       }
@@ -70,6 +71,7 @@ export default function CommandPalette() {
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim()
+    if (!q) return ALL_CAPABILITIES
     return ALL_CAPABILITIES.filter(item => 
       item.name.toLowerCase().includes(q) ||
       item.description.toLowerCase().includes(q) ||
@@ -78,6 +80,7 @@ export default function CommandPalette() {
     )
   }, [query])
 
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24 px-4 bg-black/80 backdrop-blur-md font-mono text-xs select-none">
@@ -107,7 +110,9 @@ export default function CommandPalette() {
                 key={item.route}
                 onClick={() => { setIsOpen(false); router.push(item.route); }}
                 onMouseEnter={() => setSelectedIndex(idx)}
-                className={}
+                className={`p-3 rounded-xl cursor-pointer flex items-center justify-between transition-all ${
+                  isSelected ? "bg-cyan-950/70 border border-cyan-500/60 shadow-[0_0_15px_rgba(6,182,212,0.2)]" : "hover:bg-slate-900/60 border border-transparent"
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-cyan-950 text-cyan-400 border border-cyan-800 flex items-center justify-center font-bold text-[10px]">

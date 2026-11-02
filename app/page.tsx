@@ -17,7 +17,6 @@ type ClearanceLevel = "TS_SCI_SITK" | "SECRET_NATO" | "SAP_GAMMA"
 export default function MasterHomePage() {
   const router = useRouter()
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const pillarsRef = useRef<HTMLDivElement | null>(null)
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [clearanceTier, setClearanceTier] = useState<ClearanceLevel>("TS_SCI_SITK")
@@ -64,6 +63,7 @@ export default function MasterHomePage() {
   // 3D Three.js Kerr Black Hole & Accretion Disk (Video 00:00 - 00:09)
   useEffect(() => {
     const container = mountRef.current
+    if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
@@ -118,6 +118,7 @@ export default function MasterHomePage() {
     animate()
 
     const onResize = () => {
+      if (!container) return
       camera.aspect = container.clientWidth / container.clientHeight
       camera.updateProjectionMatrix()
       renderer.setSize(container.clientWidth, container.clientHeight)
@@ -134,6 +135,7 @@ export default function MasterHomePage() {
   return (
     <div className="relative w-full min-h-screen bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
+      {!isAuthenticated ? (
         <div className="min-h-screen flex items-center justify-center pt-16 px-4 pb-12 z-20">
           <div className="w-full max-w-xl p-8 rounded-3xl bg-[#010614]/90 backdrop-blur-3xl border border-cyan-500/50 shadow-[0_0_80px_rgba(6,182,212,0.3)] space-y-6 font-mono text-xs">
             <div className="text-center space-y-2 border-b border-slate-800 pb-4">
@@ -157,16 +159,21 @@ export default function MasterHomePage() {
                   { key: "TS_SCI_SITK", label: "TS/SCI SI-TK", note: "TALENT-KEYHOLE" },
                   { key: "SECRET_NATO", label: "SECRET NATO", note: "FVEY ALLIED" },
                   { key: "SAP_GAMMA", label: "SAP GAMMA", note: "COUNTER-SPACE" }
-                ].map(c => (
-                  <button
-                    key={c.key}
-                    onClick={() => setClearanceTier(c.key as ClearanceLevel)}
-                    className={}
-                  >
-                    <div className="font-bold text-[11px] text-white">{c.label}</div>
-                    <div className="text-[8px] text-slate-500 mt-0.5">{c.note}</div>
-                  </button>
-                ))}
+                ].map(c => {
+                  const isSel = clearanceTier === c.key
+                  return (
+                    <button
+                      key={c.key}
+                      onClick={() => setClearanceTier(c.key as ClearanceLevel)}
+                      className={`p-2.5 rounded-xl border text-center transition-all ${
+                        isSel ? "bg-cyan-950/80 border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.3)]" : "bg-slate-950/60 border-slate-800 text-slate-500 hover:border-slate-700"
+                      }`}
+                    >
+                      <div className="font-bold text-[11px] text-white">{c.label}</div>
+                      <div className="text-[8px] text-slate-500 mt-0.5">{c.note}</div>
+                    </button>
+                  )
+                })}
               </div>
             </div>
 
@@ -272,7 +279,7 @@ export default function MasterHomePage() {
                   VEROYX
                 </h1>
                 <p className="text-xs sm:text-sm font-mono text-cyan-400 tracking-widest uppercase">
-                  Space Domain Awareness &amp; Allied JADC2 Battle Management
+                  Space Domain Awareness & Allied JADC2 Battle Management
                 </p>
               </div>
 
