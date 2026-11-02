@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { 
-  Terminal, Search, X, CornerDownLeft 
+  Terminal, Search, X, CornerDownLeft, Sparkles, Orbit 
 } from "lucide-react"
 
 export interface RouteItem {
@@ -20,92 +20,61 @@ export const ALL_CAPABILITIES: RouteItem[] = [
   { name: "Unified Command Nexus", route: "/nexus", domain: "COMMAND", description: "Grand Unified Space Domain Awareness Multi-Tier Nexus", badge: "TIER-0" },
   { name: "C2 Tactical Deck", route: "/c2", domain: "COMMAND", description: "Joint space operations command and battle management glass", badge: "C2" },
   { name: "Threat Visualizer", route: "/visualizer", domain: "COMMAND", description: "Interactive 3D orbital catalog and conjunction visualizer", badge: "3D" },
-  { name: "Space Domain Awareness (SSA)", route: "/ssa", domain: "COMMAND", description: "Custodial orbital catalog and state vector monitoring", badge: "SDA" },
-
-  // Orbital Defense & Kinetic
-  { name: "Kinetic ASAT & DEW Intercept", route: "/intercept", domain: "DEFENSE", description: "Hit-to-kill True ProNav guidance and laser thermal ablation", badge: "H2K" },
+  { name: "Space-Track 48K Orbital Catalog", route: "/catalog", domain: "SURVEILLANCE", description: "Live SGP4 ephemeris, 48,219 RSO database and TLE exporter", badge: "48K" },
+  { name: "SGP4 Orbit Propagator", route: "/ephemeris", domain: "SURVEILLANCE", description: "J2 analytical precession and true ECI J2000 state vectors", badge: "SGP4" },
+  { name: "CCSDS Telecommand Uplink", route: "/telecommand", domain: "COMMAND", description: "Hardware-in-the-loop RF uplink and cryptographic command console", badge: "CCSDS" },
+  { name: "DEW Laser Ablation Suite", route: "/directed-energy", domain: "DEFENSE", description: "1.2 MW continuous-wave laser and HPM thermal ablation", badge: "DEW" },
   { name: "Space Kill-Chain JADC2", route: "/kill-chain", domain: "DEFENSE", description: "Automated F2T2EA battle management and weapon-target pairing", badge: "JADC2" },
+  { name: "Kinetic ASAT & DEW Intercept", route: "/intercept", domain: "DEFENSE", description: "Hit-to-kill True ProNav guidance and laser thermal ablation", badge: "H2K" },
   { name: "Non-Cooperative RPO Corridors", route: "/rpo", domain: "DEFENSE", description: "Hill-Clohessy-Wiltshire proximity safety keep-out envelopes", badge: "HCW" },
   { name: "Pursuit-Evasion Differential Combat", route: "/pursuit-evasion", domain: "DEFENSE", description: "Hamilton-Jacobi-Isaacs reachability basins and dogfights", badge: "GAME" },
   { name: "HEMP & Radiation Belts", route: "/hemp-sim", domain: "DEFENSE", description: "Exoatmospheric EMP E1/E2/E3 and Starfish Prime trapping", badge: "EMP" },
   { name: "Planetary Defense & DART Deflection", route: "/planetary-defense", domain: "DEFENSE", description: "Asteroid kinetic impactor ejecta momentum enhancement", badge: "NEO" },
-
-  // Surveillance & Recon
   { name: "SSN Sensor Tasking & Handover", route: "/tasking", domain: "SURVEILLANCE", description: "Phased-array radar SNR cascade and metric handover", badge: "SSN" },
   { name: "Automated Hungarian Sensor Scheduler", route: "/scheduler", domain: "SURVEILLANCE", description: "Kuhn-Munkres bipartite optimal covariance contraction", badge: "SCHED" },
   { name: "Space-Based SIGINT Geolocation", route: "/sigint", domain: "SURVEILLANCE", description: "TDOA / FDOA satellite formation multilateration", badge: "SIGINT" },
   { name: "Hypersonic Glide OPIR Tracking", route: "/hypersonic", domain: "SURVEILLANCE", description: "Non-Keplerian aerothermal shock wave space tracking", badge: "OPIR" },
   { name: "Adaptive Optics LGS Wavefront", route: "/adaptive-optics", domain: "SURVEILLANCE", description: "Sodium laser guide star atmospheric turbulence correction", badge: "AO" },
-
-  // Communications & Resilience
   { name: "Autonomous Mesh Self-Healing", route: "/resilience", domain: "RESILIENCE", description: "Dynamic Dijkstra link-state rerouting across pLEO OISL", badge: "MESH" },
   { name: "EW & Counter-PNT Resilience", route: "/pnt-resilience", domain: "RESILIENCE", description: "CRPA MVDR spatial nulling and anti-spoofing filter", badge: "PNT" },
   { name: "Satellite QKD Entanglement Relays", route: "/qkd", domain: "RESILIENCE", description: "Bell state verification and post-quantum hybrid keys", badge: "QKD" },
   { name: "Space-Based Solar Power (SBSP)", route: "/sbsp", domain: "RESILIENCE", description: "GEO-to-grid microwave wireless power transfer beaming", badge: "WPT" },
-  { name: "Optical Lasercom Link Budget", route: "/lasercom", domain: "RESILIENCE", description: "Deep-space 1550nm coherent optical transceiver budget", badge: "FSOC" },
-
-  // Orbital Mechanics & Physics
   { name: "Delta-V Maneuver Planner", route: "/delta-v", domain: "PHYSICS", description: "Hohmann, bi-elliptic, and plane-change burn calculation", badge: "ORBIT" },
-  { name: "Trajectory & Ephemeris", route: "/trajectory", domain: "PHYSICS", description: "J2/J4 gravitational perturbation orbital propagation", badge: "PROP" },
   { name: "Conjunction Assessment", route: "/conjunction", domain: "PHYSICS", description: "Collision probability Pc calculation and miss distance", badge: "ALCOA" },
-  { name: "Atmospheric Reentry & Footprint", route: "/reentry", domain: "PHYSICS", description: "Aerothermal breakup risk and debris footprint analysis", badge: "ENTRY" },
   { name: "Space Weather & Geomagnetic", route: "/space-weather", domain: "PHYSICS", description: "Solar coronal mass ejections, Kp-index, and drag flare", badge: "SWPC" }
 ]
 
-export interface CommandPaletteProps {
-  isOpen?: boolean
-  onClose?: () => void
-}
-
-export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandPaletteProps = {}) {
+export default function CommandPalette() {
   const router = useRouter()
-  const [internalIsOpen, setInternalIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
-  const isControlled = propIsOpen !== undefined
-  const isOpen = isControlled ? propIsOpen : internalIsOpen
-
-  const handleClose = () => {
-    if (onClose) {
-      onClose()
-    } else {
-      setInternalIsOpen(false)
-    }
-  }
-
+  // Global keydown (Cmd+K / Ctrl+K) and Custom Event Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
-        if (isControlled) {
-          if (isOpen) {
-            onClose?.()
-          } else {
-            window.dispatchEvent(new CustomEvent("toggle-command-palette"))
-          }
-        } else {
-          setInternalIsOpen(prev => !prev)
-        }
+        setIsOpen(prev => !prev)
       } else if (e.key === "Escape" && isOpen) {
-        handleClose()
+        setIsOpen(false)
       }
     }
 
-    const handleOpenEvent = () => {
-      if (!isControlled) {
-        setInternalIsOpen(true)
-      }
-    }
+    const handleOpenEvent = () => setIsOpen(true)
+    const handleCloseEvent = () => setIsOpen(false)
 
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("open-command-palette", handleOpenEvent)
+    window.addEventListener("close-command-palette", handleCloseEvent)
+
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
       window.removeEventListener("open-command-palette", handleOpenEvent)
+      window.removeEventListener("close-command-palette", handleCloseEvent)
     }
-  }, [isOpen, isControlled, onClose])
+  }, [isOpen])
 
   useEffect(() => {
     if (isOpen) {
@@ -138,7 +107,7 @@ export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandP
     } else if (e.key === "Enter" && filtered[selectedIndex]) {
       e.preventDefault()
       const targetRoute = filtered[selectedIndex].route
-      handleClose()
+      setIsOpen(false)
       router.push(targetRoute)
     }
   }
@@ -146,8 +115,8 @@ export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandP
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24 px-4 bg-black/80 backdrop-blur-md font-mono text-xs">
-      <div className="fixed inset-0" onClick={handleClose} />
+    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24 px-4 bg-black/80 backdrop-blur-md font-mono text-xs select-none">
+      <div className="fixed inset-0" onClick={() => setIsOpen(false)} />
 
       <div 
         className="relative w-full max-w-2xl bg-[#020617] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.25)] overflow-hidden flex flex-col z-10"
@@ -167,7 +136,7 @@ export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandP
             className="flex-1 bg-transparent text-white text-sm placeholder:text-slate-500 focus:outline-none"
           />
           <button 
-            onClick={handleClose}
+            onClick={() => setIsOpen(false)}
             className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -186,7 +155,7 @@ export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandP
                 <div
                   key={item.route}
                   onClick={() => {
-                    handleClose()
+                    setIsOpen(false)
                     router.push(item.route)
                   }}
                   onMouseEnter={() => setSelectedIndex(idx)}
@@ -239,7 +208,7 @@ export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandP
             <span><kbd className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded text-slate-300">ESC</kbd> Close</span>
           </div>
           <div className="text-cyan-400 font-bold">
-            VEROYX KERNEL v2.7 // 100+ LIVE ROUTES
+            VEROYX KERNEL v9.8.1 // 109+ LIVE ROUTES
           </div>
         </div>
       </div>

@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { 
   Sparkles, Globe, Orbit, Crosshair, ShieldCheck, Zap, 
   Eye, Radio, Activity, Layers, ArrowRight, Terminal, 
@@ -12,14 +11,12 @@ import {
 } from "lucide-react"
 
 export default function MasterHomePage() {
-  const router = useRouter()
   const mountRef = useRef<HTMLDivElement | null>(null)
   const pillarsRef = useRef<HTMLDivElement | null>(null)
 
   const [handshakeState, setHandshakeState] = useState<"IDLE" | "SCANNING" | "VERIFIED">("IDLE")
   const [handshakeText, setHandshakeText] = useState("INITIATE ZERO-TRUST HANDSHAKE")
 
-  // Handle Handshake Activation & Smooth Scroll to Modules
   const handleHandshake = () => {
     if (handshakeState === "SCANNING") return
     setHandshakeState("SCANNING")
@@ -33,7 +30,7 @@ export default function MasterHomePage() {
       setHandshakeState("VERIFIED")
       setHandshakeText("ENCLAVE UNLOCKED // ACCESS GRANTED")
       pillarsRef.current?.scrollIntoView({ behavior: "smooth" })
-    }, 900)
+    }, 850)
   }
 
   // 3D Three.js Interactive Geodesic Sphere Engine
@@ -60,7 +57,7 @@ export default function MasterHomePage() {
     pLight.position.set(0, 0, 15)
     scene.add(pLight)
 
-    // 1. Core Geodesic Wireframe Sphere (Original Hero Mesh)
+    // Geodesic Wireframe Sphere
     const sphereRadius = 7.2
     const sphereGeo = new THREE.IcosahedronGeometry(sphereRadius, 4)
     const sphereMat = new THREE.MeshBasicMaterial({
@@ -72,7 +69,7 @@ export default function MasterHomePage() {
     const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat)
     scene.add(sphereMesh)
 
-    // 2. Concentric Telemetry Latitude & Equatorial Rings
+    // Telemetry Rings
     const ringsGroup = new THREE.Group()
     scene.add(ringsGroup)
 
@@ -95,15 +92,14 @@ export default function MasterHomePage() {
       ringsGroup.add(rMesh)
     })
 
-    // 3. Sweeping Radar Scan Line
+    // Sweeping Radar Beam
     const radarGeo = new THREE.BufferGeometry()
-    const radarPoints = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(sphereRadius * 1.05, 0, 0)]
-    radarGeo.setFromPoints(radarPoints)
+    radarGeo.setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(sphereRadius * 1.05, 0, 0)])
     const radarMat = new THREE.LineBasicMaterial({ color: 0x00f0ff, linewidth: 2, transparent: true, opacity: 0.85 })
     const radarSweep = new THREE.Line(radarGeo, radarMat)
     scene.add(radarSweep)
 
-    // 4. Over 600 Pulsing Orbital Telemetry Satellite Nodes
+    // 650+ Orbital Telemetry Satellite Nodes
     const swarmCount = 650
     const pointGeo = new THREE.BufferGeometry()
     const pointPositions = new Float32Array(swarmCount * 3)
@@ -123,7 +119,6 @@ export default function MasterHomePage() {
       pointPositions[i * 3 + 1] = 0
       pointPositions[i * 3 + 2] = 0
 
-      // Color Palette: Cyan, Emerald, Amber, White
       const p = Math.random()
       const c = p > 0.75 ? new THREE.Color(0x00f0ff) : p > 0.5 ? new THREE.Color(0x38bdf8) : p > 0.3 ? new THREE.Color(0x10b981) : new THREE.Color(0xfbbf24)
       pointColors[i * 3 + 0] = c.r
@@ -143,7 +138,7 @@ export default function MasterHomePage() {
     const satelliteSwarm = new THREE.Points(pointGeo, pointMat)
     scene.add(satelliteSwarm)
 
-    // 5. Interactive Mouse Drag & Parallax Dynamics
+    // Mouse Drag with Smooth Inertia
     let isDragging = false
     let prevMouseX = 0
     let prevMouseY = 0
@@ -158,7 +153,6 @@ export default function MasterHomePage() {
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging) {
-        // Parallax drift
         const ndcX = (e.clientX / window.innerWidth - 0.5) * 2
         const ndcY = (e.clientY / window.innerHeight - 0.5) * 2
         camera.position.x = ndcX * 1.5
@@ -189,7 +183,6 @@ export default function MasterHomePage() {
       animId = requestAnimationFrame(animate)
       simStep += 1
 
-      // Apply drag rotation with inertia damping
       sphereMesh.rotation.y += rotVelY
       sphereMesh.rotation.x += rotVelX
       ringsGroup.rotation.y += rotVelY * 0.8
@@ -200,10 +193,8 @@ export default function MasterHomePage() {
         rotVelY = rotVelY * 0.96 + 0.0012 * 0.04
       }
 
-      // Rotate Sweeping Radar Beam
       radarSweep.rotation.z += 0.025
 
-      // Propagate 600+ Satellite Nodes
       const pArr = pointGeo.attributes.position.array as Float32Array
       for (let i = 0; i < swarmCount; i++) {
         const t = orbitalTracks[i]
@@ -244,18 +235,18 @@ export default function MasterHomePage() {
     <div className="relative w-full min-h-screen bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
       {/* ============================================================ */}
-      {/* HERO SECTION: RESTORED ORIGINAL ANIMATION SPHERE & ICONIC 'V' */}
+      {/* HERO SECTION: GLOWING V-EMBLEM & ORBITING SATELLITE ENGINE   */}
       {/* ============================================================ */}
       <section className="relative w-full min-h-[92vh] flex flex-col items-center justify-center pt-20 px-4 sm:px-6 select-none">
         
-        {/* 3D Three.js Geodesic Particle Sphere Mount */}
+        {/* 3D Geodesic Sphere Background Mount */}
         <div 
           ref={mountRef} 
           className="absolute inset-0 w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing z-0" 
-          title="Click and drag to spin the 3D Space Domain Sphere"
+          title="Click and drag to rotate the 3D Space Domain Sphere"
         />
 
-        {/* Tactical HUD Telemetry Cards Around the Sphere */}
+        {/* Live Surrounding Tactical HUD Cards */}
         <div className="absolute top-24 left-6 hidden xl:block z-10 font-mono text-[11px] space-y-1 pointer-events-none bg-slate-950/70 p-3 rounded-xl border border-slate-800/80 backdrop-blur-md">
           <div className="text-slate-500 text-[9px] uppercase tracking-wider">GLOBAL SPACE SURVEILLANCE</div>
           <div className="text-cyan-400 font-bold flex items-center gap-2">
@@ -292,16 +283,40 @@ export default function MasterHomePage() {
           <div className="text-slate-400 text-[10px]">Bell Parameter |S| = 2.68</div>
         </div>
 
-        {/* HERO CENTERPIECE: ORIGINAL LOGO, TYPOGRAPHY & CHIPS */}
+        {/* HERO CENTERPIECE: GLOWING V LOGO + ORBITING SATELLITE */}
         <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-2xl mx-auto pointer-events-auto">
           
-          {/* THE ORIGINAL GLOWING 'V' EMBLEM */}
-          <div className="relative group cursor-pointer transition-transform duration-300 hover:scale-105">
-            <div className="absolute -inset-3 bg-gradient-to-r from-cyan-500 to-indigo-600 rounded-2xl blur-xl opacity-60 group-hover:opacity-90 transition duration-500" />
-            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-b from-slate-900 via-[#010816] to-[#01040f] border border-cyan-400/60 flex items-center justify-center shadow-[0_0_35px_rgba(6,182,212,0.6)]">
+          {/* THE GLOWING V EMBLEM WITH ROTATING SATELLITE TRACK */}
+          <div className="relative w-48 h-48 flex items-center justify-center">
+            
+            {/* Pulsing Breathing Cyan Glow Backdrop */}
+            <div className="absolute inset-0 rounded-full bg-cyan-500/20 blur-2xl animate-breathe-glow pointer-events-none" />
+
+            {/* Glowing Orbit Track Ring */}
+            <div className="absolute w-44 h-44 rounded-full border border-cyan-500/40 border-dashed animate-spin [animation-duration:25s] pointer-events-none" />
+
+            {/* Orbiting Satellite with Ion Exhaust Plume */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="animate-orbit-satellite flex items-center justify-center">
+                <div className="relative flex items-center justify-center">
+                  {/* Glowing Thruster Tail */}
+                  <span className="absolute -left-3 w-3 h-1 rounded-full bg-cyan-400 blur-[2px] animate-pulse" />
+                  {/* Miniature Satellite Bus */}
+                  <div className="w-4 h-4 rounded bg-amber-500 border border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.9)] flex items-center justify-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-ping" />
+                  </div>
+                  {/* Solar Array Wings */}
+                  <div className="absolute -top-2 w-1.5 h-2 rounded bg-sky-600 border border-sky-400" />
+                  <div className="absolute -bottom-2 w-1.5 h-2 rounded bg-sky-600 border border-sky-400" />
+                </div>
+              </div>
+            </div>
+
+            {/* Center Beveled Faceted V-Emblem */}
+            <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-b from-slate-900 via-[#010816] to-[#01040f] border border-cyan-400/80 flex items-center justify-center shadow-[0_0_35px_rgba(6,182,212,0.7)] animate-breathe-glow">
               <svg 
                 viewBox="0 0 64 64" 
-                className="w-10 h-10 sm:w-12 sm:h-12 text-cyan-400 drop-shadow-[0_0_15px_rgba(6,182,212,0.9)]" 
+                className="w-12 h-12 sm:w-14 sm:h-14 text-cyan-400 drop-shadow-[0_0_18px_rgba(6,182,212,0.95)]" 
                 fill="none" 
                 xmlns="http://www.w3.org/2000/svg"
               >
@@ -312,7 +327,7 @@ export default function MasterHomePage() {
             </div>
           </div>
 
-          {/* VEROYX TITLE */}
+          {/* VEROYX TITLE & SUBTITLE */}
           <div className="space-y-2">
             <h1 className="text-6xl sm:text-8xl font-black tracking-[0.22em] text-white uppercase drop-shadow-[0_0_40px_rgba(6,182,212,0.4)]">
               VEROYX
@@ -322,7 +337,7 @@ export default function MasterHomePage() {
             </p>
           </div>
 
-          {/* THE 3 ORIGINAL TACTICAL STATUS CHIPS */}
+          {/* 3 STATUS BADGES */}
           <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 font-mono text-[10px] text-slate-300 pt-1">
             <span className="px-3 py-1 rounded-md bg-slate-950/80 border border-slate-800 backdrop-blur-md flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
@@ -338,7 +353,7 @@ export default function MasterHomePage() {
             </span>
           </div>
 
-          {/* THE ORIGINAL ZERO-TRUST HANDSHAKE BUTTON */}
+          {/* ZERO-TRUST HANDSHAKE BUTTON */}
           <div className="pt-3 flex flex-col sm:flex-row items-center gap-4">
             <button
               onClick={handleHandshake}
@@ -397,7 +412,7 @@ export default function MasterHomePage() {
           </p>
         </div>
 
-        {/* 4 REFINED PILLARS */}
+        {/* 4 PILLARS GRID */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 font-mono">
           
           {/* PILLAR 1: FLIGHT DYNAMICS & PHYSICS */}
@@ -546,7 +561,7 @@ export default function MasterHomePage() {
 
         </div>
 
-        {/* BOTTOM QUICK OPERATIONAL ACCESS DIRECTORY */}
+        {/* BOTTOM QUICK DIRECTORY */}
         <div className="p-8 rounded-3xl bg-slate-950/70 border border-slate-800/80 font-mono text-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-3">
             <div>
