@@ -1,3 +1,5 @@
+import CommandBar from "@/components/CommandBar";
+import CommandPalette from "@/components/CommandPalette";
 import type { Metadata } from "next"
 import { Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
@@ -20,7 +22,9 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${jetbrains.variable} dark`}>
       <body className="bg-slate-950 text-slate-100 overflow-hidden antialiased">
         <FlightDeckLayout>
-          {children}
+          <CommandBar />
+        <CommandPalette />
+        {children}
         </FlightDeckLayout>
       </body>
     </html>
