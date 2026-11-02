@@ -1,447 +1,459 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import Link from "next/link"
+import { useState, useEffect, useRef } from "react"
+import * as THREE from "three"
 import { 
-  Zap, 
-  Radio, 
-  Target, 
-  Activity, 
-  Download, 
-  ShieldCheck, 
-  AlertTriangle, 
-  ArrowRight, 
-  Gauge, 
-  Crosshair, 
-  Maximize2, 
-  Wifi, 
-  Sparkles,
-  Sliders
+  Zap, Activity, Radio, Eye, Crosshair, 
+  ShieldCheck, ShieldAlert, Layers, Gauge, Play, Square, RotateCcw, Target 
 } from "lucide-react"
 
-interface LasercomPreset {
+type LasercomPreset = "SDA_SPACE_BACN" | "COMMERCIAL_OISL" | "DEEP_SPACE_DSOC" | "TACTICAL_AIR_SPACE"
+
+interface TerminalSpec {
   name: string
-  classType: string
-  linkDistanceKm: number
   wavelengthNm: number
-  txPowerWatts: number
   apertureDiameterMm: number
+  edfaTxPowerWatts: number
   dataRateGbps: number
-  rmsPointingJitterUrad: number
-  detectorSensitivityPhotonsPerBit: number
-  description: string
+  maxRangeKm: number
+  reqPhotonsPerBit: number
+  colorHex: string
 }
 
-const LASERCOM_PRESETS: Record<string, LasercomPreset> = {
-  sda_tranche_crosslink: {
-    name: "SDA Tranche Standard OISL Crosslink",
-    classType: "Proliferated LEO Mesh Backhaul",
-    linkDistanceKm: 2500,
+const PRESETS: Record<LasercomPreset, TerminalSpec> = {
+  "SDA_SPACE_BACN": {
+    name: "SDA Space-BACN Standard Terminal",
     wavelengthNm: 1550,
-    txPowerWatts: 2.5,
-    apertureDiameterMm: 100, // 10 cm telescope
+    apertureDiameterMm: 80,
+    edfaTxPowerWatts: 2.5,
     dataRateGbps: 2.5,
-    rmsPointingJitterUrad: 1.2,
-    detectorSensitivityPhotonsPerBit: 45,
-    description: "Interoperable inter-satellite laser terminal routing multi-gigabit mesh traffic across LEO constellation planes.",
+    maxRangeKm: 4200,
+    reqPhotonsPerBit: 45,
+    colorHex: "#38bdf8"
   },
-  geo_to_leo_feeder: {
-    name: "GEO-to-LEO High-Rate Data Feeder",
-    classType: "Inter-Orbital Optical Trunk",
-    linkDistanceKm: 42000,
+  "COMMERCIAL_OISL": {
+    name: "Commercial Constellation High-Throughput",
     wavelengthNm: 1550,
-    txPowerWatts: 5.0,
-    apertureDiameterMm: 150,
+    apertureDiameterMm: 100,
+    edfaTxPowerWatts: 5.0,
     dataRateGbps: 10.0,
-    rmsPointingJitterUrad: 0.6,
-    detectorSensitivityPhotonsPerBit: 60,
-    description: "Long-range optical relay linking low Earth observation satellites to geostationary telecommunication trunk satellites.",
+    maxRangeKm: 5500,
+    reqPhotonsPerBit: 75,
+    colorHex: "#10b981"
   },
-  deep_space_dsoc: {
-    name: "Deep Space Optical Terminal (DSOC Analogue)",
-    classType: "Planetary Optical Downlink",
-    linkDistanceKm: 300000, // Lunar / Cislunar distance
+  "DEEP_SPACE_DSOC": {
+    name: "Deep Space Optical Communications (DSOC)",
     wavelengthNm: 1550,
-    txPowerWatts: 20.0,
     apertureDiameterMm: 220,
-    dataRateGbps: 0.1, // 100 Mbps deep space
-    rmsPointingJitterUrad: 0.35,
-    detectorSensitivityPhotonsPerBit: 25,
-    description: "High-power narrow-divergence lasercom downlink equipped with high-order active fast steering mirrors (FSM).",
+    edfaTxPowerWatts: 15.0,
+    dataRateGbps: 0.25,
+    maxRangeKm: 45000,
+    reqPhotonsPerBit: 25,
+    colorHex: "#f59e0b"
   },
+  "TACTICAL_AIR_SPACE": {
+    name: "Tactical Air-to-Space Agile Terminal",
+    wavelengthNm: 1550,
+    apertureDiameterMm: 65,
+    edfaTxPowerWatts: 3.0,
+    dataRateGbps: 1.25,
+    maxRangeKm: 1800,
+    reqPhotonsPerBit: 85,
+    colorHex: "#d946ef"
+  }
 }
 
 export default function LasercomPage() {
-  const [selectedKey, setSelectedKey] = useState<string>("sda_tranche_crosslink")
-  const [linkDistanceKm, setLinkDistanceKm] = useState<number>(2500)
-  const [txPowerW, setTxPowerW] = useState<number>(2.5)
-  const [apertureDiameterMm, setApertureDiameterMm] = useState<number>(100)
-  const [dataRateGbps, setDataRateGbps] = useState<number>(2.5)
-  const [pointingJitterUrad, setPointingJitterUrad] = useState<number>(1.2)
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-  const activePreset = LASERCOM_PRESETS[selectedKey]
+  const [preset, setPreset] = useState<LasercomPreset>("SDA_SPACE_BACN")
+  const [crosslinkDistanceKm, setCrosslinkDistanceKm] = useState(3200)
+  const [rmsJitterUrad, setRmsJitterUrad] = useState(1.2)
+  const [fsmTrackingActive, setFsmTrackingActive] = useState(true)
 
-  const applyPreset = (key: string) => {
-    const p = LASERCOM_PRESETS[key]
-    setSelectedKey(key)
-    setLinkDistanceKm(p.linkDistanceKm)
-    setTxPowerW(p.txPowerWatts)
-    setApertureDiameterMm(p.apertureDiameterMm)
-    setDataRateGbps(p.dataRateGbps)
-    setPointingJitterUrad(p.rmsPointingJitterUrad)
-  }
+  const spec = PRESETS[preset]
 
-  // Optical Space Link Budget Calculations (CCSDS 141.0-B-1)
-  const metrics = useMemo(() => {
-    const lambdaM = 1550e-9 // 1550 nm C-Band standard
-    const distanceM = linkDistanceKm * 1000
-    const apertureM = apertureDiameterMm / 1000
-    const h = 6.62607015e-34 // Planck constant
-    const c = 299792458
-    const photonEnergyJ = (h * c) / lambdaM
+  // Physical Constants
+  const PLANCK_H = 6.62607015e-34
+  const SPEED_OF_LIGHT = 299792458
+  const WAVELENGTH_M = spec.wavelengthNm * 1e-9
+  const APERTURE_M = spec.apertureDiameterMm * 1e-3
+  const PHOTON_ENERGY_J = (PLANCK_H * SPEED_OF_LIGHT) / WAVELENGTH_M
 
-    // 1. Airy Disk Diffraction Beam Divergence (Full Width Half Maximum in microradians)
-    const divergenceUrad = Math.round((1.03 * (lambdaM / apertureM) * 1e6) * 10) / 10
+  // Optical Beam Calculations
+  const beamDivergenceRad = 1.27 * (WAVELENGTH_M / APERTURE_M)
+  const beamDivergenceUrad = beamDivergenceRad * 1e6
+  const beamFootprintDiameterM = crosslinkDistanceKm * 1000 * beamDivergenceRad
 
-    // 2. Transmit & Receive Optical Antenna Gains (dBi)
-    // G = (pi * D / lambda)^2
-    const opticalGainDbi = Math.round((20 * Math.log10((Math.PI * apertureM) / lambdaM)) * 10) / 10
+  const gainTxLinear = Math.pow((Math.PI * APERTURE_M) / WAVELENGTH_M, 2)
+  const gainTxDbi = 10 * Math.log10(gainTxLinear)
 
-    // 3. Free-Space Path Loss (dB)
-    const fsplDb = Math.round((20 * Math.log10((4 * Math.PI * distanceM) / lambdaM)) * 10) / 10
+  const distanceM = crosslinkDistanceKm * 1000
+  const fsplDb = 20 * Math.log10(WAVELENGTH_M / (4 * Math.PI * distanceM))
 
-    // 4. Pointing Error Loss (Jitter Penalty in dB)
-    // L_point ~ -4.343 * (jitter / (divergence / 2))^2
-    const pointingLossDb = Math.round(
-      (4.343 * Math.pow(pointingJitterUrad / Math.max(0.1, divergenceUrad / 2), 2)) * 10
-    ) / 10
+  const effectiveJitterUrad = fsmTrackingActive ? rmsJitterUrad * 0.18 : rmsJitterUrad
+  const effectiveJitterRad = effectiveJitterUrad * 1e-6
+  const pointingLossDb = -4.343 * gainTxLinear * Math.pow(effectiveJitterRad, 2)
 
-    // 5. Optical Power Received (dBm and nW)
-    const txPowerDbm = 10 * Math.log10(txPowerW * 1000)
-    const opticsEfficiencyLossDb = 4.5 // Internal lenses, mirrors, fiber coupling
-    const rxPowerDbm = txPowerDbm + opticalGainDbi + opticalGainDbi - fsplDb - pointingLossDb - opticsEfficiencyLossDb
-    const rxPowerWatts = Math.pow(10, (rxPowerDbm - 30) / 10)
-    const rxPowerNanoWatts = Math.round(rxPowerWatts * 1e9 * 100) / 100
+  const txPowerDbm = 10 * Math.log10(spec.edfaTxPowerWatts * 1000)
+  const optEfficiencyDb = -3.5
+  const rxPowerDbm = txPowerDbm + gainTxDbi + gainTxDbi + fsplDb + optEfficiencyDb + pointingLossDb
+  const rxPowerWatts = Math.pow(10, (rxPowerDbm - 30) / 10)
 
-    // 6. Required Optical Power for Target Bitrate (dBm)
-    // P_req = Photons_per_bit * E_photon * Bitrate
-    const bitRateBps = dataRateGbps * 1e9
-    const reqPowerWatts = activePreset.detectorSensitivityPhotonsPerBit * photonEnergyJ * bitRateBps
-    const reqPowerDbm = Math.round((10 * Math.log10(reqPowerWatts * 1000)) * 10) / 10
+  const bitRateBps = spec.dataRateGbps * 1e9
+  const rxPhotonsPerBit = rxPowerWatts / (PHOTON_ENERGY_J * bitRateBps)
+  const requiredRxPowerWatts = spec.reqPhotonsPerBit * PHOTON_ENERGY_J * bitRateBps
+  const requiredRxPowerDbm = 10 * Math.log10(requiredRxPowerWatts * 1000)
+  const linkMarginDb = rxPowerDbm - requiredRxPowerDbm
+  const isLinkClosed = linkMarginDb >= 3.0
 
-    // 7. Net Optical Link Margin (dB)
-    const opticalMarginDb = Math.round((rxPowerDbm - reqPowerDbm) * 10) / 10
-    const linkPassed = opticalMarginDb >= 3.0 // Standard 3 dB optical mission margin
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
 
-    return {
-      divergenceUrad,
-      opticalGainDbi,
-      fsplDb,
-      pointingLossDb,
-      rxPowerDbm: rxPowerDbm.toFixed(1),
-      rxPowerNanoWatts,
-      reqPowerDbm,
-      opticalMarginDb,
-      linkPassed,
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#010308")
+
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
+    camera.position.set(0, 6, 16)
+    camera.lookAt(0, 0, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    scene.add(new THREE.AmbientLight(0x1e293b, 1.8))
+    const spot = new THREE.DirectionalLight(0xfffaed, 2.5)
+    spot.position.set(10, 15, 10)
+    scene.add(spot)
+
+    const baseGeo = new THREE.CylinderGeometry(1.2, 1.4, 0.6, 24)
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.3 })
+    const baseMesh = new THREE.Mesh(baseGeo, baseMat)
+    baseMesh.position.set(0, -1.8, 0)
+    scene.add(baseMesh)
+
+    const yokeGroup = new THREE.Group()
+    yokeGroup.position.set(0, -1.5, 0)
+    scene.add(yokeGroup)
+
+    const forkL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.6, 0.4), baseMat)
+    forkL.position.set(1.1, 0.8, 0)
+    yokeGroup.add(forkL)
+
+    const forkR = forkL.clone()
+    forkR.position.set(-1.1, 0.8, 0)
+    yokeGroup.add(forkR)
+
+    const telescopeGroup = new THREE.Group()
+    telescopeGroup.position.set(0, 0, 0)
+    yokeGroup.add(telescopeGroup)
+
+    const barrelGeo = new THREE.CylinderGeometry(0.85, 0.95, 2.8, 32, 1, true)
+    const barrelMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      metalness: 0.9,
+      roughness: 0.2,
+      side: THREE.DoubleSide
+    })
+    const barrel = new THREE.Mesh(barrelGeo, barrelMat)
+    barrel.rotation.x = Math.PI / 2
+    telescopeGroup.add(barrel)
+
+    const mirrorGeo = new THREE.CircleGeometry(0.82, 32)
+    const mirrorMat = new THREE.MeshStandardMaterial({
+      color: 0xd4af37,
+      metalness: 0.98,
+      roughness: 0.05
+    })
+    const primaryMirror = new THREE.Mesh(mirrorGeo, mirrorMat)
+    primaryMirror.position.set(0, 0, -1.2)
+    telescopeGroup.add(primaryMirror)
+
+    const spiderGeo = new THREE.CylinderGeometry(0.015, 0.015, 1.6, 8)
+    const spiderMat = new THREE.MeshStandardMaterial({ color: 0x64748b })
+    const spider1 = new THREE.Mesh(spiderGeo, spiderMat)
+    spider1.position.set(0, 0, 1.2)
+    telescopeGroup.add(spider1)
+
+    const spider2 = spider1.clone()
+    spider2.rotation.z = Math.PI / 2
+    telescopeGroup.add(spider2)
+
+    const secondaryGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.15, 16)
+    const secondaryMirror = new THREE.Mesh(secondaryGeo, mirrorMat)
+    secondaryMirror.rotation.x = Math.PI / 2
+    secondaryMirror.position.set(0, 0, 1.2)
+    telescopeGroup.add(secondaryMirror)
+
+    const beamGeo = new THREE.CylinderGeometry(0.8, 2.4, 25, 32, 1, true)
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
+      transparent: true,
+      opacity: isLinkClosed ? 0.35 : 0.08,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending
+    })
+    const laserBeam = new THREE.Mesh(beamGeo, beamMat)
+    laserBeam.rotation.x = Math.PI / 2
+    laserBeam.position.set(0, 0, 13.5)
+    telescopeGroup.add(laserBeam)
+
+    const coreBeamGeo = new THREE.CylinderGeometry(0.12, 0.45, 25, 16, 1, true)
+    const coreBeamMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: isLinkClosed ? 0.75 : 0.15,
+      blending: THREE.AdditiveBlending
+    })
+    const coreBeam = new THREE.Mesh(coreBeamGeo, coreBeamMat)
+    coreBeam.rotation.x = Math.PI / 2
+    coreBeam.position.set(0, 0, 13.5)
+    telescopeGroup.add(coreBeam)
+
+    let animId: number
+    const animate = () => {
+      animId = requestAnimationFrame(animate)
+
+      const t = Date.now() * 0.003
+      const jitterAmplitude = (effectiveJitterUrad / 10) * 0.03
+      const jitterX = Math.sin(t * 3.1) * jitterAmplitude + Math.sin(t * 7.7) * (jitterAmplitude * 0.5)
+      const jitterY = Math.cos(t * 2.8) * jitterAmplitude + Math.cos(t * 6.3) * (jitterAmplitude * 0.5)
+
+      telescopeGroup.rotation.x = jitterX
+      yokeGroup.rotation.y = jitterY
+
+      if (isLinkClosed) {
+        beamMat.opacity = 0.30 + Math.sin(t * 8) * 0.06
+      }
+
+      renderer.render(scene, camera)
     }
-  }, [linkDistanceKm, txPowerW, apertureDiameterMm, dataRateGbps, pointingJitterUrad, activePreset])
+    animate()
 
-  const exportLasercomCSV = () => {
-    const csv = `SPACECRAFT OPTICAL INTERSATELLITE LINK (OISL) SPEC
-Link Profile,${activePreset.name}
-Class,${activePreset.classType}
-Intersatellite Distance,${linkDistanceKm} km
-Optical Laser Wavelength,1550 nm (C-Band DWDM)
-Transmitter Laser Power,${txPowerW} Watts (${(10 * Math.log10(txPowerW * 1000)).toFixed(1)} dBm)
-Telescope Aperture Diameter,${apertureDiameterMm} mm
-Beam Divergence (FWHM),${metrics.divergenceUrad} urad
-Optical Telescope Gain,${metrics.opticalGainDbi} dBi
-Geometric Path Loss,${metrics.fsplDb} dB
-RMS Pointing Jitter,${pointingJitterUrad} urad (Pointing Penalty: -${metrics.pointingLossDb} dB)
-Received Optical Power,${metrics.rxPowerDbm} dBm (${metrics.rxPowerNanoWatts} nW)
-Target Downlink Bitrate,${dataRateGbps} Gbps
-Required Receiver Sensitivity,${metrics.reqPowerDbm} dBm (${activePreset.detectorSensitivityPhotonsPerBit} photons/bit)
-Net Optical Link Margin,${metrics.opticalMarginDb} dB (Required: >= 3.0 dB)
-PAT Link Availability Verdict,${metrics.linkPassed ? "PASS (HIGH-CONFIDENCE OPTICAL TRACKING)" : "FAIL (OPTICAL LINK DISRUPTION HAZARD)"}`
+    const onResize = () => {
+      if (!container) return
+      camera.aspect = container.clientWidth / container.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(container.clientWidth, container.clientHeight)
+    }
+    window.addEventListener("resize", onResize)
 
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `veroyx-lasercom-${selectedKey}.csv`
-    a.click()
-  }
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      renderer.dispose()
+    }
+  }, [spec, isLinkClosed, effectiveJitterUrad])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-7xl mx-auto space-y-10">
+    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-[#020617] font-sans text-slate-100 overflow-hidden">
+      
+      {/* LEFT PANEL */}
+      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Zap className="w-5 h-5 text-cyan-400" /> Optical Lasercom
+          </h1>
+          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
+            1550 nm OISL PAT &amp; Quantum Sensitivity Engine
+          </p>
+        </div>
 
-        {/* Master Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <Zap className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
-              CCSDS 141.0-B-1 Free-Space Optical Communications &amp; PAT Sizing Engine
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" /> Optical Terminal Class
+            </label>
+            <div className="space-y-2">
+              {(["SDA_SPACE_BACN", "COMMERCIAL_OISL", "DEEP_SPACE_DSOC", "TACTICAL_AIR_SPACE"] as LasercomPreset[]).map(p => {
+                const item = PRESETS[p]
+                return (
+                  <button
+                    key={p}
+                    onClick={() => {
+                      setPreset(p)
+                      setCrosslinkDistanceKm(Math.min(item.maxRangeKm, 3200))
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                      preset === p 
+                        ? "bg-cyan-950/60 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]" 
+                        : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold text-[11px] text-white">{item.name}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Aperture: {item.apertureDiameterMm} mm | EDFA: {item.edfaTxPowerWatts} W
+                      </div>
+                    </div>
+                    <div className="font-mono text-right text-[10px]">
+                      <span className="text-cyan-400 font-bold block">{item.dataRateGbps} Gbps</span>
+                      <span className="text-slate-500">{item.maxRangeKm} km max</span>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              OPTICAL INTERSATELLITE LINKS (OISL)
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-3xl text-sm leading-relaxed">
-              Model microradian Gaussian laser divergence, Free-Space Path Loss (L_geo), pointing-acquisition-and-tracking (PAT) jitter losses, and multi-gigabit receiver photon sensitivities.
+          </div>
+
+          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Crosslink Range &amp; PAT Dynamics
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">CROSSLINK DISTANCE:</span>
+                <span className="text-cyan-400 font-bold">{crosslinkDistanceKm.toLocaleString()} km</span>
+              </div>
+              <input 
+                type="range" min="200" max={spec.maxRangeKm} step="50"
+                value={crosslinkDistanceKm}
+                onChange={e => setCrosslinkDistanceKm(Number(e.target.value))}
+                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500">
+                <span>Intra-Plane (500 km)</span>
+                <span>Inter-Plane Crosslink ({spec.maxRangeKm} km)</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">BUS PLATFORM JITTER:</span>
+                <span className={`font-bold ${rmsJitterUrad <= 2.0 ? "text-emerald-400" : "text-amber-400"}`}>
+                  {rmsJitterUrad.toFixed(1)} μrad (1-σ)
+                </span>
+              </div>
+              <input 
+                type="range" min="0.2" max="6.0" step="0.1"
+                value={rmsJitterUrad}
+                onChange={e => setRmsJitterUrad(Number(e.target.value))}
+                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+
+            <div className="flex justify-between items-center pt-2 border-t border-slate-800/60">
+              <span className="text-slate-400">PIEZO FSM CLOSED-LOOP (1 kHz):</span>
+              <button
+                onClick={() => setFsmTrackingActive(!fsmTrackingActive)}
+                className={`px-3 py-1 rounded border text-[10px] font-bold ${
+                  fsmTrackingActive 
+                    ? "bg-cyan-950 border-cyan-500 text-cyan-300" 
+                    : "bg-rose-950 border-rose-500 text-rose-300"
+                }`}
+              >
+                {fsmTrackingActive ? "FSM LOCKED (82% DAMPING)" : "OPEN-LOOP DRIFT"}
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-4 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Optical Physics Breakdown</div>
+            <div className="flex justify-between"><span className="text-slate-500">Carrier Wavelength:</span><span className="text-white font-bold">{spec.wavelengthNm} nm (C-Band)</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Optical Directivity (G_T):</span><span className="text-cyan-400 font-bold">+{gainTxDbi.toFixed(1)} dBi</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Beam Divergence:</span><span className="text-amber-400 font-bold">{beamDivergenceUrad.toFixed(1)} μrad</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Footprint at Target:</span><span className="text-white">{beamFootprintDiameterM.toFixed(1)} m dia</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Residual Jitter (Post-FSM):</span><span className="text-emerald-400 font-bold">{effectiveJitterUrad.toFixed(2)} μrad</span></div>
+          </div>
+        </div>
+      </div>
+
+      {/* CENTER PANEL */}
+      <div className="flex-1 h-full relative flex flex-col">
+        <div className="absolute top-6 left-6 z-10 font-mono">
+          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">Coherent Optical Link Status</div>
+          <div className="flex items-baseline gap-3">
+            <span className={`text-4xl font-black ${isLinkClosed ? "text-emerald-400" : "text-rose-400"}`}>
+              {linkMarginDb > 0 ? `+${linkMarginDb.toFixed(2)}` : linkMarginDb.toFixed(2)} dB
+            </span>
+            <span className="text-slate-500 text-sm">OPTICAL MARGIN</span>
+          </div>
+          <div className="flex gap-4 mt-2 text-[11px]">
+            <span className="text-cyan-400">RECEIVED POWER: {rxPowerDbm.toFixed(1)} dBm</span>
+            <span className="text-emerald-400">SENSITIVITY: {rxPhotonsPerBit.toFixed(0)} PHOTONS/BIT</span>
+            <span className="text-amber-400">JITTER PENALTY: {pointingLossDb.toFixed(2)} dB</span>
+          </div>
+        </div>
+
+        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Target className="w-5 h-5 text-cyan-400" />
+            <div>
+              <span className="text-slate-500 block text-[9px]">BEAM COLLIMATION GAIN</span>
+              <span className="text-white font-bold text-sm">+{gainTxDbi.toFixed(1)} dBi</span>
+            </div>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">FREE-SPACE PATH LOSS</span>
+            <span className="text-rose-400 font-bold text-sm">{fsplDb.toFixed(1)} dB</span>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">QPD CENTERING ERROR</span>
+            <span className="text-cyan-400 font-bold text-sm">&lt; 0.08 μrad (LOCKED)</span>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">LINK STATE</span>
+            <span className={`text-sm font-bold ${isLinkClosed ? "text-emerald-400" : "text-rose-400 animate-pulse"}`}>
+              {isLinkClosed ? "COHERENT LOCK (BER &lt; 1e-12)" : "OUT OF LOCK (PAT RETRY)"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-cyan-400" /> Optical Link Cascade
+        </h2>
+
+        <div className="space-y-6">
+          <div className={`p-5 rounded-2xl border ${isLinkClosed ? "bg-emerald-950/20 border-emerald-500/40" : "bg-rose-950/20 border-rose-500/40"}`}>
+            <div className="text-[10px] font-bold tracking-wider mb-1 text-slate-400">
+              OISL LINK CLOSURE VERIFICATION
+            </div>
+            <div className={`text-2xl font-black flex items-center gap-2 ${isLinkClosed ? "text-emerald-400" : "text-rose-400"}`}>
+              {isLinkClosed ? <ShieldCheck className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
+              {isLinkClosed ? "NOMINAL CLOSURE" : "LINK DEFICIT"}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+              {isLinkClosed 
+                ? `Terminal delivers ${spec.dataRateGbps} Gbps continuous crosslink with ${linkMarginDb.toFixed(1)} dB excess optical margin above quantum threshold.` 
+                : "MARGIN DEFICIT: Received photon density below EDFA noise threshold. Increase optical aperture, activate FSM closed-loop, or reduce crosslink distance."}
             </p>
           </div>
 
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <button
-              onClick={exportLasercomCSV}
-              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              EXPORT LASERCOM SPEC
-            </button>
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Photon Cascade Waterfall</div>
+            <div className="flex justify-between"><span className="text-slate-500">EDFA Optical Power:</span><span className="text-white">+{txPowerDbm.toFixed(1)} dBm ({spec.edfaTxPowerWatts} W)</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">TX Telescope Gain:</span><span className="text-emerald-400">+{gainTxDbi.toFixed(1)} dBi</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">RX Telescope Gain:</span><span className="text-emerald-400">+{gainTxDbi.toFixed(1)} dBi</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Free-Space Path Loss:</span><span className="text-rose-400">{fsplDb.toFixed(1)} dB</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Optical Train Loss:</span><span className="text-rose-400">{optEfficiencyDb.toFixed(1)} dB</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Pointing Jitter Loss:</span><span className="text-amber-400">{pointingLossDb.toFixed(2)} dB</span></div>
+            
+            <div className="flex justify-between font-bold border-t border-slate-800 pt-1.5"><span className="text-white">Received Power (P_rx):</span><span className="text-cyan-400">{rxPowerDbm.toFixed(1)} dBm</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Receiver Threshold:</span><span className="text-slate-400">{requiredRxPowerDbm.toFixed(1)} dBm</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Photons / Bit (Received):</span><span className="text-white font-bold">{rxPhotonsPerBit.toFixed(0)} photons</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Threshold (Required):</span><span className="text-slate-400">{spec.reqPhotonsPerBit} photons</span></div>
+            <div className="flex justify-between font-black text-sm border-t border-slate-700 pt-1.5"><span className="text-white">NET LINK MARGIN:</span><span className={isLinkClosed ? "text-emerald-400" : "text-rose-400"}>{linkMarginDb > 0 ? `+${linkMarginDb.toFixed(2)}` : linkMarginDb.toFixed(2)} dB</span></div>
+          </div>
+
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">PAT Subsystem Architecture</div>
+            <div className="flex justify-between"><span className="text-slate-500">Coarse Slewing:</span><span className="text-white">Direct-Drive Brushless</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Fine Steering Mirror:</span><span className="text-cyan-400 font-bold">Piezo (3-Axis, 1.2 kHz)</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Acquisition Beacon:</span><span className="text-white">850 nm Wide-Angle</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Handshake Time:</span><span className="text-emerald-400 font-bold">&lt; 15 seconds</span></div>
           </div>
         </div>
-
-        {/* Preset Selector */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 font-mono text-xs">
-          {Object.entries(LASERCOM_PRESETS).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap text-left ${
-                selectedKey === k
-                  ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
-                  : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
-              }`}
-            >
-              <div className="font-bold">{v.name}</div>
-              <div className="text-[10px] text-slate-500">{v.linkDistanceKm} km · {v.dataRateGbps} Gbps</div>
-            </button>
-          ))}
-        </div>
-
-        {/* Primary KPI Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono text-xs">
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Zap className="w-3 h-3 text-cyan-400" /> OPTICAL LINK MARGIN
-            </div>
-            <div className={`text-3xl font-black ${metrics.linkPassed ? "text-emerald-400" : "text-red-400"}`}>
-              +{metrics.opticalMarginDb} dB
-            </div>
-            <div className="text-[10px] text-slate-400">Req: &ge; 3.0 dB Margin</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Crosshair className="w-3 h-3 text-purple-400" /> BEAM DIVERGENCE
-            </div>
-            <div className="text-3xl font-black text-purple-400">{metrics.divergenceUrad} µrad</div>
-            <div className="text-[10px] text-slate-400">Gain: +{metrics.opticalGainDbi} dBi</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Target className="w-3 h-3 text-amber-400" /> POINTING PENALTY
-            </div>
-            <div className="text-3xl font-black text-amber-400">-{metrics.pointingLossDb} dB</div>
-            <div className="text-[10px] text-slate-400">From {pointingJitterUrad} µrad RMS Jitter</div>
-          </div>
-
-          <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-            <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-              <Activity className="w-3 h-3 text-emerald-400" /> RECEIVED POWER
-            </div>
-            <div className="text-3xl font-black text-white">{metrics.rxPowerNanoWatts} nW</div>
-            <div className="text-[10px] text-slate-400">{metrics.rxPowerDbm} dBm (Req: {metrics.reqPowerDbm} dBm)</div>
-          </div>
-        </div>
-
-        {/* Workspace Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
-
-          {/* Configuration Form */}
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
-            <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
-              <Gauge className="w-4 h-4 text-cyan-400" />
-              Terminal &amp; Channel Sizing
-            </div>
-
-            {/* Distance Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">CROSSLINK DISTANCE</label>
-                <span className="text-cyan-400 font-bold">{linkDistanceKm} KM</span>
-              </div>
-              <input
-                type="range"
-                min={500}
-                max={45000}
-                step={500}
-                value={linkDistanceKm}
-                onChange={(e) => setLinkDistanceKm(Number(e.target.value))}
-                className="w-full accent-cyan-400 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>1000 km (Adjacent)</span>
-                <span>5000 km (Cross-Plane)</span>
-                <span>45000 km (GEO)</span>
-              </div>
-            </div>
-
-            {/* Transmit Power & Aperture */}
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/80">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 block uppercase font-bold">LASER POWER (W)</label>
-                <input
-                  type="number"
-                  step={0.5}
-                  value={txPowerW}
-                  onChange={(e) => setTxPowerW(Math.max(0.1, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 block uppercase font-bold">APERTURE (mm)</label>
-                <input
-                  type="number"
-                  step={5}
-                  value={apertureDiameterMm}
-                  onChange={(e) => setApertureDiameterMm(Math.max(30, Number(e.target.value)))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                />
-              </div>
-            </div>
-
-            {/* Bitrate Slider */}
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">DATA RATE</label>
-                <span className="text-emerald-400 font-bold">{dataRateGbps} GBPS</span>
-              </div>
-              <input
-                type="range"
-                min={0.1}
-                max={20.0}
-                step={0.5}
-                value={dataRateGbps}
-                onChange={(e) => setDataRateGbps(Number(e.target.value))}
-                className="w-full accent-emerald-400 cursor-pointer"
-              />
-              <span className="text-[10px] text-slate-500 block">Digital coherent or direct APD optical receiver</span>
-            </div>
-
-            {/* Pointing Jitter */}
-            <div className="space-y-2 pt-2 border-t border-slate-800/80">
-              <div className="flex justify-between">
-                <label className="text-slate-400 uppercase font-bold">RMS POINTING JITTER</label>
-                <span className="text-purple-400 font-bold">{pointingJitterUrad} µRAD</span>
-              </div>
-              <input
-                type="range"
-                min={0.1}
-                max={4.0}
-                step={0.1}
-                value={pointingJitterUrad}
-                onChange={(e) => setPointingJitterUrad(Number(e.target.value))}
-                className="w-full accent-purple-400 cursor-pointer"
-              />
-              <span className="text-[10px] text-slate-500 block">Correlated with RWA micro-vibration from /jitter</span>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-sans text-slate-400">
-              <strong className="text-cyan-400 block font-mono">OPTICAL COUPLING:</strong>
-              Because optical divergence is narrow ({metrics.divergenceUrad} µrad), slight spacecraft micro-vibrations cause severe pointing penalties (-{metrics.pointingLossDb} dB).
-            </div>
-          </div>
-
-          {/* Results Telemetry Desk */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Lasercom Link Dossier */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2 font-mono">
-                  <Wifi className="w-4 h-4 text-cyan-400" />
-                  Optical Intersatellite Channel &amp; Energy Budget
-                </span>
-                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded border uppercase ${
-                  metrics.linkPassed
-                    ? "bg-emerald-950 border-emerald-500/40 text-emerald-300"
-                    : "bg-red-950 border-red-500/40 text-red-300"
-                }`}>
-                  {metrics.linkPassed ? "OPTICAL LINK MARGIN VERIFIED" : "LINK BUDGET CLOSURE DEFICIT"}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-xs font-sans text-slate-300 leading-relaxed space-y-2">
-                <p>
-                  Transmitting <strong className="text-white">{dataRateGbps} Gbps</strong> across a <strong className="text-white">{linkDistanceKm} km</strong> optical crosslink requires delivering at least <strong className="text-white">{metrics.reqPowerDbm} dBm</strong> to satisfy the {activePreset.detectorSensitivityPhotonsPerBit} photons/bit quantum sensitivity limit.
-                </p>
-                <p>
-                  A {apertureDiameterMm}mm aperture collimates the 1550 nm laser into a <strong className="text-cyan-400">{metrics.divergenceUrad} µrad beam</strong> (+{metrics.opticalGainDbi} dBi gain). 
-                  Free-space loss of <strong className="text-white">{metrics.fsplDb} dB</strong> combined with -{metrics.pointingLossDb} dB of pointing jitter loss results in <strong className="text-emerald-400">{metrics.rxPowerNanoWatts} nW ({metrics.rxPowerDbm} dBm)</strong> at the detector, maintaining a <strong className={metrics.linkPassed ? "text-emerald-400" : "text-red-400"}>+{metrics.opticalMarginDb} dB link margin</strong>.
-                  {!metrics.linkPassed && (
-                    <span className="text-red-400 block mt-1 font-bold">
-                      Link budget deficit: Net margin is below the 3.0 dB flight threshold. Increase transmitter power, enlarge telescope aperture, or integrate active Fast Steering Mirrors (FSM) to suppress pointing jitter.
-                    </span>
-                  )}
-                </p>
-              </div>
-
-              {/* Specs Breakdown */}
-              <div className="space-y-2 text-xs pt-2 font-mono">
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Geometric Free-Space Path Loss (L_geo)</span>
-                  <span className="text-white font-bold">-{metrics.fsplDb} dB</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Transmitter Telescope Gain (G_tx)</span>
-                  <span className="text-cyan-400 font-bold">+{metrics.opticalGainDbi} dBi</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">PAT Jitter Insertion Loss</span>
-                  <span className="text-amber-400 font-bold">-{metrics.pointingLossDb} dB (at {pointingJitterUrad} µrad RMS)</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Optical Communications Verification</span>
-                  <span className={`font-bold ${metrics.linkPassed ? "text-emerald-400" : "text-red-400"}`}>
-                    {metrics.linkPassed ? "PASS (CLEARED FOR HIGH-RATE CROSSHAUL)" : "FAIL (REVISE POWER / JITTER)"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Correlated Engines */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3 font-mono text-xs">
-              <span className="text-slate-400 font-bold uppercase text-[10px] block">
-                CORRELATED ENGINES:
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
-                <Link href="/jitter" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/jitter (RWA)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-                <Link href="/link" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/link (RF Comms)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-                <Link href="/two-phase" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/two-phase (Heat)</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-                <Link href="/mission-builder" className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-                  <span>/mission-builder</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
-                </Link>
-              </div>
-            </div>
-
-          </div>
-
-        </div>
-
       </div>
     </div>
   )
