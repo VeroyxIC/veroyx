@@ -6,7 +6,7 @@ html {
 }
 
 body {
-  background-color: #01030a;
+  background-color: #010208;
   color: #f8fafc;
   overflow-x: hidden;
 }
@@ -16,7 +16,7 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #01030a;
+  background: #010208;
 }
 ::-webkit-scrollbar-thumb {
   background: #1e293b;
@@ -25,32 +25,4 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #0284c7;
-}
-
-@keyframes breatheGlow {
-  0%, 100% {
-    transform: scale(1);
-    filter: drop-shadow(0 0 25px rgba(6, 182, 212, 0.45));
-  }
-  50% {
-    transform: scale(1.05);
-    filter: drop-shadow(0 0 55px rgba(6, 182, 212, 0.95));
-  }
-}
-
-@keyframes orbitSatellite {
-  from {
-    transform: rotate(0deg) translateX(88px) rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg) translateX(88px) rotate(-360deg);
-  }
-}
-
-.animate-breathe-glow {
-  animation: breatheGlow 4s ease-in-out infinite;
-}
-
-.animate-orbit-satellite {
-  animation: orbitSatellite 8s linear infinite;
 }
