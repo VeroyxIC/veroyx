@@ -1,39 +1,17 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-html {
-  scroll-behavior: smooth;
-  color-scheme: dark;
+:root {
+  --background: #05070a;
+  --foreground: #f8fafc;
 }
 
 body {
-  background-color: #01030a;
-  color: #f8fafc;
-  overflow-x: hidden;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
-/* Custom Cyberpunk / Tactical Aerospace Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+html, body { overflow-x: hidden !important; overflow-y: auto !important; height: auto !important; min-height: 100% !important; touch-action: pan-y !important; -webkit-overflow-scrolling: touch !important; }
+canvas { touch-action: pan-y !important; }
 
-::-webkit-scrollbar-track {
-  background: #01030a;
-}
 
-::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 9999px;
-  border: 1px solid #0f172a;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
-}
-
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #1e293b #01030a;
-}
+html { scroll-behavior: smooth; }
