@@ -11,32 +11,22 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Tactical Aerospace Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
   background: #01030a;
 }
-
 ::-webkit-scrollbar-thumb {
   background: #1e293b;
   border-radius: 9999px;
   border: 1px solid #0f172a;
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: #0284c7;
 }
 
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #1e293b #01030a;
-}
-
-/* Organic Breathing Cyan Glow for Borderless V Logo */
 @keyframes breatheGlow {
   0%, 100% {
     transform: scale(1);

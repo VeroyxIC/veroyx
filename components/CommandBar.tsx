@@ -228,7 +228,6 @@ export default function CommandBar() {
         {/* RIGHT: SEARCH, DEFCON, & VIP */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           
-          {/* SEARCH BUTTON WITH GLOBAL TRIGGER */}
           <button
             onClick={triggerPalette}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white transition-all shadow-inner"
@@ -241,7 +240,6 @@ export default function CommandBar() {
             </kbd>
           </button>
 
-          {/* DEFCON BADGE */}
           <div className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-[10px]">
             <span className="text-slate-500">DEFCON</span>
             <button
@@ -258,13 +256,11 @@ export default function CommandBar() {
             </button>
           </div>
 
-          {/* ZULU TIME */}
           <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-mono text-[10px]">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
             <span>{zuluTime || "12:00:00 Z"}</span>
           </div>
 
-          {/* VIP ACCESS BUTTON */}
           <Link
             href="/access"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white font-bold text-[11px] shadow-[0_0_15px_rgba(6,182,212,0.3)] transition-all shrink-0"
