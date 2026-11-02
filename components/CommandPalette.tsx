@@ -3,12 +3,10 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { 
-  Search, Terminal, Crosshair, Orbit, ShieldCheck, Zap, 
-  Radio, Compass, Layers, Globe, ArrowRight, CornerDownLeft, 
-  Command, Eye, Activity, Sparkles, X, Flame, Wind, Lock, Sun, Key 
+  Terminal, Search, X, CornerDownLeft 
 } from "lucide-react"
 
-interface RouteItem {
+export interface RouteItem {
   name: string
   route: string
   domain: string
@@ -16,7 +14,7 @@ interface RouteItem {
   badge: string
 }
 
-const ALL_CAPABILITIES: RouteItem[] = [
+export const ALL_CAPABILITIES: RouteItem[] = [
   // Master Command & Institutional Gate
   { name: "Enterprise VIP Access Portal ($10K+ Seats)", route: "/access", domain: "ENTERPRISE", description: "Institutional seat licensing, ITAR compliance, and sovereign node procurement", badge: "VIP" },
   { name: "Unified Command Nexus", route: "/nexus", domain: "COMMAND", description: "Grand Unified Space Domain Awareness Multi-Tier Nexus", badge: "TIER-0" },
@@ -26,6 +24,7 @@ const ALL_CAPABILITIES: RouteItem[] = [
 
   // Orbital Defense & Kinetic
   { name: "Kinetic ASAT & DEW Intercept", route: "/intercept", domain: "DEFENSE", description: "Hit-to-kill True ProNav guidance and laser thermal ablation", badge: "H2K" },
+  { name: "Space Kill-Chain JADC2", route: "/kill-chain", domain: "DEFENSE", description: "Automated F2T2EA battle management and weapon-target pairing", badge: "JADC2" },
   { name: "Non-Cooperative RPO Corridors", route: "/rpo", domain: "DEFENSE", description: "Hill-Clohessy-Wiltshire proximity safety keep-out envelopes", badge: "HCW" },
   { name: "Pursuit-Evasion Differential Combat", route: "/pursuit-evasion", domain: "DEFENSE", description: "Hamilton-Jacobi-Isaacs reachability basins and dogfights", badge: "GAME" },
   { name: "HEMP & Radiation Belts", route: "/hemp-sim", domain: "DEFENSE", description: "Exoatmospheric EMP E1/E2/E3 and Starfish Prime trapping", badge: "EMP" },
@@ -53,32 +52,60 @@ const ALL_CAPABILITIES: RouteItem[] = [
   { name: "Space Weather & Geomagnetic", route: "/space-weather", domain: "PHYSICS", description: "Solar coronal mass ejections, Kp-index, and drag flare", badge: "SWPC" }
 ]
 
-export default function CommandPalette() {
+export interface CommandPaletteProps {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
+export default function CommandPalette({ isOpen: propIsOpen, onClose }: CommandPaletteProps = {}) {
   const router = useRouter()
-  const [isOpen, setIsOpen] = useState(false)
+  const [internalIsOpen, setInternalIsOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [selectedIndex, setSelectedIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement | null>(null)
+
+  const isControlled = propIsOpen !== undefined
+  const isOpen = isControlled ? propIsOpen : internalIsOpen
+
+  const handleClose = () => {
+    if (onClose) {
+      onClose()
+    } else {
+      setInternalIsOpen(false)
+    }
+  }
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
-        setIsOpen(prev => !prev)
+        if (isControlled) {
+          if (isOpen) {
+            onClose?.()
+          } else {
+            window.dispatchEvent(new CustomEvent("toggle-command-palette"))
+          }
+        } else {
+          setInternalIsOpen(prev => !prev)
+        }
       } else if (e.key === "Escape" && isOpen) {
-        setIsOpen(false)
+        handleClose()
       }
     }
 
-    const handleCustomTrigger = () => setIsOpen(true)
+    const handleOpenEvent = () => {
+      if (!isControlled) {
+        setInternalIsOpen(true)
+      }
+    }
 
     window.addEventListener("keydown", handleKeyDown)
-    window.addEventListener("open-command-palette", handleCustomTrigger)
+    window.addEventListener("open-command-palette", handleOpenEvent)
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
-      window.removeEventListener("open-command-palette", handleCustomTrigger)
+      window.removeEventListener("open-command-palette", handleOpenEvent)
     }
-  }, [isOpen])
+  }, [isOpen, isControlled, onClose])
 
   useEffect(() => {
     if (isOpen) {
@@ -111,7 +138,7 @@ export default function CommandPalette() {
     } else if (e.key === "Enter" && filtered[selectedIndex]) {
       e.preventDefault()
       const targetRoute = filtered[selectedIndex].route
-      setIsOpen(false)
+      handleClose()
       router.push(targetRoute)
     }
   }
@@ -120,7 +147,7 @@ export default function CommandPalette() {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24 px-4 bg-black/80 backdrop-blur-md font-mono text-xs">
-      <div className="fixed inset-0" onClick={() => setIsOpen(false)} />
+      <div className="fixed inset-0" onClick={handleClose} />
 
       <div 
         className="relative w-full max-w-2xl bg-[#020617] border border-cyan-500/40 rounded-2xl shadow-[0_0_50px_rgba(6,182,212,0.25)] overflow-hidden flex flex-col z-10"
@@ -140,7 +167,7 @@ export default function CommandPalette() {
             className="flex-1 bg-transparent text-white text-sm placeholder:text-slate-500 focus:outline-none"
           />
           <button 
-            onClick={() => setIsOpen(false)}
+            onClick={handleClose}
             className="p-1 rounded text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -159,7 +186,7 @@ export default function CommandPalette() {
                 <div
                   key={item.route}
                   onClick={() => {
-                    setIsOpen(false)
+                    handleClose()
                     router.push(item.route)
                   }}
                   onMouseEnter={() => setSelectedIndex(idx)}
