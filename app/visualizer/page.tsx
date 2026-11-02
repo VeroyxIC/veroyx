@@ -2,75 +2,33 @@
 
 import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
-import { 
-  Orbit, Gauge, Activity, Zap, Compass, RotateCcw, 
-  Play, Square, Layers, ShieldCheck, Flame, Radio, 
-  ArrowRight, Sparkles, Navigation, Globe, Eye 
-} from "lucide-react"
-import { createMilitarySatellite, createCinematicEarth, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
+import { Orbit, Activity, ShieldCheck, Flame, Play, Square, Eye, Globe } from "lucide-react"
+import { createCinematicEarth, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
 
 export default function VisualizerPage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
 
-  // Interactive UI State
   const [altitudeKm, setAltitudeKm] = useState<number>(550)
   const [inclinationDeg, setInclinationDeg] = useState<number>(51.6)
-  const [eccentricity, setEccentricity] = useState<number>(0.002)
-  const [timeWarp, setTimeWarp] = useState<number>(1)
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [isBurning, setIsBurning] = useState<boolean>(false)
-  const [burnDeltaVMs, setBurnDeltaVMs] = useState<number>(120)
 
-  // Animation Engine Refs (Decouples 60 FPS loop from React renders)
-  const paramsRef = useRef({
-    altitudeKm: 550,
-    inclinationDeg: 51.6,
-    eccentricity: 0.002,
-    timeWarp: 1,
-    isPlaying: true,
-    isBurning: false
-  })
-
-  // Keep refs synchronized with React state
+  const paramsRef = useRef({ altitudeKm: 550, inclinationDeg: 51.6, isPlaying: true, isBurning: false })
   useEffect(() => {
-    paramsRef.current = {
-      altitudeKm,
-      inclinationDeg,
-      eccentricity,
-      timeWarp,
-      isPlaying,
-      isBurning
-    }
-  }, [altitudeKm, inclinationDeg, eccentricity, timeWarp, isPlaying, isBurning])
+    paramsRef.current = { altitudeKm, inclinationDeg, isPlaying, isBurning }
+  }, [altitudeKm, inclinationDeg, isPlaying, isBurning])
 
-  // Orbital Physics calculations
-  const MU = 3.986004418e14
-  const R_EARTH_KM = 6371
-  const rM = (R_EARTH_KM + altitudeKm) * 1000
-  const velocityKms = (Math.sqrt(MU / rM) / 1000).toFixed(2)
-  const periodMin = ((2 * Math.PI * Math.sqrt(Math.pow(rM, 3) / MU)) / 60).toFixed(1)
-
-  // Execute Impulsive Thruster Burn
-  const triggerBurn = () => {
-    setIsBurning(true)
-    setTimeout(() => {
-      setIsBurning(false)
-      setAltitudeKm(prev => Math.min(35786, prev + Math.round(burnDeltaVMs * 2.5)))
-    }, 2800)
-  }
-
-  // 60 FPS Three.js Engine Mount
+  // Persistent 60 FPS NASA Blue Marble Scene Mount (Video 00:10 - 00:19)
   useEffect(() => {
     const container = mountRef.current
-    if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#01030a")
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 2000)
-    camera.position.set(0, 16, 28)
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 3000)
+    camera.position.set(0, 14, 26)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" })
@@ -79,25 +37,62 @@ export default function VisualizerPage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
-    const sunLight = new THREE.DirectionalLight(0xfffaed, 3.4)
-    sunLight.position.set(30, 25, 20)
-    scene.add(sunLight)
-
-    // Starfield & Cinematic Earth
-    const starfield = createDeepSpaceStarfield(1400, 700)
+    // Deep-Space Stellar Skybox
+    const starfield = createDeepSpaceStarfield(1600, 800)
     scene.add(starfield)
 
+    // 1. The Radiant Sun with Anamorphic Flare in Upper Left (Video 00:10)
+    const sunLight = new THREE.DirectionalLight(0xfffaee, 4.0)
+    sunLight.position.set(-28, 22, 14)
+    scene.add(sunLight)
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.6))
+
+    const sunGeo = new THREE.SphereGeometry(1.6, 32, 32)
+    const sunMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    const sunMesh = new THREE.Mesh(sunGeo, sunMat)
+    sunMesh.position.set(-32, 26, 14)
+    scene.add(sunMesh)
+
+    const flareLineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-45, 26, 14),
+      new THREE.Vector3(-19, 26, 14)
+    ])
+    const flareLineMat = new THREE.LineBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.85, linewidth: 3 })
+    const flareLine = new THREE.Line(flareLineGeo, flareLineMat)
+    scene.add(flareLine)
+
+    // 2. NASA Blue Marble Earth
     const earthRadius = 5.5
     const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
     scene.add(earthGroup)
 
-    // Photorealistic Military Recon Satellite
+    // 3. The Moon in Background Orbit (Video 00:15)
+    const moonGeo = new THREE.SphereGeometry(1.4, 32, 32)
+    const moonMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 })
+    const moonMesh = new THREE.Mesh(moonGeo, moonMat)
+    moonMesh.position.set(18, 12, -22)
+    scene.add(moonMesh)
+
+    // 4. Primary Military Satellite & Wingmen Formation
     const { group: satGroup, plume: ionPlume } = createMilitarySatellite({ scale: 0.55 })
     scene.add(satGroup)
 
-    // Dynamic Orbital Path Line
+    const { group: wingman1 } = createMilitarySatellite({ scale: 0.35 })
+    scene.add(wingman1)
+    const { group: wingman2 } = createMilitarySatellite({ scale: 0.35 })
+    scene.add(wingman2)
+
+    // 5. Tactical Neon-Green Inter-Satellite Laser Links (OISL) (Video 00:10 - 00:19)
+    const laserMat = new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2.5, transparent: true, opacity: 0.9 })
+    const laserGeo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])
+    const laserLine1 = new THREE.Line(laserGeo1, laserMat)
+    scene.add(laserLine1)
+
+    const laserGeo2 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])
+    const laserLine2 = new THREE.Line(laserGeo2, laserMat)
+    scene.add(laserLine2)
+
+    // Orbit Path Line
     const orbitPointsCount = 128
     const orbitGeo = new THREE.BufferGeometry()
     const orbitPositions = new Float32Array(orbitPointsCount * 3)
@@ -106,40 +101,21 @@ export default function VisualizerPage() {
     const orbitLine = new THREE.Line(orbitGeo, orbitMat)
     scene.add(orbitLine)
 
-    // Mouse Drag Controls
-    let isDragging = false
-    let prevMouseX = 0
-    let prevMouseY = 0
-
-    const onMouseDown = (e: MouseEvent) => {
-      isDragging = true
-      prevMouseX = e.clientX
-      prevMouseY = e.clientY
+    // Debris Rings Cloud (Video 00:18)
+    const debrisCount = 600
+    const debGeo = new THREE.BufferGeometry()
+    const debPos = new Float32Array(debrisCount * 3)
+    for (let i = 0; i < debrisCount; i++) {
+      const r = earthRadius + 0.8 + Math.random() * 3.5
+      const theta = Math.random() * Math.PI * 2
+      debPos[i * 3 + 0] = r * Math.cos(theta)
+      debPos[i * 3 + 1] = (Math.random() - 0.5) * 1.8
+      debPos[i * 3 + 2] = r * Math.sin(theta)
     }
+    debGeo.setAttribute("position", new THREE.BufferAttribute(debPos, 3))
+    const debCloud = new THREE.Points(debGeo, new THREE.PointsMaterial({ color: 0x94a3b8, size: 0.1, transparent: true, opacity: 0.65 }))
+    scene.add(debCloud)
 
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return
-      const deltaX = e.clientX - prevMouseX
-      const deltaY = e.clientY - prevMouseY
-      prevMouseX = e.clientX
-      prevMouseY = e.clientY
-
-      camera.position.x += deltaX * 0.05
-      camera.position.y -= deltaY * 0.05
-      camera.lookAt(0, 0, 0)
-    }
-
-    const onMouseUp = () => { isDragging = false }
-    const onWheel = (e: WheelEvent) => {
-      camera.position.z = Math.max(12, Math.min(70, camera.position.z + e.deltaY * 0.03))
-    }
-
-    container.addEventListener("mousedown", onMouseDown)
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp)
-    container.addEventListener("wheel", onWheel, { passive: true })
-
-    // Continuous 60 FPS Clock Loop
     const clock = new THREE.Clock()
     let orbitAngle = 0
     let animId: number
@@ -148,44 +124,64 @@ export default function VisualizerPage() {
       animId = requestAnimationFrame(animate)
 
       const delta = clock.getDelta()
-      const { altitudeKm, inclinationDeg, eccentricity, timeWarp, isPlaying, isBurning } = paramsRef.current
+      const elapsed = clock.getElapsedTime()
+      const { altitudeKm, inclinationDeg, isPlaying, isBurning } = paramsRef.current
 
       if (isPlaying) {
-        orbitAngle += delta * 0.6 * timeWarp
-
-        earthMesh.rotation.y += 0.05 * delta * timeWarp
-        cloudsMesh.rotation.y += 0.075 * delta * timeWarp
+        orbitAngle += delta * 0.5
+        earthMesh.rotation.y += 0.05 * delta
+        cloudsMesh.rotation.y += 0.075 * delta
 
         const orbitScaleRadius = earthRadius + (altitudeKm / 6371) * earthRadius
         const incRad = (inclinationDeg * Math.PI) / 180
-        const rCurrent = (orbitScaleRadius * (1 - eccentricity * eccentricity)) / (1 + eccentricity * Math.cos(orbitAngle))
 
-        const satX = rCurrent * Math.cos(orbitAngle)
-        const satY = rCurrent * Math.sin(orbitAngle) * Math.sin(incRad)
-        const satZ = rCurrent * Math.sin(orbitAngle) * Math.cos(incRad)
+        const satX = orbitScaleRadius * Math.cos(orbitAngle)
+        const satY = orbitScaleRadius * Math.sin(orbitAngle) * Math.sin(incRad)
+        const satZ = orbitScaleRadius * Math.sin(orbitAngle) * Math.cos(incRad)
 
         satGroup.position.set(satX, satY, satZ)
         satGroup.lookAt(0, 0, 0)
 
+        // Wingmen positions
+        const w1X = (orbitScaleRadius + 1.2) * Math.cos(orbitAngle + 0.8)
+        const w1Y = (orbitScaleRadius + 1.2) * Math.sin(orbitAngle + 0.8) * Math.sin(incRad + 0.2)
+        const w1Z = (orbitScaleRadius + 1.2) * Math.sin(orbitAngle + 0.8) * Math.cos(incRad + 0.2)
+        wingman1.position.set(w1X, w1Y, w1Z)
+        wingman1.lookAt(0, 0, 0)
+
+        const w2X = (orbitScaleRadius + 0.8) * Math.cos(orbitAngle - 0.7)
+        const w2Y = (orbitScaleRadius + 0.8) * Math.sin(orbitAngle - 0.7) * Math.sin(incRad - 0.2)
+        const w2Z = (orbitScaleRadius + 0.8) * Math.sin(orbitAngle - 0.7) * Math.cos(incRad - 0.2)
+        wingman2.position.set(w2X, w2Y, w2Z)
+        wingman2.lookAt(0, 0, 0)
+
+        // Update Green Laser Links (OISL)
+        laserGeo1.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
+          satX, satY, satZ,
+          w1X, w1Y, w1Z
+        ]), 3))
+        laserGeo1.attributes.position.needsUpdate = true
+
+        laserGeo2.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
+          satX, satY, satZ,
+          w2X, w2Y, w2Z
+        ]), 3))
+        laserGeo2.attributes.position.needsUpdate = true
+
         if (isBurning) {
-          ionPlume.visible = true
-          const pulse = 1.8 + Math.sin(clock.getElapsedTime() * 18) * 0.5
-          ionPlume.scale.set(pulse, pulse * 1.6, pulse)
+          ionPlume.scale.setScalar(1.8 + Math.sin(elapsed * 18) * 0.4)
           orbitMat.color.setHex(0xf59e0b)
         } else {
-          ionPlume.visible = true
-          const idle = 1.0 + Math.sin(clock.getElapsedTime() * 6) * 0.15
-          ionPlume.scale.set(idle, idle, idle)
+          ionPlume.scale.setScalar(1.0 + Math.sin(elapsed * 6) * 0.15)
           orbitMat.color.setHex(0x00f0ff)
         }
 
         const posArr = orbitGeo.attributes.position.array as Float32Array
         for (let i = 0; i < orbitPointsCount; i++) {
           const theta = (i / (orbitPointsCount - 1)) * Math.PI * 2
-          const rP = (orbitScaleRadius * (1 - eccentricity * eccentricity)) / (1 + eccentricity * Math.cos(theta))
-          posArr[i * 3 + 0] = rP * Math.cos(theta)
-          posArr[i * 3 + 1] = rP * Math.sin(theta) * Math.sin(incRad)
-          posArr[i * 3 + 2] = rP * Math.sin(theta) * Math.cos(incRad)
+          posArr[i * 3 + 0] = orbitScaleRadius * Math.cos(theta)
+          posArr[i * 3 + 1] = orbitScaleRadius * Math.sin(theta) * Math.sin(incRad)
+          posArr[i * 3 + 2] = orbitScaleRadius * Math.sin(theta) * Math.cos(incRad)
         }
         orbitGeo.attributes.position.needsUpdate = true
       }
@@ -195,7 +191,6 @@ export default function VisualizerPage() {
     animate()
 
     const onResize = () => {
-      if (!container) return
       camera.aspect = container.clientWidth / container.clientHeight
       camera.updateProjectionMatrix()
       renderer.setSize(container.clientWidth, container.clientHeight)
@@ -204,10 +199,6 @@ export default function VisualizerPage() {
 
     return () => {
       cancelAnimationFrame(animId)
-      container.removeEventListener("mousedown", onMouseDown)
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      container.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
       renderer.dispose()
     }
@@ -215,36 +206,30 @@ export default function VisualizerPage() {
 
   return (
     <div className="w-full h-[calc(100vh-3.5rem)] pt-14 px-6 pb-6 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden select-none">
-      
-      {/* LEFT PANEL */}
       <div className="w-80 h-full flex flex-col pr-6 border-r border-slate-800/80 overflow-y-auto font-mono text-xs">
         <div className="mb-4">
           <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase tracking-widest text-[10px] mb-1">
-            <Orbit className="w-4 h-4" /> Flight Dynamics Core
+            <Orbit className="w-4 h-4" /> NASA Blue Marble Engine
           </div>
-          <h1 className="text-lg font-black text-white tracking-wider">ORBITAL PROPAGATOR</h1>
-          <p className="text-[10px] text-slate-500 uppercase">J2 Zonal Geopotential Matrix</p>
+          <h1 className="text-lg font-black text-white tracking-wider">C2 THEATER VIEW</h1>
+          <p className="text-[10px] text-slate-500 uppercase">Sun Flare, Moon &amp; Laser Crosslinks</p>
         </div>
 
         <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
             <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Keplerian State Vector</span>
-              <span className="text-emerald-400 font-bold">60 FPS REAL-TIME</span>
+              <span>Tactical Crosslink Telemetry</span>
+              <span className="text-emerald-400 font-bold">100 GBPS LOCKED</span>
             </div>
-            <div className="flex justify-between"><span className="text-slate-500">ALTITUDE:</span><span className="text-white font-bold">{altitudeKm.toLocaleString()} KM</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">ORBITAL SPEED:</span><span className="text-cyan-400 font-bold">{velocityKms} KM/S</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">ORBIT PERIOD:</span><span className="text-emerald-400 font-bold">{periodMin} MIN</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">MASTER LINK:</span><span className="text-emerald-400 font-bold">127 SGC</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">WINGMAN-1:</span><span className="text-cyan-400 font-bold">252 KM // ACTIVE</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">WINGMAN-2:</span><span className="text-cyan-400 font-bold">184 KM // ACTIVE</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">EARTH PHASE:</span><span className="text-white font-bold">DAYLIGHT GULF</span></div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-3">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Orbital Geometry Sliders</span>
-              <span className="text-cyan-400">ACTIVE</span>
-            </div>
-
             <div className="space-y-1">
-              <div className="flex justify-between text-[11px]"><span className="text-slate-400">ALTITUDE (km):</span><span className="text-white font-bold">{altitudeKm} km</span></div>
+              <div className="flex justify-between text-[11px]"><span className="text-slate-400">ALTITUDE:</span><span className="text-white font-bold">{altitudeKm} km</span></div>
               <input type="range" min="200" max="35786" step="50" value={altitudeKm} onChange={e => setAltitudeKm(Number(e.target.value))} className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer" />
             </div>
 
@@ -252,107 +237,41 @@ export default function VisualizerPage() {
               <div className="flex justify-between text-[11px]"><span className="text-slate-400">INCLINATION:</span><span className="text-cyan-300 font-bold">{inclinationDeg}°</span></div>
               <input type="range" min="0" max="98.5" step="0.5" value={inclinationDeg} onChange={e => setInclinationDeg(Number(e.target.value))} className="w-full accent-cyan-400 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer" />
             </div>
-
-            <div className="space-y-1 pt-1 border-t border-slate-800/60">
-              <div className="flex justify-between text-[11px]"><span className="text-slate-400">ECCENTRICITY:</span><span className="text-amber-400 font-bold">{eccentricity.toFixed(3)}</span></div>
-              <input type="range" min="0" max="0.5" step="0.005" value={eccentricity} onChange={e => setEccentricity(Number(e.target.value))} className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer" />
-            </div>
           </div>
         </div>
       </div>
 
-      {/* CENTER 3D VIEWPORT */}
       <div className="flex-1 h-full relative flex flex-col">
         <div className="absolute top-4 left-6 z-10 font-mono pointer-events-none">
-          <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">
-            3D Ephemeris Tracking Engine // USSF Delta-2 Architecture
-          </div>
+          <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Space Systems Command // JSpOC Glass</div>
           <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-black text-white">VXO-ALPHA TACTICAL RECON</span>
-            <span className="text-cyan-400 text-xs font-bold">[MIL-SPEC GOLD MLI FOIL // 60 FPS]</span>
+            <span className="text-3xl font-black text-white">TACTICAL SATELLITE FLEET</span>
+            <span className="text-emerald-400 text-xs font-bold">[NASA BLUE MARBLE // OISL LASER LINKS]</span>
           </div>
+        </div>
+
+        {/* Live floating HUD badges (Video 00:10) */}
+        <div className="absolute top-20 left-1/3 z-10 font-mono text-[9px] bg-slate-950/80 border border-emerald-500/60 text-emerald-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(34,197,94,0.4)]">
+          ● 127 SGC // SAT 012
+        </div>
+        <div className="absolute top-28 right-1/3 z-10 font-mono text-[9px] bg-slate-950/80 border border-emerald-500/60 text-emerald-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(34,197,94,0.4)]">
+          ● 252 KM/S // LINK ACTIVE
         </div>
 
         <div ref={mountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
 
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] bg-slate-950/85 backdrop-blur-xl border border-slate-800 p-3.5 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-3 h-3 rounded-full ${isBurning ? "bg-amber-400 animate-ping" : "bg-emerald-400 animate-pulse"}`} />
-            <div>
-              <span className="text-slate-500 block text-[9px]">ATTITUDE STATUS</span>
-              <span className="text-white font-bold text-xs">
-                {isBurning ? "BURNING IMPULSIVE PROGRADE THRUST (+120 M/S)" : "NADIR-POINTED EARTH OBSERVATION LOCK"}
-              </span>
-            </div>
+            <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-white font-bold text-xs">ACTIVE CONSTELLATION CUSTODY (3 SATELLITES FORMATION)</span>
           </div>
           <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">CONJUNCTION MISS DISTANCE</span>
-            <span className="text-emerald-400 font-bold text-sm">±1,420 METERS (CLEAR)</span>
+            <span className="text-slate-500 block text-[9px]">SUN CORONA ANAMORPHIC FLARE</span>
+            <span className="text-cyan-400 font-bold text-sm">ACTIVE LENS FLARE</span>
           </div>
           <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">GROUND TRACK COVERAGE</span>
-            <span className="text-cyan-400 font-bold text-sm">GLOBAL MULTI-PASS</span>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div className="w-80 h-full flex flex-col pl-6 border-l border-slate-800/80 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-4 flex items-center gap-2 text-xs">
-          <Flame className="w-4 h-4 text-amber-500" /> Maneuver Control
-        </h2>
-
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Hohmann Orbit Burn</span>
-              <span className="text-amber-400 font-bold">READY</span>
-            </div>
-
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px]"><span className="text-slate-400">IMPULSIVE BURN (Δv):</span><span className="text-amber-400 font-bold">+{burnDeltaVMs} m/s</span></div>
-              <input type="range" min="10" max="600" step="10" value={burnDeltaVMs} onChange={e => setBurnDeltaVMs(Number(e.target.value))} className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer" />
-            </div>
-
-            <button
-              onClick={triggerBurn}
-              disabled={isBurning}
-              className={`w-full py-3 rounded-xl font-bold tracking-wider uppercase transition-all shadow-lg flex items-center justify-center gap-2 ${
-                isBurning ? "bg-amber-600 text-white animate-pulse" : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white"
-              }`}
-            >
-              <Flame className="w-4 h-4" />
-              <span>{isBurning ? "FIRING ION THRUSTER..." : "EXECUTE IMPULSIVE BURN"}</span>
-            </button>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 space-y-2">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Time Warp Simulation Rate</span>
-              <span className="text-cyan-400 font-bold">{timeWarp}x</span>
-            </div>
-
-            <div className="grid grid-cols-4 gap-1">
-              {[1, 2, 5, 10].map(w => (
-                <button
-                  key={w}
-                  onClick={() => setTimeWarp(w)}
-                  className={`py-1 rounded text-[10px] font-bold border transition-all ${
-                    timeWarp === w ? "bg-cyan-950 border-cyan-500 text-cyan-300" : "bg-slate-900 border-slate-800 text-slate-500"
-                  }`}
-                >
-                  {w}x
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={() => setIsPlaying(!isPlaying)}
-              className="w-full mt-2 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold flex items-center justify-center gap-2"
-            >
-              {isPlaying ? <Square className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-              <span>{isPlaying ? "PAUSE PROPAGATION" : "RESUME PROPAGATION"}</span>
-            </button>
+            <span className="text-slate-500 block text-[9px]">LUNAR ORBIT COVARIANCE</span>
+            <span className="text-emerald-400 font-bold text-sm">MOON TRACK LOCKED</span>
           </div>
         </div>
       </div>
