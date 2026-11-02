@@ -1,3 +1,4 @@
+import { SessionProvider } from 'next-auth/react';
 "use client"
 
 import { useEffect, useRef, useState } from "react"
@@ -16,7 +17,7 @@ const TERMINAL_LOGS = [
   "[C2] Constellation Watchlist polling at 10Hz."
 ]
 
-function OriginalPage RootGateway() {
+function RootGateway() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   
   // State 
@@ -247,7 +248,7 @@ function OriginalPage RootGateway() {
 export default function Page(props: any) {
   return (
     <SessionProvider>
-      <OriginalPage {...props} />
+      <RootGateway {...props} />
     </SessionProvider>
   );
 }

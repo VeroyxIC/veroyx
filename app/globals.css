@@ -24,3 +24,51 @@ html, body {
 canvas {
   touch-action: pan-y !important;
 }
+
+/* GLOBAL TOUCH & SCROLL FIX */
+html, body {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100% !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Prevent WebGL canvas from hijacking vertical touch scroll */
+canvas {
+  touch-action: pan-y !important;
+}
+
+/* Ensure mobile and touch screens can scroll through long panels */
+@media (max-width: 1024px) {
+  .overflow-hidden {
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100% !important;
+  }
+}
+
+/* GLOBAL TOUCH & SCROLL FIX */
+html, body {
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  height: auto !important;
+  min-height: 100% !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Prevent WebGL canvas from hijacking vertical touch scroll */
+canvas {
+  touch-action: pan-y !important;
+}
+
+/* Ensure mobile and touch screens can scroll through long panels */
+@media (max-width: 1024px) {
+  .overflow-hidden {
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100% !important;
+  }
+}
