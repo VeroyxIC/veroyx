@@ -34,7 +34,7 @@ export default function AccessPage() {
   }
 
   return (
-    <div className="w-full min-h-screen pt-24 pb-20 px-6 sm:px-12 bg-[#01040f] text-slate-100 font-sans selection:bg-cyan-500/30">
+    <div className="w-full min-h-screen pt-20 pb-20 px-6 sm:px-12 bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30">
       <div className="max-w-6xl mx-auto space-y-16">
         
         {/* HERO TITLE */}
@@ -176,7 +176,7 @@ export default function AccessPage() {
           </div>
         </div>
 
-        {/* INTERACTIVE SEAT ESTIMATOR & PROCUREMENT DISPATCH */}
+        {/* INTERACTIVE SEAT ESTIMATOR */}
         <div className="p-8 rounded-2xl border border-slate-800 bg-slate-900/60 backdrop-blur-xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
           <div className="space-y-6">
             <div>
@@ -273,30 +273,6 @@ export default function AccessPage() {
             <div className="text-[9px] text-slate-500 text-center leading-relaxed font-mono">
               Compliant with ITAR 22 C.F.R. § 120-130, NIST SP 800-171, and CMMC Level 3.
             </div>
-          </div>
-        </div>
-
-        {/* SECURITY & COMPLIANCE BADGES */}
-        <div className="pt-8 border-t border-slate-800 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center font-mono text-xs text-slate-400">
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-            <ShieldCheck className="w-5 h-5 text-cyan-400 mx-auto mb-1.5" />
-            <div className="text-white font-bold text-[11px]">ITAR COMPLIANT</div>
-            <div className="text-[9px] text-slate-500">Defense Trade Controls</div>
-          </div>
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-            <Lock className="w-5 h-5 text-emerald-400 mx-auto mb-1.5" />
-            <div className="text-white font-bold text-[11px]">NIST SP 800-171</div>
-            <div className="text-[9px] text-slate-500">CUI Protection Standards</div>
-          </div>
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-            <Cpu className="w-5 h-5 text-amber-400 mx-auto mb-1.5" />
-            <div className="text-white font-bold text-[11px]">AIR-GAPPED SCIF</div>
-            <div className="text-[9px] text-slate-500">On-Premises Deployment</div>
-          </div>
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-            <Key className="w-5 h-5 text-indigo-400 mx-auto mb-1.5" />
-            <div className="text-white font-bold text-[11px]">QUANTUM ESCROW</div>
-            <div className="text-[9px] text-slate-500">Post-Quantum ML-KEM</div>
           </div>
         </div>
 

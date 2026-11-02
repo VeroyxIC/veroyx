@@ -13,7 +13,6 @@ import { createCinematicEarth, createMilitarySatellite, createDeepSpaceStarfield
 export default function C2TacticalPage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const [selectedTrack, setSelectedTrack] = useState<string>("VXO-01")
-  const [simStep, setSimStep] = useState<number>(0)
 
   const tracks = [
     { id: "VXO-01", name: "Tactical Optical Recon", orbit: "LEO 510 km", status: "NOMINAL", lat: 48.2, lon: 35.4, inc: 97.4, color: "#38bdf8" },
@@ -23,11 +22,6 @@ export default function C2TacticalPage() {
   ]
 
   const active = tracks.find(t => t.id === selectedTrack) || tracks[0]
-
-  useEffect(() => {
-    const timer = setInterval(() => setSimStep(s => s + 1), 50)
-    return () => clearInterval(timer)
-  }, [])
 
   useEffect(() => {
     const container = mountRef.current
@@ -42,7 +36,7 @@ export default function C2TacticalPage() {
     camera.position.set(0, 16, 28)
     camera.lookAt(0, 0, 0)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" })
     renderer.setSize(width, height)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     container.innerHTML = ""
@@ -63,17 +57,21 @@ export default function C2TacticalPage() {
     const { group: satGroup } = createMilitarySatellite({ scale: 0.55 })
     scene.add(satGroup)
 
+    const clock = new THREE.Clock()
     let animId: number
+
     const animate = () => {
       animId = requestAnimationFrame(animate)
 
-      const t = simStep * 0.008
-      const r = earthRadius + 2.2
-      satGroup.position.set(r * Math.cos(t), r * Math.sin(t) * 0.45, r * Math.sin(t) * 0.85)
-      satGroup.lookAt(0, 0, 0)
+      const delta = clock.getDelta()
+      const elapsed = clock.getElapsedTime()
 
-      earthMesh.rotation.y += 0.0006
-      cloudsMesh.rotation.y += 0.00085
+      earthMesh.rotation.y += 0.05 * delta
+      cloudsMesh.rotation.y += 0.075 * delta
+
+      const r = earthRadius + 2.2
+      satGroup.position.set(r * Math.cos(elapsed * 0.4), r * Math.sin(elapsed * 0.4) * 0.45, r * Math.sin(elapsed * 0.4) * 0.85)
+      satGroup.lookAt(0, 0, 0)
 
       renderer.render(scene, camera)
     }
@@ -92,7 +90,7 @@ export default function C2TacticalPage() {
       window.removeEventListener("resize", onResize)
       renderer.dispose()
     }
-  }, [selectedTrack, simStep])
+  }, [selectedTrack])
 
   return (
     <div className="w-full h-[calc(100vh-3.5rem)] pt-14 px-6 pb-6 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden select-none">
@@ -143,7 +141,7 @@ export default function C2TacticalPage() {
 
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
             <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Telemetry Telecommand Link</span>
+              <span>Telemetry Link Status</span>
               <span className="text-cyan-400 font-bold">CARRIER LOCKED</span>
             </div>
             <div className="flex justify-between"><span className="text-slate-500">Sub-Sat Lat:</span><span className="text-white font-bold">{active.lat}° N</span></div>
@@ -154,11 +152,11 @@ export default function C2TacticalPage() {
         </div>
       </div>
 
-      {/* CENTER PANEL */}
+      {/* CENTER VIEWPORT */}
       <div className="flex-1 h-full relative flex flex-col">
         <div className="absolute top-4 left-6 z-10 font-mono pointer-events-none">
           <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">
-            Global Theater Operations // Live Optical Recon Focus
+            Global Theater Operations // 60 FPS Optical Recon Tracking
           </div>
           <div className="flex items-baseline gap-3">
             <span className="text-3xl font-black text-white">{active.name}</span>
@@ -171,7 +169,7 @@ export default function C2TacticalPage() {
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] bg-slate-950/85 backdrop-blur-xl border border-slate-800 p-3.5 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-white font-bold text-xs">{active.name} TRACKED IN TACTICAL GLASS</span>
+            <span className="text-white font-bold text-xs">{active.name} IN TACTICAL VIEWPORT</span>
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">SDA CUSTODY</span>
@@ -193,7 +191,7 @@ export default function C2TacticalPage() {
         <div className="space-y-4">
           <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
             <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Operational Regime</span>
+              <span>Operational Status</span>
               <span className="text-emerald-400 font-bold">NOMINAL</span>
             </div>
             <p className="text-[10px] text-slate-400 leading-relaxed">

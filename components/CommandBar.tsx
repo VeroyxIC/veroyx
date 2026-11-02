@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { 
-  Sparkles, Globe, Crosshair, Eye, Zap, Search, ChevronDown, Key 
+  Globe, Crosshair, Eye, Zap, Search, ChevronDown, Key 
 } from "lucide-react"
 
 export default function CommandBar() {
@@ -31,13 +31,30 @@ export default function CommandBar() {
     <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#01030a]/95 backdrop-blur-2xl border-b border-slate-800/80 font-mono text-xs select-none">
       <div className="h-full max-w-[1920px] mx-auto px-3 sm:px-4 flex items-center justify-between gap-2 lg:gap-4">
         
-        {/* LEFT: BRAND LOGO */}
+        {/* LEFT: PURE BORDERLESS GLOWING V LOGO */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <Link href="/" className="flex items-center gap-2 text-white font-black tracking-widest uppercase hover:text-cyan-400 transition-colors">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 via-sky-600 to-indigo-700 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)]">
-              <Sparkles className="w-4 h-4 text-white" />
+          <Link href="/" className="flex items-center gap-2 text-white font-black tracking-widest uppercase hover:opacity-90 transition-opacity">
+            <div className="relative w-8 h-8 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-cyan-500/30 blur-md pointer-events-none" />
+              <svg 
+                viewBox="0 0 64 64" 
+                className="w-7 h-7 text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.9)]" 
+                fill="none" 
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M12 14L32 54L52 14H42L32 38L22 14H12Z" fill="url(#headerVGrad)" />
+                <path d="M22 14L32 38L42 14H46L32 48L18 14H22Z" fill="#38bdf8" />
+                <circle cx="32" cy="54" r="3" fill="#00f0ff" />
+                <defs>
+                  <linearGradient id="headerVGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#38bdf8" />
+                    <stop offset="50%" stopColor="#00f0ff" />
+                    <stop offset="100%" stopColor="#2563eb" />
+                  </linearGradient>
+                </defs>
+              </svg>
             </div>
-            <span className="text-sm font-black tracking-[0.2em]">VEROYX</span>
+            <span className="text-sm font-black tracking-[0.22em] text-white">VEROYX</span>
           </Link>
         </div>
 

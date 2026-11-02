@@ -36,24 +36,24 @@ body {
   scrollbar-color: #1e293b #01030a;
 }
 
-/* Glowing V-Logo Breathing Animations */
+/* Organic Breathing Cyan Glow for Borderless V Logo */
 @keyframes breatheGlow {
   0%, 100% {
     transform: scale(1);
-    filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.45));
+    filter: drop-shadow(0 0 25px rgba(6, 182, 212, 0.45));
   }
   50% {
-    transform: scale(1.04);
-    filter: drop-shadow(0 0 45px rgba(6, 182, 212, 0.85));
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 55px rgba(6, 182, 212, 0.95));
   }
 }
 
 @keyframes orbitSatellite {
   from {
-    transform: rotate(0deg) translateX(85px) rotate(0deg);
+    transform: rotate(0deg) translateX(88px) rotate(0deg);
   }
   to {
-    transform: rotate(360deg) translateX(85px) rotate(-360deg);
+    transform: rotate(360deg) translateX(88px) rotate(-360deg);
   }
 }
 
