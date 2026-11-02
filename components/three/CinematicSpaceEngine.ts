@@ -9,56 +9,85 @@ export function createProceduralEarthMaps() {
   const w = 2048
   const h = 1024
 
-  // 1. DAY MAP
+  // 1. HIGH-RESOLUTION DAY MAP (Realistic Oceans, Continents, Biomes, Deserts)
   const dayCanvas = document.createElement("canvas")
   dayCanvas.width = w
   dayCanvas.height = h
   const dCtx = dayCanvas.getContext("2d")
   if (dCtx) {
-    const grad = dCtx.createLinearGradient(0, 0, 0, h)
-    grad.addColorStop(0, "#031733")
-    grad.addColorStop(0.5, "#083366")
-    grad.addColorStop(1, "#031733")
-    dCtx.fillStyle = grad
+    // Oceanic Depth Gradient
+    const oceanGrad = dCtx.createLinearGradient(0, 0, 0, h)
+    oceanGrad.addColorStop(0, "#011229")
+    oceanGrad.addColorStop(0.35, "#06305a")
+    oceanGrad.addColorStop(0.5, "#09447a")
+    oceanGrad.addColorStop(0.65, "#06305a")
+    oceanGrad.addColorStop(1, "#011229")
+    dCtx.fillStyle = oceanGrad
     dCtx.fillRect(0, 0, w, h)
 
-    // Continents
-    dCtx.fillStyle = "#1e3a1e"
+    // Continental Landmasses
+    dCtx.fillStyle = "#1b3f20" // Lush temperate vegetation
+
+    // North America & Arctic
     dCtx.beginPath()
-    dCtx.ellipse(w * 0.26, h * 0.32, w * 0.12, h * 0.18, -0.3, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.25, h * 0.28, w * 0.11, h * 0.12, -0.25, 0, Math.PI * 2)
     dCtx.fill()
     dCtx.beginPath()
-    dCtx.ellipse(w * 0.33, h * 0.70, w * 0.08, h * 0.22, 0.2, 0, Math.PI * 2)
-    dCtx.fill()
-    dCtx.beginPath()
-    dCtx.ellipse(w * 0.62, h * 0.34, w * 0.22, h * 0.20, 0.05, 0, Math.PI * 2)
-    dCtx.fill()
-    dCtx.beginPath()
-    dCtx.ellipse(w * 0.58, h * 0.64, w * 0.09, h * 0.20, -0.1, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.22, h * 0.38, w * 0.08, h * 0.09, -0.4, 0, Math.PI * 2)
     dCtx.fill()
 
-    // Arid Deserts
-    dCtx.fillStyle = "#8a581e"
+    // South America
+    dCtx.fillStyle = "#13421e" // Amazon rainforest
     dCtx.beginPath()
-    dCtx.ellipse(w * 0.57, h * 0.46, w * 0.10, h * 0.08, 0.1, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.33, h * 0.68, w * 0.07, h * 0.19, 0.2, 0, Math.PI * 2)
     dCtx.fill()
+
+    // Europe & British Isles
+    dCtx.fillStyle = "#224724"
     dCtx.beginPath()
-    dCtx.ellipse(w * 0.72, h * 0.38, w * 0.08, h * 0.06, 0.0, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.52, h * 0.28, w * 0.07, h * 0.08, 0.1, 0, Math.PI * 2)
+    dCtx.fill()
+
+    // Africa & Sahara Desert
+    dCtx.beginPath()
+    dCtx.ellipse(w * 0.56, h * 0.62, w * 0.08, h * 0.18, -0.1, 0, Math.PI * 2)
+    dCtx.fill()
+    dCtx.fillStyle = "#b57f36" // Sahara Sand
+    dCtx.beginPath()
+    dCtx.ellipse(w * 0.54, h * 0.44, w * 0.10, h * 0.07, 0.08, 0, Math.PI * 2)
+    dCtx.fill()
+
+    // Asia & Siberia
+    dCtx.fillStyle = "#1e3b22"
+    dCtx.beginPath()
+    dCtx.ellipse(w * 0.70, h * 0.28, w * 0.18, h * 0.14, 0.05, 0, Math.PI * 2)
+    dCtx.fill()
+    dCtx.fillStyle = "#a8742d" // Arabian / Gobi deserts
+    dCtx.beginPath()
+    dCtx.ellipse(w * 0.63, h * 0.44, w * 0.06, h * 0.05, 0.1, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.74, h * 0.38, w * 0.07, h * 0.05, 0, 0, Math.PI * 2)
+    dCtx.fill()
+
+    // India & Southeast Asia
+    dCtx.fillStyle = "#1a4a25"
+    dCtx.beginPath()
+    dCtx.ellipse(w * 0.71, h * 0.50, w * 0.04, h * 0.07, 0.1, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.80, h * 0.58, w * 0.05, h * 0.06, 0.3, 0, Math.PI * 2)
     dCtx.fill()
 
     // Australia
-    dCtx.fillStyle = "#944814"
+    dCtx.fillStyle = "#944416" // Outback Ochre
     dCtx.beginPath()
-    dCtx.ellipse(w * 0.82, h * 0.72, w * 0.06, h * 0.09, 0.1, 0, Math.PI * 2)
+    dCtx.ellipse(w * 0.83, h * 0.72, w * 0.06, h * 0.08, 0.1, 0, Math.PI * 2)
     dCtx.fill()
 
-    // Polar Caps
-    dCtx.fillStyle = "#e2e8f0"
-    dCtx.fillRect(0, 0, w, h * 0.07)
-    dCtx.fillRect(0, h * 0.93, w, h * 0.07)
+    // Polar Caps (Antarctica & Greenland)
+    dCtx.fillStyle = "#f1f5f9"
+    dCtx.fillRect(0, 0, w, h * 0.06)
+    dCtx.fillRect(0, h * 0.94, w, h * 0.06)
   }
 
-  // 2. NIGHT LIGHTS MAP
+  // 2. HIGH-DENSITY NIGHT LIGHTS MAP (Sodium Urban Centers)
   const nightCanvas = document.createElement("canvas")
   nightCanvas.width = w
   nightCanvas.height = h
@@ -67,26 +96,33 @@ export function createProceduralEarthMaps() {
     nCtx.fillStyle = "#000000"
     nCtx.fillRect(0, 0, w, h)
 
-    const clusters = [
-      { cx: w * 0.28, cy: h * 0.34, count: 280, rMax: 120 },
-      { cx: w * 0.20, cy: h * 0.36, count: 180, rMax: 80 },
-      { cx: w * 0.53, cy: h * 0.32, count: 420, rMax: 100 },
-      { cx: w * 0.78, cy: h * 0.38, count: 460, rMax: 130 },
-      { cx: w * 0.68, cy: h * 0.48, count: 260, rMax: 90 },
-      { cx: w * 0.59, cy: h * 0.46, count: 120, rMax: 40 },
-      { cx: w * 0.35, cy: h * 0.74, count: 140, rMax: 70 },
-      { cx: w * 0.84, cy: h * 0.75, count: 80, rMax: 50 }
+    const urbanClusters = [
+      // US Northeast Corridor (BosWash)
+      { cx: w * 0.29, cy: h * 0.33, count: 320, rMax: 90 },
+      // US West Coast (SF / LA / Seattle)
+      { cx: w * 0.19, cy: h * 0.35, count: 200, rMax: 70 },
+      // European Megalopolis (London / Paris / Ruhr / Milan)
+      { cx: w * 0.52, cy: h * 0.30, count: 480, rMax: 95 },
+      // East Asian Arc (Tokyo / Shanghai / Seoul / HK)
+      { cx: w * 0.80, cy: h * 0.36, count: 520, rMax: 110 },
+      // Indo-Gangetic Plain
+      { cx: w * 0.70, cy: h * 0.46, count: 300, rMax: 80 },
+      // Nile Ribbon & Middle East
+      { cx: w * 0.58, cy: h * 0.44, count: 180, rMax: 50 },
+      // South America & Australia
+      { cx: w * 0.36, cy: h * 0.72, count: 150, rMax: 60 },
+      { cx: w * 0.85, cy: h * 0.75, count: 90, rMax: 40 }
     ]
 
-    clusters.forEach(c => {
-      for (let i = 0; i < c.count; i++) {
-        const rad = Math.pow(Math.random(), 1.8) * c.rMax
+    urbanClusters.forEach(cluster => {
+      for (let i = 0; i < cluster.count; i++) {
+        const rad = Math.pow(Math.random(), 1.7) * cluster.rMax
         const ang = Math.random() * Math.PI * 2
-        const px = c.cx + Math.cos(ang) * rad
-        const py = c.cy + Math.sin(ang) * rad
+        const px = cluster.cx + Math.cos(ang) * rad
+        const py = cluster.cy + Math.sin(ang) * rad
 
-        const brightness = Math.random()
-        nCtx.fillStyle = brightness > 0.85 ? "#fef08a" : brightness > 0.4 ? "#f59e0b" : "#b45309"
+        const b = Math.random()
+        nCtx.fillStyle = b > 0.85 ? "#fef08a" : b > 0.4 ? "#f59e0b" : "#b45309"
         nCtx.beginPath()
         nCtx.arc(px, py, Math.random() * 1.8 + 0.6, 0, Math.PI * 2)
         nCtx.fill()
@@ -94,26 +130,28 @@ export function createProceduralEarthMaps() {
     })
   }
 
-  // 3. SPECULAR MAP
+  // 3. SPECULAR OCEAN REFLECTION MAP
   const specCanvas = document.createElement("canvas")
   specCanvas.width = w
   specCanvas.height = h
   const sCtx = specCanvas.getContext("2d")
   if (sCtx) {
-    sCtx.fillStyle = "#ffffff"
+    sCtx.fillStyle = "#ffffff" // Oceans reflect sun glint
     sCtx.fillRect(0, 0, w, h)
 
-    sCtx.fillStyle = "#0a0a0a"
+    sCtx.fillStyle = "#080808" // Land surfaces are matte
     sCtx.beginPath()
-    sCtx.ellipse(w * 0.26, h * 0.32, w * 0.12, h * 0.18, -0.3, 0, Math.PI * 2)
-    sCtx.ellipse(w * 0.33, h * 0.70, w * 0.08, h * 0.22, 0.2, 0, Math.PI * 2)
-    sCtx.ellipse(w * 0.62, h * 0.34, w * 0.22, h * 0.20, 0.05, 0, Math.PI * 2)
-    sCtx.ellipse(w * 0.58, h * 0.64, w * 0.09, h * 0.20, -0.1, 0, Math.PI * 2)
-    sCtx.ellipse(w * 0.82, h * 0.72, w * 0.06, h * 0.09, 0.1, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.25, h * 0.28, w * 0.11, h * 0.12, -0.25, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.22, h * 0.38, w * 0.08, h * 0.09, -0.4, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.33, h * 0.68, w * 0.07, h * 0.19, 0.2, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.52, h * 0.28, w * 0.07, h * 0.08, 0.1, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.56, h * 0.62, w * 0.08, h * 0.18, -0.1, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.70, h * 0.28, w * 0.18, h * 0.14, 0.05, 0, Math.PI * 2)
+    sCtx.ellipse(w * 0.83, h * 0.72, w * 0.06, h * 0.08, 0.1, 0, Math.PI * 2)
     sCtx.fill()
   }
 
-  // 4. CLOUDS MAP
+  // 4. CLOUD DECK MAP
   const cloudCanvas = document.createElement("canvas")
   cloudCanvas.width = w
   cloudCanvas.height = h
@@ -122,12 +160,12 @@ export function createProceduralEarthMaps() {
     cCtx.fillStyle = "rgba(0,0,0,0)"
     cCtx.fillRect(0, 0, w, h)
 
-    cCtx.fillStyle = "rgba(255, 255, 255, 0.4)"
-    for (let i = 0; i < 45; i++) {
-      const cx = (i * (w / 35)) % w
-      const cy = h * 0.18 + Math.sin(i * 0.8) * (h * 0.32) + (i % 4) * 45
+    cCtx.fillStyle = "rgba(255, 255, 255, 0.42)"
+    for (let i = 0; i < 48; i++) {
+      const cx = (i * (w / 38)) % w
+      const cy = h * 0.16 + Math.sin(i * 0.75) * (h * 0.34) + (i % 4) * 40
       cCtx.beginPath()
-      cCtx.ellipse(cx, cy, 90 + (i % 6) * 25, 30 + (i % 3) * 12, Math.sin(i) * 0.5, 0, Math.PI * 2)
+      cCtx.ellipse(cx, cy, 95 + (i % 6) * 22, 28 + (i % 3) * 12, Math.sin(i) * 0.45, 0, Math.PI * 2)
       cCtx.fill()
     }
   }
@@ -144,12 +182,13 @@ export function createCinematicEarth(radius = 5.5) {
   const earthGroup = new THREE.Group()
   const { dayMap, nightMap, specMap, cloudMap } = createProceduralEarthMaps()
 
+  // 1. Earth Planetary Mesh with Night City Lights & Specular Water
   const earthGeo = new THREE.SphereGeometry(radius, 64, 64)
   const earthMat = new THREE.MeshStandardMaterial({
     map: dayMap,
     roughnessMap: specMap,
-    roughness: 0.5,
-    metalness: 0.1,
+    roughness: 0.45,
+    metalness: 0.12,
     emissiveMap: nightMap,
     emissive: new THREE.Color(0xffffff),
     emissiveIntensity: 0.95
@@ -157,16 +196,18 @@ export function createCinematicEarth(radius = 5.5) {
   const earthMesh = new THREE.Mesh(earthGeo, earthMat)
   earthGroup.add(earthMesh)
 
+  // 2. Swirling Atmospheric Cloud Deck
   const cloudGeo = new THREE.SphereGeometry(radius * 1.018, 64, 64)
   const cloudMat = new THREE.MeshStandardMaterial({
     map: cloudMap,
     transparent: true,
-    opacity: 0.75,
+    opacity: 0.72,
     blending: THREE.AdditiveBlending
   })
   const cloudsMesh = new THREE.Mesh(cloudGeo, cloudMat)
   earthGroup.add(cloudsMesh)
 
+  // 3. Technical Coordinate Lat/Lon Grid Shell
   const gridMat = new THREE.MeshBasicMaterial({
     color: 0x38bdf8,
     wireframe: true,
@@ -176,22 +217,24 @@ export function createCinematicEarth(radius = 5.5) {
   const gridMesh = new THREE.Mesh(new THREE.SphereGeometry(radius * 1.004, 36, 18), gridMat)
   earthGroup.add(gridMesh)
 
+  // 4. Rayleigh Atmospheric Scattering Limb (Cyan Horizon Glow)
   const atmoGeo = new THREE.SphereGeometry(radius * 1.055, 64, 64)
   const atmoMat = new THREE.MeshBasicMaterial({
     color: 0x38bdf8,
     transparent: true,
-    opacity: 0.32,
+    opacity: 0.35,
     blending: THREE.AdditiveBlending,
     side: THREE.BackSide
   })
   const atmoMesh = new THREE.Mesh(atmoGeo, atmoMat)
   earthGroup.add(atmoMesh)
 
+  // 5. Exosphere Soft Dark-Blue Halo
   const haloGeo = new THREE.SphereGeometry(radius * 1.11, 48, 48)
   const haloMat = new THREE.MeshBasicMaterial({
     color: 0x0284c7,
     transparent: true,
-    opacity: 0.14,
+    opacity: 0.15,
     blending: THREE.AdditiveBlending,
     side: THREE.BackSide
   })
@@ -206,17 +249,19 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   const group = new THREE.Group()
   group.scale.set(scale, scale, scale)
 
+  // 1. Central Avionics Bus (Gold Multi-Layer Insulation Foil)
   const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.8)
   const busMat = new THREE.MeshStandardMaterial({
-    color: 0xd97706,
+    color: 0xd97706, // Gold MLI
     metalness: 0.94,
     roughness: 0.18
   })
   const busMesh = new THREE.Mesh(busGeo, busMat)
   group.add(busMesh)
 
+  // Lateral Heat Rejection Radiators
   const radGeo = new THREE.BoxGeometry(0.04, 0.9, 1.4)
-  const radMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.1 })
+  const radMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.08 })
   const radL = new THREE.Mesh(radGeo, radMat)
   radL.position.set(0.61, 0, 0)
   group.add(radL)
@@ -224,19 +269,22 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   radR.position.set(-0.61, 0, 0)
   group.add(radR)
 
+  // 2. Reconnaissance Optical Telescope Barrel (Nadir Facing)
   const scopeGeo = new THREE.CylinderGeometry(0.38, 0.42, 1.2, 24)
-  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.3 })
+  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.85, roughness: 0.25 })
   const scope = new THREE.Mesh(scopeGeo, scopeMat)
   scope.rotation.x = Math.PI / 2
   scope.position.set(0, 0, 1.2)
   group.add(scope)
 
+  // Glowing Primary Aperture Lens
   const lensGeo = new THREE.CircleGeometry(0.35, 24)
   const lensMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85 })
   const scopeLens = new THREE.Mesh(lensGeo, lensMat)
   scopeLens.position.set(0, 0, 1.81)
   group.add(scopeLens)
 
+  // 3. Articulated Dual Photovoltaic Solar Wings (GaAs Multi-Junction)
   const solarWings = new THREE.Group()
   const wingPanelGeo = new THREE.BoxGeometry(2.6, 0.05, 1.1)
   const wingPanelMat = new THREE.MeshStandardMaterial({
@@ -245,6 +293,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
     metalness: 0.85
   })
 
+  // Left Wing & Boom
   const wingL = new THREE.Mesh(wingPanelGeo, wingPanelMat)
   wingL.position.set(2.1, 0, 0)
   solarWings.add(wingL)
@@ -256,6 +305,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   boomL.position.set(0.9, 0, 0)
   solarWings.add(boomL)
 
+  // Right Wing & Boom
   const wingR = new THREE.Mesh(wingPanelGeo, wingPanelMat)
   wingR.position.set(-2.1, 0, 0)
   solarWings.add(wingR)
@@ -266,6 +316,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
 
   group.add(solarWings)
 
+  // 4. Steerable High-Gain Parabolic Communications Dish
   const dishGroup = new THREE.Group()
   dishGroup.position.set(0, 0.85, -0.4)
   const dishGeo = new THREE.CylinderGeometry(0.55, 0.08, 0.22, 24)
@@ -274,6 +325,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   dish.rotation.x = -Math.PI / 3
   dishGroup.add(dish)
 
+  // Gold Sub-Reflector Feed Horn
   const hornGeo = new THREE.ConeGeometry(0.08, 0.25, 12)
   const hornMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.95 })
   const horn = new THREE.Mesh(hornGeo, hornMat)
@@ -282,6 +334,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   dishGroup.add(horn)
   group.add(dishGroup)
 
+  // 5. Laser Crosslink Optical Terminals (OISL Turrets)
   const oislGeo = new THREE.SphereGeometry(0.18, 16, 16)
   const oislMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.9 })
   const oisl = new THREE.Mesh(oislGeo, oislMat)
@@ -292,6 +345,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   oisl.add(oislLens)
   group.add(oisl)
 
+  // 6. Xenon Ion Thruster with Animated Cyan Plasma Glow Plume
   const thrusterGeo = new THREE.CylinderGeometry(0.18, 0.24, 0.35, 16)
   const thrusterMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9 })
   const thruster = new THREE.Mesh(thrusterGeo, thrusterMat)
@@ -311,6 +365,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   plume.position.set(0, 0, -1.65)
   group.add(plume)
 
+  // 7. Corner RCS Thruster Quads
   const rcsGeo = new THREE.BoxGeometry(0.12, 0.12, 0.12)
   const rcsMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.9 })
   const cornerOffsets = [

@@ -34,7 +34,7 @@ export default function CommandBar() {
         <div className="h-full max-w-[1920px] mx-auto px-3 sm:px-4 flex items-center justify-between gap-2 lg:gap-4">
           
           {/* LEFT: BRAND */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link href="/" className="flex items-center gap-2 text-white font-black tracking-widest uppercase hover:text-cyan-400 transition-colors">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 via-sky-600 to-indigo-700 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)]">
                 <Sparkles className="w-4 h-4 text-white" />
@@ -98,7 +98,7 @@ export default function CommandBar() {
               <button
                 onClick={() => setActiveMenu(activeMenu === "DEFENSE" ? null : "DEFENSE")}
                 className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-bold transition-all ${
-                  activeMenu === "DEFENSE"
+                  activeMenu === "DEFENSE" || pathname === "/directed-energy" || pathname === "/kill-chain"
                     ? "bg-rose-950/60 text-rose-300 border border-rose-500/50" 
                     : "text-slate-300 hover:text-white hover:bg-slate-900/60"
                 }`}
@@ -110,6 +110,13 @@ export default function CommandBar() {
 
               {activeMenu === "DEFENSE" && (
                 <div className="absolute top-full left-0 mt-1.5 w-72 p-2 bg-[#020617]/95 backdrop-blur-2xl border border-slate-700 rounded-xl shadow-2xl space-y-1">
+                  <Link href="/directed-energy" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                    <div className="text-white font-bold text-xs flex items-center justify-between">
+                      <span>DEW Laser Ablation</span>
+                      <span className="text-[9px] px-1 rounded bg-rose-950 text-rose-400 border border-rose-800 font-mono">1.2 MW</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Megawatt laser &amp; HPM thermal ablation</div>
+                  </Link>
                   <Link href="/kill-chain" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs flex items-center justify-between">
                       <span>Space Kill-Chain</span>
@@ -125,10 +132,6 @@ export default function CommandBar() {
                     <div className="text-white font-bold text-xs">RPO Safety Corridors</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">Hill-Clohessy-Wiltshire keep-out cones</div>
                   </Link>
-                  <Link href="/pursuit-evasion" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
-                    <div className="text-white font-bold text-xs">Pursuit-Evasion Game</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">HJI orbital combat reachability basins</div>
-                  </Link>
                   <Link href="/planetary-defense" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs">Planetary Defense</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">DART ejecta recoil asteroid deflection</div>
@@ -142,7 +145,7 @@ export default function CommandBar() {
               <button
                 onClick={() => setActiveMenu(activeMenu === "SURVEILLANCE" ? null : "SURVEILLANCE")}
                 className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-bold transition-all ${
-                  activeMenu === "SURVEILLANCE"
+                  activeMenu === "SURVEILLANCE" || pathname === "/catalog" || pathname === "/ephemeris"
                     ? "bg-amber-950/60 text-amber-300 border border-amber-500/50" 
                     : "text-slate-300 hover:text-white hover:bg-slate-900/60"
                 }`}
@@ -182,7 +185,7 @@ export default function CommandBar() {
               <button
                 onClick={() => setActiveMenu(activeMenu === "RESILIENCE" ? null : "RESILIENCE")}
                 className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-bold transition-all ${
-                  activeMenu === "RESILIENCE"
+                  activeMenu === "RESILIENCE" || pathname === "/qkd" || pathname === "/resilience"
                     ? "bg-emerald-950/60 text-emerald-300 border border-emerald-500/50" 
                     : "text-slate-300 hover:text-white hover:bg-slate-900/60"
                 }`}
@@ -214,8 +217,8 @@ export default function CommandBar() {
             </div>
           </nav>
 
-          {/* RIGHT: SEARCH, DEFCON & VIP */}
-          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* RIGHT: SEARCH, DEFCON, CLEARANCE & VIP */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             
             {/* SEARCH BUTTON WITH DIRECT STATE TOGGLE */}
             <button
@@ -248,7 +251,7 @@ export default function CommandBar() {
             </div>
 
             {/* ZULU TIME */}
-            <div className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-mono text-[10px]">
+            <div className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 font-mono text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
               <span>{zuluTime || "12:00:00 Z"}</span>
             </div>
