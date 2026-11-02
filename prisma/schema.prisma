@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  clearance     String    @default("UNCLASSIFIED")
+  missions      Mission[]
+  createdAt     DateTime  @default(now())
+}
+
+model Mission {
+  id               String   @id @default(cuid())
+  designation      String   @unique
+  ownerId          String
+  owner            User     @relation(fields: [ownerId], references: [id])
+  orbitRegime      String
+  dryMassKg        Float
+  totalPowerW      Float
+  estimatedCostM   Float
+  status           String   @default("IN_DESIGN")
+  telemetryLogs    Telemetry[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Telemetry {
+  id          String   @id @default(cuid())
+  missionId   String
+  mission     Mission  @relation(fields: [missionId], references: [id])
+  timestamp   DateTime @default(now())
+  batterySoc  Float
+  busTempC    Float
+  alertLevel  String   @default("NOMINAL")
+}
