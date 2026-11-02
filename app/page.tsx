@@ -5,10 +5,11 @@ import * as THREE from "three"
 import Link from "next/link"
 import { 
   Globe, Orbit, ShieldCheck, Zap, ArrowRight, Terminal, 
-  Lock, Database, Cpu, ShieldAlert, Fingerprint, Unlock, ChevronDown 
+  Lock, Database, Cpu, Unlock 
 } from "lucide-react"
 import { 
-  createKerrBlackHole, createMilitarySatellite, createDeepSpaceStarfield 
+  createPhotorealisticKerrBlackHole, createDeepSpaceNebulaSkybox, 
+  createMilitarySatellite 
 } from "@/components/three/CinematicSpaceEngine"
 
 export default function MasterHomePage() {
@@ -37,7 +38,7 @@ export default function MasterHomePage() {
     }
   }
 
-  // 3D Three.js Gargantua Black Hole & Interactive Motion Zooming Engine
+  // 3D Three.js Engine: Exact Match to Reference Image
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -45,10 +46,10 @@ export default function MasterHomePage() {
     const width = container.clientWidth
     const height = container.clientHeight
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#010208")
+    scene.background = new THREE.Color("#020617")
 
     const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 0, 22)
+    camera.position.set(0, 0, 19)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setSize(width, height)
@@ -56,18 +57,23 @@ export default function MasterHomePage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Deep Space Starfield
-    const starfield = createDeepSpaceStarfield(2400, 700)
-    scene.add(starfield)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9))
+    const pLight = new THREE.PointLight(0xffffff, 3.5, 60)
+    pLight.position.set(0, 0, 12)
+    scene.add(pLight)
 
-    // Relativistic Kerr Black Hole
-    const { group: bhGroup, disk, lensRing } = createKerrBlackHole(2.4)
+    // Deep-Space Azure/Indigo Nebula Background
+    const nebulaSkybox = createDeepSpaceNebulaSkybox()
+    scene.add(nebulaSkybox)
+
+    // Relativistic Kerr Black Hole with V Core and Concentric Lensing
+    const { group: bhGroup, disk, diskMat, vCoreMesh, vGlowMesh, lensingGroup } = createPhotorealisticKerrBlackHole(2.5)
     scene.add(bhGroup)
 
-    // Military Reconnaissance Spacecraft in Lower-Right Foreground
+    // Military Reconnaissance Spacecraft in Foreground Orbit
     const { group: satGroup, plume } = createMilitarySatellite({ scale: 0.38 })
-    satGroup.position.set(6.2, -2.4, 4.5)
-    satGroup.rotation.y = -Math.PI / 3.5
+    satGroup.position.set(6.4, -2.6, 4.8)
+    satGroup.rotation.y = -Math.PI / 3.6
     scene.add(satGroup)
 
     // Mouse Drag Rotation & Scroll-Wheel Motion Zooming
@@ -93,7 +99,7 @@ export default function MasterHomePage() {
 
     const onMouseUp = () => { isDragging = false }
     const onWheel = (e: WheelEvent) => {
-      camera.position.z = Math.max(10.0, Math.min(34.0, camera.position.z + e.deltaY * 0.022))
+      camera.position.z = Math.max(9.0, Math.min(36.0, camera.position.z + e.deltaY * 0.022))
     }
 
     container.addEventListener("mousedown", onMouseDown)
@@ -109,13 +115,21 @@ export default function MasterHomePage() {
       const delta = clock.getDelta()
       const elapsed = clock.getElapsedTime()
 
-      // Accretion disk rotation
-      disk.rotation.z += 0.12 * delta
-      lensRing.rotation.z += 0.08 * delta
+      // Accretion disk shader time update
+      diskMat.uniforms.uTime.value = elapsed
+
+      // Accretion disk swirl & Einstein lensing pulse
+      disk.rotation.z -= 0.18 * delta
+      lensingGroup.rotation.z += 0.04 * delta
+
+      // Singularity V Core Energy Pulse
+      const vPulse = 1.0 + Math.sin(elapsed * 2.5) * 0.08
+      vCoreMesh.scale.set(vPulse, vPulse, 1.0)
+      vGlowMesh.scale.set(vPulse * 1.15, vPulse * 1.15, 1.0)
 
       // Satellite stationkeeping hover
-      satGroup.position.y = -2.4 + Math.sin(elapsed * 0.7) * 0.15
-      satGroup.position.x = 6.2 + Math.cos(elapsed * 0.5) * 0.2
+      satGroup.position.y = -2.6 + Math.sin(elapsed * 0.7) * 0.15
+      satGroup.position.x = 6.4 + Math.cos(elapsed * 0.5) * 0.2
       satGroup.lookAt(0, 0, 0)
 
       plume.scale.setScalar(1.0 + Math.sin(elapsed * 12) * 0.2)
@@ -143,7 +157,7 @@ export default function MasterHomePage() {
   }, [])
 
   return (
-    <div className="relative w-full min-h-screen bg-[#010208] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
+    <div className="relative w-full min-h-screen bg-[#020617] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
       {/* 3D WebGL Canvas */}
       <div ref={mountRef} className="fixed inset-0 w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing z-0" />
@@ -152,7 +166,7 @@ export default function MasterHomePage() {
       {!isAuthenticated ? (
         <div className="relative min-h-screen flex flex-col items-center justify-center px-4 z-20 pointer-events-none select-none">
           <div className="text-center space-y-6 max-w-lg pointer-events-auto">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] tracking-widest uppercase">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] tracking-widest uppercase shadow-[0_0_15px_rgba(6,182,212,0.3)]">
               <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
               <span>DOD-DISA 18 U.S.C. § 1030 // QUANTUM ENCLAVE</span>
             </div>
@@ -162,7 +176,7 @@ export default function MasterHomePage() {
                 VEROYX
               </h1>
               <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">
-                Classified Defense Intelligence System
+                Classified Space Domain Defense Software
               </p>
             </div>
 
@@ -197,7 +211,7 @@ export default function MasterHomePage() {
             
             {/* Camera Tip */}
             <div className="absolute top-24 right-6 z-10 font-mono text-[10px] text-slate-400 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl backdrop-blur-md hidden sm:block">
-              DRAG: ROTATE SPACE | SCROLL: MOTION ZOOM
+              DRAG: ROTATE SPACE | SCROLL: MOTION ZOOM (9x - 36x)
             </div>
 
             <div className="relative z-10 flex flex-col items-center text-center space-y-5 max-w-3xl mx-auto pointer-events-auto">
@@ -241,7 +255,7 @@ export default function MasterHomePage() {
                   <span>COMMAND NEXUS</span>
                 </Link>
 
-                <Link href="/catalog" className="px-6 py-3 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 font-mono text-xs font-bold tracking-wider uppercase transition-all flex items-center gap-2 hover:scale-105">
+                <Link href="/catalog" className="px-6 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 font-mono text-xs font-bold tracking-wider uppercase transition-all flex items-center gap-2 hover:scale-105">
                   <Database className="w-4 h-4 text-cyan-400" />
                   <span>48K ORBITAL CATALOG</span>
                 </Link>

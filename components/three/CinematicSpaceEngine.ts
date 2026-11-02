@@ -1,78 +1,96 @@
 import * as THREE from "three"
 
-// PHOTOREALISTIC ACCRETION DISK TEXTURE (Fine golden filaments & white-hot core)
-export function createPhotorealisticAccretionTexture(): THREE.CanvasTexture {
-  if (typeof document === "undefined") return new THREE.CanvasTexture({} as any)
-  const size = 2048
-  const canvas = document.createElement("canvas")
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return new THREE.CanvasTexture(canvas)
+// 1. PROCEDURAL ACCRETION DISK SHADER (Relativistic Fiery Plasma + Doppler Beaming)
+export function createAccretionDiskMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uColorInner: { value: new THREE.Color(0xffffff) },
+      uColorMid: { value: new THREE.Color(0xfbbf24) },
+      uColorOuter: { value: new THREE.Color(0xd97706) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vPosition;
+      void main() {
+        vUv = uv;
+        vPosition = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uColorInner;
+      uniform vec3 uColorMid;
+      uniform vec3 uColorOuter;
+      varying vec2 vUv;
+      varying vec3 vPosition;
 
-  const cx = size / 2
-  const cy = size / 2
-  ctx.fillStyle = "#000000"
-  ctx.fillRect(0, 0, size, size)
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+          mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), f.x),
+          mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+          f.y
+        );
+      }
+      float fbm(vec2 p) {
+        float v = 0.0;
+        float a = 0.5;
+        for (int i = 0; i < 4; i++) {
+          v += a * noise(p);
+          p *= 2.15;
+          a *= 0.5;
+        }
+        return v;
+      }
 
-  const rInner = size * 0.17
-  const rOuter = size * 0.45
+      void main() {
+        vec2 uvCenter = vUv - vec2(0.5);
+        float r = length(uvCenter) * 2.0;
+        if (r < 0.20 || r > 0.98) discard;
 
-  // Concentric multi-frequency plasma filaments
-  for (let r = rOuter; r >= rInner; r -= 1.2) {
-    const t = (r - rInner) / (rOuter - rInner)
-    let alpha = 0.0
-    let rCol = 255, gCol = 255, bCol = 255
+        float theta = atan(uvCenter.y, uvCenter.x);
+        
+        // Relativistic Spiral Rotation & Filament Striations
+        float swirl = theta + (4.0 / (r + 0.08)) - uTime * 1.4;
+        vec2 swirlCoord = vec2(r * 12.0, swirl * 3.0);
+        float plasma = fbm(swirlCoord);
 
-    if (t < 0.06) {
-      alpha = 0.98
-      rCol = 255; gCol = 255; bCol = 255
-    } else if (t < 0.22) {
-      const f = (t - 0.06) / 0.16
-      alpha = 0.92 - f * 0.1
-      rCol = 255; gCol = Math.round(255 - f * 35); bCol = Math.round(255 - f * 150)
-    } else if (t < 0.55) {
-      const f = (t - 0.22) / 0.33
-      alpha = 0.82 - f * 0.25
-      rCol = 255; gCol = Math.round(220 - f * 80); bCol = Math.round(105 - f * 80)
-    } else if (t < 0.85) {
-      const f = (t - 0.55) / 0.30
-      alpha = 0.57 - f * 0.35
-      rCol = Math.round(255 - f * 70); gCol = Math.round(140 - f * 80); bCol = Math.round(25 - f * 15)
-    } else {
-      const f = (t - 0.85) / 0.15
-      alpha = (1.0 - f) * 0.22
-      rCol = 185; gCol = 60; bCol = 10
-    }
+        // Dark dust absorption filaments
+        float dust = smoothstep(0.35, 0.65, fbm(swirlCoord * 1.8 + vec2(2.1, 4.3)));
 
-    ctx.strokeStyle = `rgba(${rCol}, ${gCol}, ${bCol}, ${alpha})`
-    ctx.lineWidth = 1.6
-    ctx.beginPath()
-    ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.stroke()
-  }
+        // Relativistic Doppler Beaming Asymmetry (Approaching left side is amplified)
+        float doppler = 1.0 + 0.70 * sin(theta + 0.4);
 
-  // Fine spiral filament striations
-  for (let i = 0; i < 2800; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const dist = rInner + Math.pow(Math.random(), 1.4) * (rOuter - rInner)
-    const len = 3.0 + Math.random() * 16.0
-    const bright = Math.random()
-    ctx.strokeStyle = bright > 0.65 ? "rgba(255, 255, 255, 0.40)" : "rgba(254, 215, 120, 0.25)"
-    ctx.lineWidth = Math.random() * 1.2 + 0.4
-    ctx.beginPath()
-    ctx.arc(cx, cy, dist, angle, angle + (len / dist))
-    ctx.stroke()
-  }
+        vec3 color;
+        if (r < 0.32) {
+          color = mix(uColorInner, uColorMid, (r - 0.20) / 0.12);
+        } else if (r < 0.68) {
+          color = mix(uColorMid, uColorOuter, (r - 0.32) / 0.36);
+        } else {
+          color = mix(uColorOuter, vec3(0.35, 0.08, 0.02), (r - 0.68) / 0.30);
+        }
 
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.wrapS = THREE.ClampToEdgeWrapping
-  texture.wrapT = THREE.ClampToEdgeWrapping
-  return texture
+        color *= (plasma * 1.6 + 0.4) * dust * doppler;
+        float alpha = smoothstep(0.20, 0.28, r) * smoothstep(0.98, 0.82, r) * 0.96;
+
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+    transparent: true,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending
+  })
 }
 
-// KERR BLACK HOLE WITH EINSTEIN RELATIVISTIC LENSING
-export function createKerrBlackHole(radius = 2.4) {
+// 2. KERR BLACK HOLE MATCHING REFERENCE IMAGE
+export function createPhotorealisticKerrBlackHole(radius = 2.4) {
   const group = new THREE.Group()
 
   // Pitch-Black Event Horizon
@@ -81,8 +99,8 @@ export function createKerrBlackHole(radius = 2.4) {
   const horizon = new THREE.Mesh(horizonGeo, horizonMat)
   group.add(horizon)
 
-  // Razor-Thin White-Hot Photon Ring
-  const photonGeo = new THREE.RingGeometry(radius * 1.008, radius * 1.035, 96)
+  // Razor-Thin White-Hot Inner Photon Ring
+  const photonGeo = new THREE.RingGeometry(radius * 1.008, radius * 1.035, 128)
   const photonMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     side: THREE.DoubleSide,
@@ -93,38 +111,136 @@ export function createKerrBlackHole(radius = 2.4) {
   const photonRing = new THREE.Mesh(photonGeo, photonMat)
   group.add(photonRing)
 
-  const diskTex = createPhotorealisticAccretionTexture()
+  // Glowing Plasma V Glyph inside the Singularity Core
+  const vShape = new THREE.Shape()
+  vShape.moveTo(-0.95, 1.1)
+  vShape.lineTo(0.0, -1.25)
+  vShape.lineTo(0.95, 1.1)
+  vShape.lineTo(0.52, 1.1)
+  vShape.lineTo(0.0, -0.42)
+  vShape.lineTo(-0.52, 1.1)
+  vShape.closePath()
 
-  // Primary Equatorial Accretion Disk
-  const diskGeo = new THREE.RingGeometry(radius * 1.15, radius * 3.6, 128)
-  const diskMat = new THREE.MeshBasicMaterial({
-    map: diskTex,
+  const vGeo = new THREE.ShapeGeometry(vShape)
+  const vMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
     side: THREE.DoubleSide,
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.95,
     blending: THREE.AdditiveBlending
   })
+  const vCoreMesh = new THREE.Mesh(vGeo, vMat)
+  vCoreMesh.position.set(0, 0, 0.05)
+  group.add(vCoreMesh)
+
+  // Secondary Golden Energy Aura on V Core
+  const vGlowMat = new THREE.MeshBasicMaterial({
+    color: 0xf59e0b,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.65,
+    blending: THREE.AdditiveBlending
+  })
+  const vGlowMesh = new THREE.Mesh(vGeo, vGlowMat)
+  vGlowMesh.scale.set(1.15, 1.15, 1.0)
+  vGlowMesh.position.set(0, 0, 0.02)
+  group.add(vGlowMesh)
+
+  // Primary Diagonal Relativistic Accretion Blade
+  const diskMat = createAccretionDiskMaterial()
+  const diskGeo = new THREE.RingGeometry(radius * 1.15, radius * 5.2, 128)
   const disk = new THREE.Mesh(diskGeo, diskMat)
+  // Tilted at acute diagonal angle matching reference image
   disk.rotation.x = Math.PI / 2.3
+  disk.rotation.z = -Math.PI / 7.5
   group.add(disk)
 
-  // Einstein Gravitational Lensing Arc (Bending light over & under horizon)
-  const lensGeo = new THREE.RingGeometry(radius * 1.08, radius * 2.3, 128)
-  const lensMat = new THREE.MeshBasicMaterial({
-    map: diskTex,
-    side: THREE.DoubleSide,
-    transparent: true,
-    opacity: 0.75,
-    blending: THREE.AdditiveBlending
-  })
-  const lensRing = new THREE.Mesh(lensGeo, lensMat)
-  lensRing.rotation.y = Math.PI / 18
-  group.add(lensRing)
+  // Concentric Einstein Gravitational Lensing Light Rings
+  const lensingGroup = new THREE.Group()
+  const ringRadii = [
+    { rIn: radius * 1.25, rOut: radius * 1.30, opacity: 0.65, color: 0xffffff },
+    { rIn: radius * 1.75, rOut: radius * 1.82, opacity: 0.45, color: 0x93c5fd },
+    { rIn: radius * 2.45, rOut: radius * 2.53, opacity: 0.32, color: 0x60a5fa },
+    { rIn: radius * 3.35, rOut: radius * 3.45, opacity: 0.22, color: 0x38bdf8 }
+  ]
 
-  return { group, horizon, disk, lensRing }
+  ringRadii.forEach(spec => {
+    const rGeo = new THREE.RingGeometry(spec.rIn, spec.rOut, 96)
+    const rMat = new THREE.MeshBasicMaterial({
+      color: spec.color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: spec.opacity,
+      blending: THREE.AdditiveBlending
+    })
+    const rMesh = new THREE.Mesh(rGeo, rMat)
+    lensingGroup.add(rMesh)
+  })
+  group.add(lensingGroup)
+
+  return { group, horizon, disk, diskMat, vCoreMesh, vGlowMesh, lensingGroup }
 }
 
-// MILITARY RECONNAISSANCE SATELLITE
+// 3. DEEP-SPACE AZURE & INDIGO NEBULA SKYBOX
+export function createDeepSpaceNebulaSkybox(): THREE.Group {
+  const group = new THREE.Group()
+
+  // Starfield
+  const count = 2800
+  const starGeo = new THREE.BufferGeometry()
+  const starPositions = new Float32Array(count * 3)
+  const starColors = new Float32Array(count * 3)
+
+  for (let i = 0; i < count; i++) {
+    const phi = Math.acos(Math.random() * 2 - 1)
+    const theta = Math.random() * Math.PI * 2
+    const r = 400 + Math.random() * 300
+
+    starPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
+    starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
+    starPositions[i * 3 + 2] = r * Math.cos(phi)
+
+    const p = Math.random()
+    if (p > 0.8) {
+      starColors[i * 3 + 0] = 0.55; starColors[i * 3 + 1] = 0.80; starColors[i * 3 + 2] = 1.0;
+    } else if (p > 0.6) {
+      starColors[i * 3 + 0] = 1.0; starColors[i * 3 + 1] = 0.88; starColors[i * 3 + 2] = 0.65;
+    } else {
+      starColors[i * 3 + 0] = 0.95; starColors[i * 3 + 1] = 0.98; starColors[i * 3 + 2] = 1.0;
+    }
+  }
+
+  starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
+  starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
+  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+    size: 1.3,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.9
+  }))
+  group.add(stars)
+
+  // Cosmic Cyan/Indigo Nebula Gas Clouds
+  const cloudCount = 14
+  for (let i = 0; i < cloudCount; i++) {
+    const planeGeo = new THREE.PlaneGeometry(160 + i * 20, 90 + i * 15)
+    const planeMat = new THREE.MeshBasicMaterial({
+      color: i % 2 === 0 ? 0x0284c7 : 0x1e1b4b,
+      transparent: true,
+      opacity: 0.08,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide
+    })
+    const cloud = new THREE.Mesh(planeGeo, planeMat)
+    cloud.position.set((Math.random() - 0.5) * 80, (Math.random() - 0.5) * 50, -180 - i * 10)
+    cloud.rotation.z = Math.random() * Math.PI
+    group.add(cloud)
+  }
+
+  return group
+}
+
+// 4. PHOTOREALISTIC MILITARY RECONNAISSANCE SATELLITE
 export function createMilitarySatellite(options?: { scale?: number }) {
   const scale = options?.scale ?? 1.0
   const group = new THREE.Group()
@@ -132,7 +248,11 @@ export function createMilitarySatellite(options?: { scale?: number }) {
 
   // Gold MLI Foil Avionics Bus
   const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.8)
-  const busMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.95, roughness: 0.18 })
+  const busMat = new THREE.MeshStandardMaterial({
+    color: 0xd97706,
+    metalness: 0.95,
+    roughness: 0.18
+  })
   const busMesh = new THREE.Mesh(busGeo, busMat)
   group.add(busMesh)
 
@@ -146,13 +266,16 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   radR.position.set(-0.61, 0, 0)
   group.add(radR)
 
-  // Rocket Engine Bell
-  const nozGeo = new THREE.ConeGeometry(0.2, 0.45, 16, 1, true)
+  // Rocket Engine Bells
+  const nozGeo = new THREE.ConeGeometry(0.18, 0.45, 16, 1, true)
   const nozMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95, roughness: 0.2 })
-  const noz = new THREE.Mesh(nozGeo, nozMat)
-  noz.rotation.x = -Math.PI / 2
-  noz.position.set(0, 0, -1.05)
-  group.add(noz)
+  const nozPositions = [[0.28, 0.28, -1.02], [-0.28, 0.28, -1.02], [0, -0.32, -1.02]]
+  nozPositions.forEach(([nx, ny, nz]) => {
+    const noz = new THREE.Mesh(nozGeo, nozMat)
+    noz.rotation.x = -Math.PI / 2
+    noz.position.set(nx, ny, nz)
+    group.add(noz)
+  })
 
   // Recon Optical Barrel & Glowing Lens
   const scopeGeo = new THREE.CylinderGeometry(0.38, 0.42, 1.2, 24)
@@ -168,69 +291,60 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   scopeLens.position.set(0, 0, 1.81)
   group.add(scopeLens)
 
-  // Dual Solar Wings
+  // Dual GaAs Photovoltaic Wings
   const solarWings = new THREE.Group()
-  const wingGeo = new THREE.BoxGeometry(2.4, 0.05, 1.0)
+  const wingGeo = new THREE.BoxGeometry(2.6, 0.05, 1.1)
   const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.85 })
 
   const wingL = new THREE.Mesh(wingGeo, wingMat)
-  wingL.position.set(1.9, 0, 0)
+  wingL.position.set(2.1, 0, 0)
   solarWings.add(wingL)
 
+  const boomGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.8, 12)
+  const boomMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.9 })
+  const boomL = new THREE.Mesh(boomGeo, boomMat)
+  boomL.rotation.z = Math.PI / 2
+  boomL.position.set(0.9, 0, 0)
+  solarWings.add(boomL)
+
   const wingR = new THREE.Mesh(wingGeo, wingMat)
-  wingR.position.set(-1.9, 0, 0)
+  wingR.position.set(-2.1, 0, 0)
   solarWings.add(wingR)
+
+  const boomR = boomL.clone()
+  boomR.position.set(-0.9, 0, 0)
+  solarWings.add(boomR)
   group.add(solarWings)
 
-  // Parabolic Dish
+  // Parabolic Communications Dish
   const dishGroup = new THREE.Group()
   dishGroup.position.set(0, 0.85, -0.4)
-  const dishGeo = new THREE.CylinderGeometry(0.5, 0.08, 0.2, 24)
+  const dishGeo = new THREE.CylinderGeometry(0.55, 0.08, 0.22, 24)
   const dishMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.92, roughness: 0.18 })
   const dish = new THREE.Mesh(dishGeo, dishMat)
   dish.rotation.x = -Math.PI / 3
   dishGroup.add(dish)
+
+  const hornGeo = new THREE.ConeGeometry(0.08, 0.25, 12)
+  const hornMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.95 })
+  const horn = new THREE.Mesh(hornGeo, hornMat)
+  horn.rotation.x = Math.PI * 0.65
+  horn.position.set(0, 0.15, 0.15)
+  dishGroup.add(horn)
   group.add(dishGroup)
 
   // Ion Thruster Plume
-  const plumeGeo = new THREE.ConeGeometry(0.2, 1.2, 16, 1, true)
-  const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending })
+  const plumeGeo = new THREE.ConeGeometry(0.22, 1.4, 16, 1, true)
+  const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
   const plume = new THREE.Mesh(plumeGeo, plumeMat)
   plume.rotation.x = -Math.PI / 2
-  plume.position.set(0, 0, -1.55)
+  plume.position.set(0, 0, -1.65)
   group.add(plume)
 
-  return { group, plume, solarWings, dishGroup }
+  return { group, plume, solarWings, dishGroup, scopeLens }
 }
 
-// DEEP SPACE STARFIELD
-export function createDeepSpaceStarfield(count = 2400, fieldRadius = 700): THREE.Points {
-  const starGeo = new THREE.BufferGeometry()
-  const starPositions = new Float32Array(count * 3)
-  const starColors = new Float32Array(count * 3)
-
-  for (let i = 0; i < count; i++) {
-    const phi = Math.acos(Math.random() * 2 - 1)
-    const theta = Math.random() * Math.PI * 2
-    const r = fieldRadius * (0.5 + Math.random() * 0.5)
-
-    starPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
-    starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-    starPositions[i * 3 + 2] = r * Math.cos(phi)
-
-    const p = Math.random()
-    if (p > 0.85) { starColors[i * 3 + 0] = 0.6; starColors[i * 3 + 1] = 0.85; starColors[i * 3 + 2] = 1.0 }
-    else if (p > 0.65) { starColors[i * 3 + 0] = 1.0; starColors[i * 3 + 1] = 0.88; starColors[i * 3 + 2] = 0.6 }
-    else { starColors[i * 3 + 0] = 0.95; starColors[i * 3 + 1] = 0.95; starColors[i * 3 + 2] = 1.0 }
-  }
-
-  starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
-  starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
-
-  return new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.9 }))
-}
-
-// NASA BLUE MARBLE EARTH & CRATERED MOON
+// 5. NASA BLUE MARBLE EARTH & MOON
 export function createCinematicEarth(radius = 5.5) {
   const earthGroup = new THREE.Group()
   const texLoader = new THREE.TextureLoader()
