@@ -33,7 +33,7 @@ export default function CommandBar() {
       <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#01030a]/95 backdrop-blur-2xl border-b border-slate-800/80 font-mono text-xs select-none">
         <div className="h-full max-w-[1920px] mx-auto px-3 sm:px-4 flex items-center justify-between gap-2 lg:gap-4">
           
-          {/* LEFT: BRAND */}
+          {/* LEFT: BRAND LOGO ALWAYS ROUTES TO / */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <Link href="/" className="flex items-center gap-2 text-white font-black tracking-widest uppercase hover:text-cyan-400 transition-colors">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 via-sky-600 to-indigo-700 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)]">
@@ -50,7 +50,7 @@ export default function CommandBar() {
             </div>
           </div>
 
-          {/* CENTER: SPECIALIZED DOMAIN MEGA-MENUS */}
+          {/* CENTER: DOMAIN MEGA-MENUS */}
           <nav className="hidden lg:flex items-center gap-1 text-[11px] font-sans">
             
             {/* COMMAND */}
@@ -217,10 +217,10 @@ export default function CommandBar() {
             </div>
           </nav>
 
-          {/* RIGHT: SEARCH, DEFCON, CLEARANCE & VIP */}
+          {/* RIGHT: SEARCH, DEFCON, & VIP */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             
-            {/* SEARCH BUTTON WITH DIRECT STATE TOGGLE */}
+            {/* SEARCH BUTTON WITH DIRECT STATE */}
             <button
               onClick={() => setIsPaletteOpen(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white transition-all shadow-inner"
