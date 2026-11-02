@@ -486,7 +486,7 @@ export default function SchedulerPage() {
               Kuhn-Munkres Duality Sizing
             </div>
             <p className="text-[10px] text-slate-500 leading-relaxed">
-              By evaluating dual variable potentials $u_i + v_j \le c_{ij}$, the scheduler achieves mathematically optimal global covariance minimization without combinatorial explosion.
+              By evaluating dual variable potentials $u_i + v_j \le c_ij$, the scheduler achieves mathematically optimal global covariance minimization without combinatorial explosion.
             </p>
           </div>
         </div>
