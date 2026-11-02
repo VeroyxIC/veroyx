@@ -2,21 +2,21 @@
 
 import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
-import { Orbit, Activity, ShieldCheck, Flame, Play, Square, Eye, Globe } from "lucide-react"
-import { createCinematicEarth, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
+import { Orbit, Activity, Globe } from "lucide-react"
+import { 
+  createCinematicEarth, createCrateredMoon, 
+  createMilitarySatellite, createDeepSpaceStarfield 
+} from "@/components/three/CinematicSpaceEngine"
 
 export default function VisualizerPage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
-
   const [altitudeKm, setAltitudeKm] = useState<number>(550)
   const [inclinationDeg, setInclinationDeg] = useState<number>(51.6)
-  const [isPlaying, setIsPlaying] = useState<boolean>(true)
-  const [isBurning, setIsBurning] = useState<boolean>(false)
 
-  const paramsRef = useRef({ altitudeKm: 550, inclinationDeg: 51.6, isPlaying: true, isBurning: false })
+  const paramsRef = useRef({ altitudeKm: 550, inclinationDeg: 51.6 })
   useEffect(() => {
-    paramsRef.current = { altitudeKm, inclinationDeg, isPlaying, isBurning }
-  }, [altitudeKm, inclinationDeg, isPlaying, isBurning])
+    paramsRef.current = { altitudeKm, inclinationDeg }
+  }, [altitudeKm, inclinationDeg])
 
   useEffect(() => {
     const container = mountRef.current
@@ -40,7 +40,7 @@ export default function VisualizerPage() {
     const starfield = createDeepSpaceStarfield(1600, 800)
     scene.add(starfield)
 
-    // Radiant Sun with Anamorphic Flare in Upper Left (Video 00:10)
+    // 1. Radiant Sun with Anamorphic Flare in Upper Left (Video 00:10)
     const sunLight = new THREE.DirectionalLight(0xfffaee, 4.0)
     sunLight.position.set(-28, 22, 14)
     scene.add(sunLight)
@@ -60,28 +60,25 @@ export default function VisualizerPage() {
     const flareLine = new THREE.Line(flareLineGeo, flareLineMat)
     scene.add(flareLine)
 
-    // NASA Blue Marble Earth
+    // 2. NASA Blue Marble Earth
     const earthRadius = 5.5
     const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
     scene.add(earthGroup)
 
-    // The Moon in Background Orbit (Video 00:15)
-    const moonGeo = new THREE.SphereGeometry(1.4, 32, 32)
-    const moonMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 })
-    const moonMesh = new THREE.Mesh(moonGeo, moonMat)
+    // 3. Cratered Moon in Upper Right
+    const moonMesh = createCrateredMoon(1.4)
     moonMesh.position.set(18, 12, -22)
     scene.add(moonMesh)
 
-    // Primary Satellite & Wingmen Formation
+    // 4. Primary Satellite & Wingmen Formation
     const { group: satGroup, plume: ionPlume } = createMilitarySatellite({ scale: 0.55 })
     scene.add(satGroup)
-
     const { group: wingman1 } = createMilitarySatellite({ scale: 0.35 })
     scene.add(wingman1)
     const { group: wingman2 } = createMilitarySatellite({ scale: 0.35 })
     scene.add(wingman2)
 
-    // Tactical Neon-Green Laser Links (OISL)
+    // 5. Neon-Green Laser Crosslinks (OISL)
     const laserMat = new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2.5, transparent: true, opacity: 0.9 })
     const laserGeo1 = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])
     const laserLine1 = new THREE.Line(laserGeo1, laserMat)
@@ -100,20 +97,36 @@ export default function VisualizerPage() {
     const orbitLine = new THREE.Line(orbitGeo, orbitMat)
     scene.add(orbitLine)
 
-    // Debris Cloud
-    const debrisCount = 600
-    const debGeo = new THREE.BufferGeometry()
-    const debPos = new Float32Array(debrisCount * 3)
-    for (let i = 0; i < debrisCount; i++) {
-      const r = earthRadius + 0.8 + Math.random() * 3.5
-      const theta = Math.random() * Math.PI * 2
-      debPos[i * 3 + 0] = r * Math.cos(theta)
-      debPos[i * 3 + 1] = (Math.random() - 0.5) * 1.8
-      debPos[i * 3 + 2] = r * Math.sin(theta)
+    // Interactive Drag Rotation & Motion Zooming
+    let isDragging = false
+    let prevMouseX = 0
+    let prevMouseY = 0
+
+    const onMouseDown = (e: MouseEvent) => {
+      isDragging = true
+      prevMouseX = e.clientX
+      prevMouseY = e.clientY
     }
-    debGeo.setAttribute("position", new THREE.BufferAttribute(debPos, 3))
-    const debCloud = new THREE.Points(debGeo, new THREE.PointsMaterial({ color: 0x94a3b8, size: 0.1, transparent: true, opacity: 0.65 }))
-    scene.add(debCloud)
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return
+      const deltaX = e.clientX - prevMouseX
+      const deltaY = e.clientY - prevMouseY
+      prevMouseX = e.clientX
+      prevMouseY = e.clientY
+      earthGroup.rotation.y += deltaX * 0.005
+      earthGroup.rotation.x += deltaY * 0.005
+    }
+
+    const onMouseUp = () => { isDragging = false }
+    const onWheel = (e: WheelEvent) => {
+      camera.position.z = Math.max(10.0, Math.min(42.0, camera.position.z + e.deltaY * 0.025))
+    }
+
+    container.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    container.addEventListener("wheel", onWheel, { passive: true })
 
     const clock = new THREE.Clock()
     let orbitAngle = 0
@@ -121,69 +134,56 @@ export default function VisualizerPage() {
 
     const animate = () => {
       animId = requestAnimationFrame(animate)
-
       const delta = clock.getDelta()
       const elapsed = clock.getElapsedTime()
-      const { altitudeKm, inclinationDeg, isPlaying, isBurning } = paramsRef.current
+      const { altitudeKm, inclinationDeg } = paramsRef.current
 
-      if (isPlaying) {
-        orbitAngle += delta * 0.5
-        earthMesh.rotation.y += 0.05 * delta
-        cloudsMesh.rotation.y += 0.075 * delta
+      orbitAngle += delta * 0.5
+      earthMesh.rotation.y += 0.05 * delta
+      cloudsMesh.rotation.y += 0.075 * delta
 
-        const orbitScaleRadius = earthRadius + (altitudeKm / 6371) * earthRadius
-        const incRad = (inclinationDeg * Math.PI) / 180
+      const orbitScaleRadius = earthRadius + (altitudeKm / 6371) * earthRadius
+      const incRad = (inclinationDeg * Math.PI) / 180
 
-        const satX = orbitScaleRadius * Math.cos(orbitAngle)
-        const satY = orbitScaleRadius * Math.sin(orbitAngle) * Math.sin(incRad)
-        const satZ = orbitScaleRadius * Math.sin(orbitAngle) * Math.cos(incRad)
+      const satX = orbitScaleRadius * Math.cos(orbitAngle)
+      const satY = orbitScaleRadius * Math.sin(orbitAngle) * Math.sin(incRad)
+      const satZ = orbitScaleRadius * Math.sin(orbitAngle) * Math.cos(incRad)
 
-        satGroup.position.set(satX, satY, satZ)
-        satGroup.lookAt(0, 0, 0)
+      satGroup.position.set(satX, satY, satZ)
+      satGroup.lookAt(0, 0, 0)
 
-        // Wingmen positions
-        const w1X = (orbitScaleRadius + 1.2) * Math.cos(orbitAngle + 0.8)
-        const w1Y = (orbitScaleRadius + 1.2) * Math.sin(orbitAngle + 0.8) * Math.sin(incRad + 0.2)
-        const w1Z = (orbitScaleRadius + 1.2) * Math.sin(orbitAngle + 0.8) * Math.cos(incRad + 0.2)
-        wingman1.position.set(w1X, w1Y, w1Z)
-        wingman1.lookAt(0, 0, 0)
+      const w1X = (orbitScaleRadius + 1.2) * Math.cos(orbitAngle + 0.8)
+      const w1Y = (orbitScaleRadius + 1.2) * Math.sin(orbitAngle + 0.8) * Math.sin(incRad + 0.2)
+      const w1Z = (orbitScaleRadius + 1.2) * Math.sin(orbitAngle + 0.8) * Math.cos(incRad + 0.2)
+      wingman1.position.set(w1X, w1Y, w1Z)
+      wingman1.lookAt(0, 0, 0)
 
-        const w2X = (orbitScaleRadius + 0.8) * Math.cos(orbitAngle - 0.7)
-        const w2Y = (orbitScaleRadius + 0.8) * Math.sin(orbitAngle - 0.7) * Math.sin(incRad - 0.2)
-        const w2Z = (orbitScaleRadius + 0.8) * Math.sin(orbitAngle - 0.7) * Math.cos(incRad - 0.2)
-        wingman2.position.set(w2X, w2Y, w2Z)
-        wingman2.lookAt(0, 0, 0)
+      const w2X = (orbitScaleRadius + 0.8) * Math.cos(orbitAngle - 0.7)
+      const w2Y = (orbitScaleRadius + 0.8) * Math.sin(orbitAngle - 0.7) * Math.sin(incRad - 0.2)
+      const w2Z = (orbitScaleRadius + 0.8) * Math.sin(orbitAngle - 0.7) * Math.cos(incRad - 0.2)
+      wingman2.position.set(w2X, w2Y, w2Z)
+      wingman2.lookAt(0, 0, 0)
 
-        // Update Laser Links
-        laserGeo1.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
-          satX, satY, satZ,
-          w1X, w1Y, w1Z
-        ]), 3))
-        laserGeo1.attributes.position.needsUpdate = true
+      laserGeo1.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
+        satX, satY, satZ, w1X, w1Y, w1Z
+      ]), 3))
+      laserGeo1.attributes.position.needsUpdate = true
 
-        laserGeo2.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
-          satX, satY, satZ,
-          w2X, w2Y, w2Z
-        ]), 3))
-        laserGeo2.attributes.position.needsUpdate = true
+      laserGeo2.setAttribute("position", new THREE.BufferAttribute(new Float32Array([
+        satX, satY, satZ, w2X, w2Y, w2Z
+      ]), 3))
+      laserGeo2.attributes.position.needsUpdate = true
 
-        if (isBurning) {
-          ionPlume.scale.setScalar(1.8 + Math.sin(elapsed * 18) * 0.4)
-          orbitMat.color.setHex(0xf59e0b)
-        } else {
-          ionPlume.scale.setScalar(1.0 + Math.sin(elapsed * 6) * 0.15)
-          orbitMat.color.setHex(0x00f0ff)
-        }
+      ionPlume.scale.setScalar(1.0 + Math.sin(elapsed * 6) * 0.15)
 
-        const posArr = orbitGeo.attributes.position.array as Float32Array
-        for (let i = 0; i < orbitPointsCount; i++) {
-          const theta = (i / (orbitPointsCount - 1)) * Math.PI * 2
-          posArr[i * 3 + 0] = orbitScaleRadius * Math.cos(theta)
-          posArr[i * 3 + 1] = orbitScaleRadius * Math.sin(theta) * Math.sin(incRad)
-          posArr[i * 3 + 2] = orbitScaleRadius * Math.sin(theta) * Math.cos(incRad)
-        }
-        orbitGeo.attributes.position.needsUpdate = true
+      const posArr = orbitGeo.attributes.position.array as Float32Array
+      for (let i = 0; i < orbitPointsCount; i++) {
+        const theta = (i / (orbitPointsCount - 1)) * Math.PI * 2
+        posArr[i * 3 + 0] = orbitScaleRadius * Math.cos(theta)
+        posArr[i * 3 + 1] = orbitScaleRadius * Math.sin(theta) * Math.sin(incRad)
+        posArr[i * 3 + 2] = orbitScaleRadius * Math.sin(theta) * Math.cos(incRad)
       }
+      orbitGeo.attributes.position.needsUpdate = true
 
       renderer.render(scene, camera)
     }
@@ -199,6 +199,10 @@ export default function VisualizerPage() {
 
     return () => {
       cancelAnimationFrame(animId)
+      container.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      container.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
       renderer.dispose()
     }
@@ -206,13 +210,14 @@ export default function VisualizerPage() {
 
   return (
     <div className="w-full h-[calc(100vh-3.5rem)] pt-14 px-6 pb-6 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden select-none">
+      
       <div className="w-80 h-full flex flex-col pr-6 border-r border-slate-800/80 overflow-y-auto font-mono text-xs">
         <div className="mb-4">
           <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase tracking-widest text-[10px] mb-1">
             <Orbit className="w-4 h-4" /> NASA Blue Marble Engine
           </div>
           <h1 className="text-lg font-black text-white tracking-wider">C2 THEATER VIEW</h1>
-          <p className="text-[10px] text-slate-500 uppercase">Sun Flare, Moon & Laser Crosslinks</p>
+          <p className="text-[10px] text-slate-500 uppercase">Sun Flare, Moon &amp; Laser Crosslinks</p>
         </div>
 
         <div className="space-y-4">
@@ -242,14 +247,25 @@ export default function VisualizerPage() {
       </div>
 
       <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-4 left-6 z-10 font-mono pointer-events-none">
-          <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">Space Systems Command // JSpOC Glass</div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-black text-white">TACTICAL SATELLITE FLEET</span>
-            <span className="text-emerald-400 text-xs font-bold">[NASA BLUE MARBLE // OISL LASER LINKS]</span>
+        {/* Aerospace Mission Control Header Glass (Video 00:10) */}
+        <div className="absolute top-3 left-6 right-6 z-10 flex items-center justify-between font-mono text-[10px] text-slate-400 bg-slate-950/80 border border-slate-800 px-4 py-2 rounded-xl backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            <span className="text-white font-bold">FILE</span>
+            <span>EDIT</span>
+            <span>VIEW</span>
+            <span className="text-cyan-400 font-bold">CONSTELLATION</span>
+            <span>TOOLS</span>
+            <span>HQ</span>
+            <span className="text-emerald-400 font-bold">CONVERGENODES</span>
+            <span>HELP</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-emerald-300 font-bold">SATELLITE TELEMETRY - LOCKED</span>
           </div>
         </div>
 
+        {/* Live floating HUD badges (Video 00:10 - 00:19) */}
         <div className="absolute top-20 left-1/3 z-10 font-mono text-[9px] bg-slate-950/80 border border-emerald-500/60 text-emerald-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(34,197,94,0.4)]">
           ● 127 SGC // SAT 012
         </div>
@@ -262,7 +278,7 @@ export default function VisualizerPage() {
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] bg-slate-950/85 backdrop-blur-xl border border-slate-800 p-3.5 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-white font-bold text-xs">ACTIVE CONSTELLATION CUSTODY (3 SATELLITES FORMATION)</span>
+            <span className="text-white font-bold text-xs">CONSTELLATION FORMATION // OISL LASER CHANNELS ACTIVE</span>
           </div>
           <div className="border-l border-slate-800 pl-6">
             <span className="text-slate-500 block text-[9px]">SUN CORONA ANAMORPHIC FLARE</span>

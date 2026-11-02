@@ -9,14 +9,15 @@ import {
   Lock, Key, Database, Cpu, Compass, Flame, CheckCircle2, 
   ShieldAlert, Fingerprint, Unlock, ChevronDown 
 } from "lucide-react"
-import { createKerrBlackHole, createHalleyCometSystem, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
+import { 
+  createKerrBlackHole, createHalleyCometSystem, 
+  createMilitarySatellite, createDeepSpaceStarfield 
+} from "@/components/three/CinematicSpaceEngine"
 
 type ClearanceLevel = "TS_SCI_SITK" | "SECRET_NATO" | "SAP_GAMMA"
 
 export default function MasterHomePage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const pillarsRef = useRef<HTMLDivElement | null>(null)
-
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [clearanceTier, setClearanceTier] = useState<ClearanceLevel>("TS_SCI_SITK")
   const [pinCode, setPinCode] = useState<string>("8942-0129")
@@ -34,15 +35,8 @@ export default function MasterHomePage() {
   const handleAuthorizeEnclave = (bypass = false) => {
     setIsAuthenticating(true)
     setAuthStepMessage("INITIALIZING ECDH CURVE25519 KEY EXCHANGE...")
-
-    setTimeout(() => {
-      setAuthStepMessage("NIST FIPS 140-3 HSM ZERO-KNOWLEDGE PROOF VERIFIED...")
-    }, 400)
-
-    setTimeout(() => {
-      setAuthStepMessage("CLEARANCE GRANTED // DECRYPTING OPERATIONAL ENCLAVE")
-    }, 800)
-
+    setTimeout(() => setAuthStepMessage("NIST FIPS 140-3 HSM ZERO-KNOWLEDGE PROOF VERIFIED..."), 400)
+    setTimeout(() => setAuthStepMessage("CLEARANCE GRANTED // DECRYPTING OPERATIONAL ENCLAVE"), 800)
     setTimeout(() => {
       setIsAuthenticating(false)
       setIsAuthenticated(true)
@@ -59,11 +53,7 @@ export default function MasterHomePage() {
     }
   }
 
-  const handleScrollToPillars = () => {
-    pillarsRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
-
-  // 3D Three.js Kerr Black Hole, Accretion Disk, Halley's Comet & Interactive Zoom
+  // 3D Three.js Kerr Black Hole & Interactive Motion Zooming Engine
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -86,27 +76,26 @@ export default function MasterHomePage() {
     pLight.position.set(0, 2, 8)
     scene.add(pLight)
 
-    // Deep Space Starfield
     const starfield = createDeepSpaceStarfield(1400, 700)
     scene.add(starfield)
 
-    // 1. Relativistic Kerr Black Hole with Lensing (Video 00:00 - 00:09)
-    const { group: bhGroup, disk, lensRing, astGroup } = createKerrBlackHole(3.2)
+    // 1. Relativistic Kerr Black Hole
+    const { group: bhGroup, disk, lensRing, astGroup, diskMat, lensMat } = createKerrBlackHole(3.2)
     scene.add(bhGroup)
 
-    // 2. Halley's Comet System with Meteor Showers
-    const { group: cometGroup, comet, ionTail, dustTail, meteorGroup } = createHalleyCometSystem()
+    // 2. Halley's Comet & Meteor Shower
+    const { group: cometGroup, meteorGroup } = createHalleyCometSystem()
     cometGroup.position.set(-16, 8, -6)
     scene.add(cometGroup)
     scene.add(meteorGroup)
 
-    // 3. Gold-Foil Military Reconnaissance Satellite
+    // 3. Military Reconnaissance Spacecraft
     const { group: satGroup, plume } = createMilitarySatellite({ scale: 0.44 })
     satGroup.position.set(6.8, -2.2, 5.0)
     satGroup.rotation.y = -Math.PI / 4
     scene.add(satGroup)
 
-    // Interactive Drag Rotation & Motion Zooming
+    // Drag Rotation & Scroll-Wheel Motion Zooming
     let isDragging = false
     let prevMouseX = 0
     let prevMouseY = 0
@@ -123,15 +112,13 @@ export default function MasterHomePage() {
       const deltaY = e.clientY - prevMouseY
       prevMouseX = e.clientX
       prevMouseY = e.clientY
-
       bhGroup.rotation.y += deltaX * 0.005
       bhGroup.rotation.x += deltaY * 0.005
     }
 
     const onMouseUp = () => { isDragging = false }
-
     const onWheel = (e: WheelEvent) => {
-      camera.position.z = Math.max(10, Math.min(38, camera.position.z + e.deltaY * 0.025))
+      camera.position.z = Math.max(8.0, Math.min(38.0, camera.position.z + e.deltaY * 0.025))
     }
 
     container.addEventListener("mousedown", onMouseDown)
@@ -144,20 +131,22 @@ export default function MasterHomePage() {
 
     const animate = () => {
       animId = requestAnimationFrame(animate)
-
       const delta = clock.getDelta()
       const elapsed = clock.getElapsedTime()
 
-      // Accretion Disk Swirl
-      disk.rotation.z += 0.35 * delta
-      lensRing.rotation.z += 0.22 * delta
-      astGroup.rotation.y += 0.18 * delta
+      // Accretion disk shader time update
+      diskMat.uniforms.uTime.value = elapsed
+      lensMat.uniforms.uTime.value = elapsed
 
-      // Halley's Comet Orbiting across top
+      disk.rotation.z += 0.25 * delta
+      lensRing.rotation.z += 0.18 * delta
+      astGroup.rotation.y += 0.12 * delta
+
+      // Halley Comet translation
       cometGroup.position.x = -18 + ((elapsed * 1.6) % 36)
       cometGroup.position.y = 7.5 + Math.sin(elapsed * 0.4) * 1.5
 
-      // Meteor shower pulse
+      // Meteor fireballs
       meteorGroup.children.forEach((m, idx) => {
         m.position.x -= delta * (14 + idx * 2)
         m.position.y -= delta * (8 + idx)
@@ -173,7 +162,6 @@ export default function MasterHomePage() {
       satGroup.lookAt(0, 0, 0)
 
       plume.scale.setScalar(1.0 + Math.sin(elapsed * 14) * 0.25)
-
       renderer.render(scene, camera)
     }
     animate()
@@ -200,7 +188,6 @@ export default function MasterHomePage() {
   return (
     <div className="relative w-full min-h-screen bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
-      {/* ZERO-TRUST CLASSIFIED AUTHENTICATION GATE */}
       {!isAuthenticated ? (
         <div className="min-h-screen flex items-center justify-center pt-16 px-4 pb-12 z-20">
           <div className="w-full max-w-xl p-8 rounded-3xl bg-[#010614]/90 backdrop-blur-3xl border border-cyan-500/50 shadow-[0_0_80px_rgba(6,182,212,0.3)] space-y-6 font-mono text-xs">
@@ -225,21 +212,20 @@ export default function MasterHomePage() {
                   { key: "TS_SCI_SITK", label: "TS/SCI SI-TK", note: "TALENT-KEYHOLE" },
                   { key: "SECRET_NATO", label: "SECRET NATO", note: "FVEY ALLIED" },
                   { key: "SAP_GAMMA", label: "SAP GAMMA", note: "COUNTER-SPACE" }
-                ].map(c => {
-                  const isSel = clearanceTier === c.key
-                  return (
-                    <button
-                      key={c.key}
-                      onClick={() => setClearanceTier(c.key as ClearanceLevel)}
-                      className={`p-2.5 rounded-xl border text-center transition-all ${
-                        isSel ? "bg-cyan-950/80 border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.3)]" : "bg-slate-950/60 border-slate-800 text-slate-500 hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="font-bold text-[11px] text-white">{c.label}</div>
-                      <div className="text-[8px] text-slate-500 mt-0.5">{c.note}</div>
-                    </button>
-                  )
-                })}
+                ].map(c => (
+                  <button
+                    key={c.key}
+                    onClick={() => setClearanceTier(c.key as ClearanceLevel)}
+                    className={
+                      clearanceTier === c.key
+                        ? "p-2.5 rounded-xl border text-center transition-all bg-cyan-950/80 border-cyan-400 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                        : "p-2.5 rounded-xl border text-center transition-all bg-slate-950/60 border-slate-800 text-slate-500 hover:border-slate-700"
+                    }
+                  >
+                    <div className="font-bold text-[11px] text-white">{c.label}</div>
+                    <div className="text-[8px] text-slate-500 mt-0.5">{c.note}</div>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -284,7 +270,6 @@ export default function MasterHomePage() {
           </div>
         </div>
       ) : (
-        /* MASTER HOMEPAGE DASHBOARD */
         <div className="relative w-full min-h-screen">
           <div className="fixed top-14 left-0 right-0 z-40 bg-slate-950/85 backdrop-blur-md border-b border-cyan-500/30 px-6 py-2 flex items-center justify-between font-mono text-[11px]">
             <div className="flex items-center gap-2 text-cyan-300">
@@ -302,14 +287,14 @@ export default function MasterHomePage() {
           <section className="relative w-full min-h-[92vh] flex flex-col items-center justify-center pt-24 px-4 sm:px-6 select-none">
             <div ref={mountRef} className="absolute inset-0 w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing z-0" />
 
-            {/* Floating Telemetry Badge Instructions */}
+            {/* Instruction Badge */}
             <div className="absolute top-24 right-6 z-10 font-mono text-[10px] text-slate-400 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl pointer-events-none backdrop-blur-md hidden sm:block">
-              DRAG: ROTATE BLACK HOLE | SCROLL: MOTION ZOOM (10x-40x)
+              DRAG: ROTATE BLACK HOLE | SCROLL: MOTION ZOOM (8x - 38x)
             </div>
 
             <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-2xl mx-auto pointer-events-auto">
               
-              {/* PURE BORDERLESS GLOWING V LOGO WITH SATELLITE (NO SQUARE BORDER) */}
+              {/* BORDERLESS GLOWING V LOGO WITH SATELLITE ORBIT */}
               <div className="relative w-48 h-48 flex items-center justify-center">
                 <div className="absolute inset-0 rounded-full bg-cyan-500/25 blur-3xl animate-breathe-glow pointer-events-none" />
                 <div className="absolute w-44 h-44 rounded-full border border-cyan-500/40 border-dashed animate-spin [animation-duration:28s] pointer-events-none" />
