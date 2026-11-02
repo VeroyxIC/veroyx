@@ -7,7 +7,7 @@ import {
   Sparkles, Orbit, ShieldAlert, ShieldCheck, Zap, Radio, 
   Activity, Layers, Gauge, Crosshair, Target, Search, 
   ChevronDown, Flame, Wind, Eye, Network, Lock, Sun, 
-  ArrowUpRight, Terminal, Globe, Award, Key 
+  ArrowUpRight, Terminal, Globe, Award, Key, Database 
 } from "lucide-react"
 import CommandPalette from "@/components/CommandPalette"
 
@@ -30,12 +30,12 @@ export default function CommandBar() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#01040f]/95 backdrop-blur-2xl border-b border-slate-800/80 font-mono text-xs select-none">
+      <header className="fixed top-0 left-0 right-0 z-50 h-14 bg-[#01030a]/95 backdrop-blur-2xl border-b border-slate-800/80 font-mono text-xs select-none">
         <div className="h-full max-w-[1920px] mx-auto px-3 sm:px-4 flex items-center justify-between gap-2 lg:gap-4">
           
           {/* LEFT: BRAND */}
           <div className="flex items-center gap-3 shrink-0">
-            <Link href="/nexus" className="flex items-center gap-2 text-white font-black tracking-widest uppercase hover:text-cyan-400 transition-colors">
+            <Link href="/" className="flex items-center gap-2 text-white font-black tracking-widest uppercase hover:text-cyan-400 transition-colors">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 via-sky-600 to-indigo-700 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.4)]">
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
@@ -85,6 +85,10 @@ export default function CommandBar() {
                     <div className="text-white font-bold text-xs">3D Threat Visualizer</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">Orbital conjunction catalog globe</div>
                   </Link>
+                  <Link href="/telecommand" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                    <div className="text-white font-bold text-xs">Telecommand Uplink</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">CCSDS 232.0-B uplink console</div>
+                  </Link>
                 </div>
               )}
             </div>
@@ -106,11 +110,15 @@ export default function CommandBar() {
 
               {activeMenu === "DEFENSE" && (
                 <div className="absolute top-full left-0 mt-1.5 w-72 p-2 bg-[#020617]/95 backdrop-blur-2xl border border-slate-700 rounded-xl shadow-2xl space-y-1">
-                  <Link href="/intercept" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                  <Link href="/kill-chain" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs flex items-center justify-between">
-                      <span>Kinetic ASAT &amp; DEW</span>
-                      <span className="text-[9px] px-1 rounded bg-rose-950 text-rose-400 border border-rose-800 font-mono">H2K</span>
+                      <span>Space Kill-Chain</span>
+                      <span className="text-[9px] px-1 rounded bg-rose-950 text-rose-400 border border-rose-800 font-mono">JADC2</span>
                     </div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Automated F2T2EA weapon pairing</div>
+                  </Link>
+                  <Link href="/intercept" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                    <div className="text-white font-bold text-xs">Kinetic ASAT &amp; DEW</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">ProNav hit-to-kill &amp; laser ablation</div>
                   </Link>
                   <Link href="/rpo" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
@@ -120,10 +128,6 @@ export default function CommandBar() {
                   <Link href="/pursuit-evasion" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs">Pursuit-Evasion Game</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">HJI orbital combat reachability basins</div>
-                  </Link>
-                  <Link href="/hemp-sim" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
-                    <div className="text-white font-bold text-xs">HEMP &amp; Radiation Belts</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">Starfish Prime E1/E2/E3 burst model</div>
                   </Link>
                   <Link href="/planetary-defense" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs">Planetary Defense</div>
@@ -150,28 +154,24 @@ export default function CommandBar() {
 
               {activeMenu === "SURVEILLANCE" && (
                 <div className="absolute top-full left-0 mt-1.5 w-72 p-2 bg-[#020617]/95 backdrop-blur-2xl border border-slate-700 rounded-xl shadow-2xl space-y-1">
-                  <Link href="/tasking" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                  <Link href="/catalog" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs flex items-center justify-between">
-                      <span>SSN Sensor Tasking</span>
-                      <span className="text-[9px] px-1 rounded bg-amber-950 text-amber-400 border border-amber-800 font-mono">RADAR</span>
+                      <span>48K Orbital Catalog</span>
+                      <span className="text-[9px] px-1 rounded bg-amber-950 text-amber-400 border border-amber-800 font-mono">48K</span>
                     </div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">Metric radar handover &amp; covariance</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Space-Track SGP4 live RSO catalog</div>
                   </Link>
-                  <Link href="/scheduler" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
-                    <div className="text-white font-bold text-xs">Hungarian Scheduler</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">Kuhn-Munkres optimal sensor assignment</div>
+                  <Link href="/ephemeris" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                    <div className="text-white font-bold text-xs">SGP4 Orbit Propagator</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">ECI J2000 state vector solver</div>
+                  </Link>
+                  <Link href="/tasking" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
+                    <div className="text-white font-bold text-xs">SSN Sensor Tasking</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Metric radar handover &amp; covariance</div>
                   </Link>
                   <Link href="/sigint" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
                     <div className="text-white font-bold text-xs">Space-Based SIGINT</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">TDOA / FDOA satellite multilateration</div>
-                  </Link>
-                  <Link href="/hypersonic" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
-                    <div className="text-white font-bold text-xs">Hypersonic OPIR Tracking</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">Aerothermal shock space tracking</div>
-                  </Link>
-                  <Link href="/adaptive-optics" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
-                    <div className="text-white font-bold text-xs">Adaptive Optics LGS</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">Sodium laser turbulence correction</div>
                   </Link>
                 </div>
               )}
@@ -209,10 +209,6 @@ export default function CommandBar() {
                     <div className="text-white font-bold text-xs">Quantum Key Relays</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">Bell state satellite entanglement</div>
                   </Link>
-                  <Link href="/sbsp" className="p-2 rounded-lg hover:bg-slate-800/80 block text-left" onClick={() => setActiveMenu(null)}>
-                    <div className="text-white font-bold text-xs">Space Solar Power (SBSP)</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">GEO microwave wireless power transfer</div>
-                  </Link>
                 </div>
               )}
             </div>
@@ -221,7 +217,7 @@ export default function CommandBar() {
           {/* RIGHT: SEARCH, DEFCON & VIP */}
           <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
             
-            {/* SEARCH BUTTON WITH DIRECT STATE */}
+            {/* SEARCH BUTTON WITH DIRECT STATE TOGGLE */}
             <button
               onClick={() => setIsPaletteOpen(true)}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:border-cyan-500/50 hover:text-white transition-all shadow-inner"
@@ -270,7 +266,7 @@ export default function CommandBar() {
         </div>
       </header>
 
-      {/* RENDER COMMAND PALETTE MODAL */}
+      {/* COMMAND PALETTE MODAL */}
       <CommandPalette isOpen={isPaletteOpen} onClose={() => setIsPaletteOpen(false)} />
     </>
   )

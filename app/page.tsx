@@ -1,244 +1,258 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
-import * as THREE from "three"
-import { ShieldCheck, Rocket, Crosshair, Briefcase, Lock, Database, TerminalSquare, Fingerprint } from "lucide-react"
-import BrandLogo from "@/app/components/BrandLogo"
+import { useRouter } from "next/navigation"
+import { 
+  Sparkles, Globe, Orbit, Crosshair, ShieldCheck, Zap, 
+  Eye, Radio, Activity, Layers, ArrowRight, Terminal, 
+  Lock, Key, Database, Cpu, Compass, Flame, CheckCircle2 
+} from "lucide-react"
 
-const TERMINAL_LOGS = [
-  "[SYS] Establishing TLS 1.3 Handshake with Gateway...",
-  "[ORBIT] Syncing Two-Line Elements (TLE) from Space Force Space-Track...",
-  "[TELEMETRY] VXO-1 (NORAD: 60124) AOS at Ground Station Alpha.",
-  "[AUTH] Zero-Trust Cryptographic token verified.",
-  "[SYS] Loading Ephemeris matrices and Julian Date synchronizers...",
-  "[WARN] Solar Flare activity detected. Adjusting SAA polygons.",
-  "[C2] Constellation Watchlist polling at 10Hz."
-]
+export default function HomePage() {
+  const router = useRouter()
+  const [isHandshaking, setIsHandshaking] = useState(false)
 
-export default function RootGateway() {
-  const mountRef = useRef<HTMLDivElement | null>(null)
-  
-  // State 
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [bootSequence, setBootSequence] = useState(0)
-  const [logIndex, setLogIndex] = useState(0)
-
-  // WebGL Background
-  useEffect(() => {
-    const container = mountRef.current
-    if (!container) return
-
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    
-    // Zoom camera in slightly before auth, pull back after
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000)
-    camera.position.set(0, 0, isAuthenticated ? 5 : 4)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    const globeGroup = new THREE.Group()
-    const sphereGeo = new THREE.SphereGeometry(2, 48, 48)
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: isAuthenticated ? 0.04 : 0.08 })
-    globeGroup.add(new THREE.Mesh(sphereGeo, wireMat))
-    
-    const ringGeo = new THREE.RingGeometry(2.2, 2.205, 128)
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: isAuthenticated ? 0.15 : 0.3 })
-    const ring = new THREE.Mesh(ringGeo, ringMat)
-    ring.rotation.x = Math.PI / 2
-    globeGroup.add(ring)
-
-    scene.add(globeGroup)
-
-    let animId: number
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
-      globeGroup.rotation.y += isAuthenticated ? 0.0008 : 0.002
-      globeGroup.rotation.x = Math.sin(Date.now() * 0.0003) * 0.05
-      
-      // Smooth camera transition on auth
-      if (isAuthenticated && camera.position.z < 5) {
-        camera.position.z += 0.02
-      }
-      
-      renderer.render(scene, camera)
-    }
-    animate()
-
-    const onResize = () => {
-      if (!container) return
-      camera.aspect = container.clientWidth / container.clientHeight
-      camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
-    }
-    window.addEventListener("resize", onResize)
-
-    return () => {
-      cancelAnimationFrame(animId)
-      window.removeEventListener("resize", onResize)
-      renderer.dispose()
-    }
-  }, [isAuthenticated])
-
-  // Terminal Ticker Logic
-  useEffect(() => {
-    if (!isAuthenticated) return
-    const interval = setInterval(() => {
-      setLogIndex(prev => (prev + 1) % TERMINAL_LOGS.length)
-    }, 3500)
-    return () => clearInterval(interval)
-  }, [isAuthenticated])
-
-  const handleAuth = () => {
-    setIsAuthenticated(true)
-    setTimeout(() => setBootSequence(1), 300)
-    setTimeout(() => setBootSequence(2), 800)
-    setTimeout(() => setBootSequence(3), 1200)
+  const handleInitiateHandshake = () => {
+    setIsHandshaking(true)
+    setTimeout(() => {
+      router.push("/nexus")
+    }, 600)
   }
 
-  const DIRECTORY = [
-    {
-      title: "Flight Dynamics & Physics",
-      icon: <Rocket className="w-5 h-5 text-cyan-400" />,
-      borderColor: "border-cyan-500/30 hover:border-cyan-400/60 shadow-[0_0_30px_rgba(6,182,212,0.05)] hover:shadow-[0_0_40px_rgba(6,182,212,0.15)]",
-      accentLine: "from-cyan-500/80 to-transparent",
-      hoverIconColor: "text-cyan-400",
-      links: [
-        { label: "Ascent & Trajectory", path: "/trajectory" },
-        { label: "Attitude Control (ADCS)", path: "/adcs" },
-        { label: "Propulsion & Kinetics", path: "/propulsion" },
-        { label: "Power Systems (EPS)", path: "/eps" },
-        { label: "Thermal Balance (TCS)", path: "/thermal" },
-        { label: "Space Weather & Radiation", path: "/space-weather" },
-      ]
-    },
-    {
-      title: "Space Domain Awareness",
-      icon: <Crosshair className="w-5 h-5 text-fuchsia-400" />,
-      borderColor: "border-fuchsia-500/30 hover:border-fuchsia-400/60 shadow-[0_0_30px_rgba(217,70,239,0.05)] hover:shadow-[0_0_40px_rgba(217,70,239,0.15)]",
-      accentLine: "from-fuchsia-500/80 to-transparent",
-      hoverIconColor: "text-fuchsia-400",
-      links: [
-        { label: "3D Orbital Visualizer", path: "/visualizer" },
-        { label: "2D Mercator Ground Track", path: "/ground-track" },
-        { label: "Conjunction Assessment", path: "/conjunction" },
-        { label: "Sensor Swath & GSD", path: "/swath" },
-        { label: "Ground Station AOS/LOS", path: "/passes" },
-        { label: "RF Link Budget", path: "/link" },
-      ]
-    },
-    {
-      title: "Enterprise Command & Control",
-      icon: <Briefcase className="w-5 h-5 text-emerald-400" />,
-      borderColor: "border-emerald-500/30 hover:border-emerald-400/60 shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:shadow-[0_0_40px_rgba(16,185,129,0.15)]",
-      accentLine: "from-emerald-500/80 to-transparent",
-      hoverIconColor: "text-emerald-400",
-      links: [
-        { label: "Constellation Watchlist", path: "/watchlist" },
-        { label: "Telemetry & Analytics", path: "/telemetry" },
-        { label: "Contracts & SLA Compliance", path: "/contracts" },
-        { label: "Architecture & Cost Builder", path: "/mission-builder" },
-        { label: "M2M Developer API", path: "/developers" },
-      ]
-    }
-  ]
-
   return (
-    <div className="relative w-full min-h-screen bg-[#020617] font-sans text-slate-100 overflow-y-auto flex items-center justify-center py-12">
+    <div className="w-full min-h-screen pt-20 pb-20 px-4 sm:px-8 bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
-      <div className="fixed inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:3rem_3rem] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)] opacity-20 pointer-events-none z-0" />
-      <div ref={mountRef} className="fixed inset-0 z-0 pointer-events-none" />
+      {/* BACKGROUND GLOW DECORATIONS */}
+      <div className="fixed inset-0 pointer-events-none flex items-center justify-center -z-10">
+        <div className="w-[600px] h-[600px] rounded-full bg-cyan-600/10 blur-[140px]" />
+        <div className="w-[400px] h-[400px] rounded-full bg-indigo-600/10 blur-[160px] translate-y-32" />
+      </div>
 
-      {/* PRE-AUTH LOCK SCREEN */}
-      {!isAuthenticated && (
-        <div className="relative z-10 flex flex-col items-center justify-center animate-fadeIn">
-          <BrandLogo className="w-24 h-24 mb-8 drop-shadow-[0_0_20px_rgba(56,189,248,0.6)] animate-pulse" />
-          <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 tracking-[0.4em] uppercase mb-12 drop-shadow-2xl">
-            Veroyx
+      <div className="max-w-7xl mx-auto space-y-16">
+        
+        {/* HERO SECTION */}
+        <div className="text-center space-y-6 max-w-4xl mx-auto pt-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-500/40 text-cyan-300 text-xs font-mono shadow-[0_0_15px_rgba(6,182,212,0.2)]">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+            <span>USSF DELTA-2 // ALLIED JADC2 SPACE BATTLE MANAGEMENT</span>
+          </div>
+
+          <h1 className="text-5xl sm:text-7xl font-black tracking-tight text-white uppercase select-none">
+            VE<span className="bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-400 bg-clip-text text-transparent">RO</span>YX
           </h1>
-          <button 
-            onClick={handleAuth}
-            className="group flex items-center gap-3 px-8 py-4 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 hover:border-cyan-400 rounded-full backdrop-blur-md transition-all duration-300 shadow-[0_0_30px_rgba(6,182,212,0.2)] hover:shadow-[0_0_50px_rgba(6,182,212,0.4)]"
-          >
-            <Fingerprint className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
-            <span className="font-mono text-xs font-bold text-cyan-400 tracking-widest">INITIATE ZERO-TRUST HANDSHAKE</span>
-          </button>
-        </div>
-      )}
 
-      {/* AUTHENTICATED DIRECTORY */}
-      {isAuthenticated && (
-        <div className="relative z-10 w-full max-w-7xl p-6 md:p-8 flex flex-col items-center">
+          <p className="text-slate-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed font-mono">
+            Next-generation Space Domain Awareness (SDA), real-time SGP4 orbital propagation, counter-space kinetic intercept modeling, and multi-tier JADC2 battle management.
+          </p>
+
+          {/* ACTIVE PRIMARY ACTION BUTTONS */}
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-2">
+            <button
+              onClick={handleInitiateHandshake}
+              disabled={isHandshaking}
+              className={`px-8 py-4 rounded-xl font-mono text-xs font-bold uppercase tracking-widest transition-all shadow-[0_0_30px_rgba(6,182,212,0.35)] flex items-center gap-3 ${
+                isHandshaking 
+                  ? "bg-cyan-500 text-black animate-pulse" 
+                  : "bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white hover:scale-105"
+              }`}
+            >
+              {isHandshaking ? <Lock className="w-4 h-4 animate-spin" /> : <Terminal className="w-4 h-4" />}
+              <span>{isHandshaking ? "AUTHENTICATING ENCLAVE..." : "INITIATE ZERO-TRUST HANDSHAKE"}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <Link
+              href="/catalog"
+              className="px-6 py-4 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800 hover:border-cyan-500/50 text-slate-300 hover:text-white font-mono text-xs font-bold tracking-wider uppercase transition-all flex items-center gap-2"
+            >
+              <Database className="w-4 h-4 text-cyan-400" />
+              <span>48K SPACE-TRACK CATALOG</span>
+            </Link>
+
+            <Link
+              href="/access"
+              className="px-6 py-4 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-700/20 hover:from-amber-600/40 hover:to-amber-700/30 border border-amber-500/40 text-amber-300 font-mono text-xs font-bold tracking-wider uppercase transition-all flex items-center gap-2"
+            >
+              <Key className="w-4 h-4 text-amber-400" />
+              <span>VIP ACCESS ($10K+)</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* 4 STRATEGIC ENTERPRISE DOMAIN PILLARS (ZERO DEAD ENDS) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           
-          <div className="flex flex-col items-center mb-16">
-            <div className="flex items-center justify-center w-24 h-24 bg-slate-950/80 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-[0_0_40px_rgba(56,189,248,0.15)] mb-8 relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-50 group-hover:opacity-100 transition-opacity duration-500" />
-              <BrandLogo className="w-14 h-14 relative z-10 drop-shadow-[0_0_10px_rgba(56,189,248,0.4)]" />
+          {/* PILLAR 1: COMMAND & TACTICAL JADC2 */}
+          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center gap-2 text-cyan-400 font-mono text-[10px] font-bold uppercase tracking-widest mb-1">
+                <Globe className="w-3.5 h-3.5" /> Pillar 01
+              </div>
+              <h2 className="text-lg font-black text-white">COMMAND &amp; JADC2</h2>
+              <p className="text-xs text-slate-400 mt-1">Multi-tier theater glass and battle management orchestration.</p>
+              
+              <div className="mt-4 space-y-2 font-mono text-xs">
+                <Link href="/nexus" className="p-2 rounded-lg bg-slate-950/60 hover:bg-cyan-950/40 border border-slate-800/80 hover:border-cyan-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Unified Command Nexus</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/c2" className="p-2 rounded-lg bg-slate-950/60 hover:bg-cyan-950/40 border border-slate-800/80 hover:border-cyan-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>C2 Tactical Deck</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/kill-chain" className="p-2 rounded-lg bg-slate-950/60 hover:bg-cyan-950/40 border border-slate-800/80 hover:border-cyan-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Space Kill-Chain JADC2</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+                <Link href="/telecommand" className="p-2 rounded-lg bg-slate-950/60 hover:bg-cyan-950/40 border border-slate-800/80 hover:border-cyan-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>CCSDS Telecommand Uplink</span>
+                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                </Link>
+              </div>
             </div>
-            
-            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-slate-400 tracking-[0.3em] uppercase mb-6 drop-shadow-lg">
-              Veroyx
-            </h1>
-            
-            <div className="flex flex-wrap justify-center items-center gap-4 md:gap-8 font-mono text-[10px] md:text-xs bg-slate-900/40 backdrop-blur-md border border-slate-800/60 px-6 py-2.5 rounded-full">
-              <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 1 ? "opacity-100 text-emerald-400" : "opacity-0"}`}>
-                <ShieldCheck className="w-4 h-4" /> TLS 1.3 SECURED
-              </div>
-              <span className="text-slate-700">|</span>
-              <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 2 ? "opacity-100 text-cyan-400" : "opacity-0"}`}>
-                <Lock className="w-4 h-4" /> ZERO-TRUST ENFORCED
-              </div>
-              <span className="text-slate-700">|</span>
-              <div className={`flex items-center gap-2 transition-opacity duration-500 ${bootSequence >= 3 ? "opacity-100 text-indigo-400" : "opacity-0"}`}>
-                <Database className="w-4 h-4" /> KERNEL ONLINE
-              </div>
-            </div>
+            <div className="text-[10px] text-slate-500 font-mono">STATUS: OPERATIONAL</div>
           </div>
 
-          <div className={`w-full grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 transition-all duration-1000 transform ${bootSequence >= 3 ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"}`}>
-            {DIRECTORY.map((section, idx) => (
-              <div key={idx} className={`relative overflow-hidden bg-slate-900/30 backdrop-blur-xl border rounded-2xl p-6 md:p-8 transition-all duration-500 hover:-translate-y-1 ${section.borderColor}`}>
-                <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r ${section.accentLine}`} />
-                <div className="flex items-center gap-3 border-b border-slate-800/60 pb-5 mb-5">
-                  <div className="p-2 bg-slate-950/50 rounded-lg border border-slate-800/80 shadow-inner">
-                    {section.icon}
-                  </div>
-                  <h2 className="text-sm font-bold text-white uppercase tracking-widest">{section.title}</h2>
-                </div>
-                <div className="flex flex-col gap-1.5 font-mono text-[11px] md:text-xs">
-                  {section.links.map((link, linkIdx) => (
-                    <Link 
-                      key={linkIdx} 
-                      href={link.path}
-                      className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-800/40 text-slate-400 hover:text-white transition-all duration-300 group"
-                    >
-                      <span className="group-hover:translate-x-1 transition-transform duration-300">{link.label}</span>
-                      <span className={`opacity-0 group-hover:opacity-100 transition-all duration-300 transform -translate-x-2 group-hover:translate-x-0 font-black ${section.hoverIconColor}`}>
-                        &rarr;
-                      </span>
-                    </Link>
-                  ))}
-                </div>
+          {/* PILLAR 2: COUNTER-SPACE & DEFENSE */}
+          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 hover:border-rose-500/40 transition-all flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center gap-2 text-rose-400 font-mono text-[10px] font-bold uppercase tracking-widest mb-1">
+                <Crosshair className="w-3.5 h-3.5" /> Pillar 02
               </div>
-            ))}
+              <h2 className="text-lg font-black text-white">ORBITAL DEFENSE</h2>
+              <p className="text-xs text-slate-400 mt-1">Kinetic hit-to-kill interception, DEW lasers, and proximity safety.</p>
+              
+              <div className="mt-4 space-y-2 font-mono text-xs">
+                <Link href="/intercept" className="p-2 rounded-lg bg-slate-950/60 hover:bg-rose-950/40 border border-slate-800/80 hover:border-rose-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Kinetic ASAT &amp; DEW</span>
+                  <ArrowRight className="w-3 h-3 text-rose-400" />
+                </Link>
+                <Link href="/rpo" className="p-2 rounded-lg bg-slate-950/60 hover:bg-rose-950/40 border border-slate-800/80 hover:border-rose-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>RPO Safety Corridors</span>
+                  <ArrowRight className="w-3 h-3 text-rose-400" />
+                </Link>
+                <Link href="/pursuit-evasion" className="p-2 rounded-lg bg-slate-950/60 hover:bg-rose-950/40 border border-slate-800/80 hover:border-rose-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Pursuit-Evasion Game</span>
+                  <ArrowRight className="w-3 h-3 text-rose-400" />
+                </Link>
+                <Link href="/planetary-defense" className="p-2 rounded-lg bg-slate-950/60 hover:bg-rose-950/40 border border-slate-800/80 hover:border-rose-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Planetary Defense (DART)</span>
+                  <ArrowRight className="w-3 h-3 text-rose-400" />
+                </Link>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono">STATUS: WEAPON LOCKED</div>
           </div>
 
-          {/* LIVE TERMINAL TICKER */}
-          <div className={`fixed bottom-0 left-0 w-full bg-slate-950/90 border-t border-slate-800 p-2 backdrop-blur-md flex items-center gap-3 transition-opacity duration-1000 ${bootSequence >= 3 ? "opacity-100" : "opacity-0"}`}>
-            <TerminalSquare className="w-4 h-4 text-cyan-500 ml-4 animate-pulse" />
-            <span className="font-mono text-[10px] text-cyan-400 font-bold">LIVE</span>
-            <span className="font-mono text-[10px] text-slate-400 tracking-wider border-l border-slate-700 pl-3">
-              {TERMINAL_LOGS[logIndex]}
-            </span>
+          {/* PILLAR 3: SPACE SURVEILLANCE & SENSORS */}
+          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 hover:border-amber-500/40 transition-all flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center gap-2 text-amber-400 font-mono text-[10px] font-bold uppercase tracking-widest mb-1">
+                <Eye className="w-3.5 h-3.5" /> Pillar 03
+              </div>
+              <h2 className="text-lg font-black text-white">SPACE SURVEILLANCE</h2>
+              <p className="text-xs text-slate-400 mt-1">48K Space-Track catalog, SGP4 ephemeris, and SIGINT direction finding.</p>
+              
+              <div className="mt-4 space-y-2 font-mono text-xs">
+                <Link href="/catalog" className="p-2 rounded-lg bg-slate-950/60 hover:bg-amber-950/40 border border-slate-800/80 hover:border-amber-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>48K Space-Track Catalog</span>
+                  <ArrowRight className="w-3 h-3 text-amber-400" />
+                </Link>
+                <Link href="/ephemeris" className="p-2 rounded-lg bg-slate-950/60 hover:bg-amber-950/40 border border-slate-800/80 hover:border-amber-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>SGP4 Orbit Propagator</span>
+                  <ArrowRight className="w-3 h-3 text-amber-400" />
+                </Link>
+                <Link href="/tasking" className="p-2 rounded-lg bg-slate-950/60 hover:bg-amber-950/40 border border-slate-800/80 hover:border-amber-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>SSN Radar Tasking</span>
+                  <ArrowRight className="w-3 h-3 text-amber-400" />
+                </Link>
+                <Link href="/sigint" className="p-2 rounded-lg bg-slate-950/60 hover:bg-amber-950/40 border border-slate-800/80 hover:border-amber-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Space-Based SIGINT TDOA</span>
+                  <ArrowRight className="w-3 h-3 text-amber-400" />
+                </Link>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono">STATUS: 48,219 TRACKS</div>
+          </div>
+
+          {/* PILLAR 4: RESILIENCE & QUANTUM */}
+          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 hover:border-emerald-500/40 transition-all flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center gap-2 text-emerald-400 font-mono text-[10px] font-bold uppercase tracking-widest mb-1">
+                <Zap className="w-3.5 h-3.5" /> Pillar 04
+              </div>
+              <h2 className="text-lg font-black text-white">RESILIENCE &amp; QUANTUM</h2>
+              <p className="text-xs text-slate-400 mt-1">Autonomous mesh self-healing, QKD encryption, and EW anti-spoofing.</p>
+              
+              <div className="mt-4 space-y-2 font-mono text-xs">
+                <Link href="/visualizer" className="p-2 rounded-lg bg-slate-950/60 hover:bg-emerald-950/40 border border-slate-800/80 hover:border-emerald-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>3D Threat Visualizer</span>
+                  <ArrowRight className="w-3 h-3 text-emerald-400" />
+                </Link>
+                <Link href="/pnt-resilience" className="p-2 rounded-lg bg-slate-950/60 hover:bg-emerald-950/40 border border-slate-800/80 hover:border-emerald-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>EW &amp; Counter-PNT Nulling</span>
+                  <ArrowRight className="w-3 h-3 text-emerald-400" />
+                </Link>
+                <Link href="/qkd" className="p-2 rounded-lg bg-slate-950/60 hover:bg-emerald-950/40 border border-slate-800/80 hover:border-emerald-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>Quantum Key Relays (QKD)</span>
+                  <ArrowRight className="w-3 h-3 text-emerald-400" />
+                </Link>
+                <Link href="/resilience" className="p-2 rounded-lg bg-slate-950/60 hover:bg-emerald-950/40 border border-slate-800/80 hover:border-emerald-500/50 flex items-center justify-between text-slate-300 hover:text-white transition-all">
+                  <span>pLEO Mesh Self-Healing</span>
+                  <ArrowRight className="w-3 h-3 text-emerald-400" />
+                </Link>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-500 font-mono">STATUS: POST-QUANTUM SECURE</div>
           </div>
         </div>
-      )}
+
+        {/* COMPREHENSIVE FLIGHT & ENGINEERING CAPABILITIES ACCORDION */}
+        <div className="p-8 rounded-3xl bg-slate-900/30 border border-slate-800 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 className="text-xl font-bold text-white uppercase tracking-wider font-mono">Complete Orbital Engineering Decks</h3>
+              <p className="text-xs text-slate-400 mt-1 font-mono">108 fully compiled production modules accessible across the platform</p>
+            </div>
+            <Link
+              href="/nexus"
+              className="px-4 py-2 rounded-lg bg-cyan-950 border border-cyan-500 text-cyan-300 text-xs font-mono font-bold hover:bg-cyan-900 transition-all flex items-center gap-2 self-start"
+            >
+              <span>OPEN COMMAND NEXUS</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono text-xs">
+            <Link href="/delta-v" className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/60 text-slate-400 hover:text-cyan-300 transition-all">
+              <span className="font-bold block text-white">Delta-V Planner</span>
+              <span className="text-[10px] text-slate-500">Maneuver Burns</span>
+            </Link>
+            <Link href="/conjunction" className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/60 text-slate-400 hover:text-cyan-300 transition-all">
+              <span className="font-bold block text-white">Conjunction Pc</span>
+              <span className="text-[10px] text-slate-500">Collision Risk</span>
+            </Link>
+            <Link href="/ground-track" className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/60 text-slate-400 hover:text-cyan-300 transition-all">
+              <span className="font-bold block text-white">Ground Track</span>
+              <span className="text-[10px] text-slate-500">Mercator Passes</span>
+            </Link>
+            <Link href="/swath" className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/60 text-slate-400 hover:text-cyan-300 transition-all">
+              <span className="font-bold block text-white">Sensor Swath</span>
+              <span className="text-[10px] text-slate-500">GSD Optics</span>
+            </Link>
+            <Link href="/space-weather" className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/60 text-slate-400 hover:text-cyan-300 transition-all">
+              <span className="font-bold block text-white">Space Weather</span>
+              <span className="text-[10px] text-slate-500">Kp &amp; Solar Flares</span>
+            </Link>
+            <Link href="/developers" className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/60 text-slate-400 hover:text-cyan-300 transition-all">
+              <span className="font-bold block text-white">Developer API</span>
+              <span className="text-[10px] text-slate-500">REST &amp; Webhooks</span>
+            </Link>
+          </div>
+        </div>
+
+      </div>
     </div>
   )
 }
