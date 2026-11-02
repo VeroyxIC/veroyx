@@ -1,433 +1,440 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import Link from "next/link"
+import { useState, useEffect, useRef } from "react"
+import * as THREE from "three"
 import { 
-  Radio, 
-  ShieldAlert, 
-  ShieldCheck, 
-  AlertTriangle, 
-  Gauge, 
-  Download, 
-  Layers, 
-  Zap, 
-  ArrowRight,
-  Crosshair,
-  Lock
+  ShieldAlert, ShieldCheck, Radio, Zap, Activity, 
+  Crosshair, Lock, Unlock, WifiOff, Signal, Layers, Gauge, AlertTriangle 
 } from "lucide-react"
 
-interface EwPreset {
+type ThreatType = "UPLINK_JAMMING" | "GPS_PNT_SPOOFING" | "DOWNLINK_RADAR_JAM" | "WIDEBAND_BARRAGE"
+
+interface ThreatSpec {
   name: string
-  operator: string
-  regime: "Downlink Denial" | "Uplink SATCOM Jamming" | "Crosslink Intercept"
-  carrierFreqGhz: number
-  legitimatePowerW: number
-  legitDistanceKm: number
-  jammerPowerW: number
-  jammerDistanceKm: number
-  spreadSpectrumChipRateMcps: number
-  dataRateKbps: number
-  description: string
+  threatBand: string
+  emitterPowerKw: number
+  targetFrequencyGhz: number
+  jammerAntennaGainDbi: number
+  threatDescription: string
+  colorHex: string
 }
 
-const EW_PRESETS: Record<string, EwPreset> = {
-  gps_l1_denial: {
-    name: "GPS L1 Tactical C/A Jamming",
-    operator: "Contested Theater / Adversary EW",
-    regime: "Downlink Denial",
-    carrierFreqGhz: 1.575,
-    legitimatePowerW: 50,
-    legitDistanceKm: 20200, // MEO GPS distance
-    jammerPowerW: 20, // Ground jammer
-    jammerDistanceKm: 45, // Tactical standoff
-    spreadSpectrumChipRateMcps: 1.023,
-    dataRateKbps: 0.05, // 50 bps legacy nav
-    description: "High-power terrestrial jammer targeting weak GNSS signal arrivals at user ground terminals.",
+const THREAT_PRESETS: Record<ThreatType, ThreatSpec> = {
+  "UPLINK_JAMMING": {
+    name: "High-Power Ground Uplink Jammer",
+    threatBand: "S-Band TT&C (2.05 GHz)",
+    emitterPowerKw: 15.0,
+    targetFrequencyGhz: 2.05,
+    jammerAntennaGainDbi: 42.0,
+    threatDescription: "High-power directional ground dish attempting command receiver saturation and carrier denial.",
+    colorHex: "#ef4444"
   },
-  aehf_protected: {
-    name: "Strategic Protected SATCOM (AEHF / EHF)",
-    operator: "US Space Force (USSF)",
-    regime: "Uplink SATCOM Jamming",
-    carrierFreqGhz: 44.0, // EHF Uplink
-    legitimatePowerW: 1000,
-    legitDistanceKm: 35786,
-    jammerPowerW: 5000,
-    jammerDistanceKm: 36000,
-    spreadSpectrumChipRateMcps: 50.0,
-    dataRateKbps: 19.2,
-    description: "Extremely high frequency anti-jam frequency hopping with spatial nulling antennas.",
+  "GPS_PNT_SPOOFING": {
+    name: "L1/L2 PNT Denial & Spoofing",
+    threatBand: "L-Band Navigation (1.575 GHz)",
+    emitterPowerKw: 1.5,
+    targetFrequencyGhz: 1.575,
+    jammerAntennaGainDbi: 28.0,
+    threatDescription: "Coordinated false ephemeris and clock phase injection to disrupt satellite orbital positioning.",
+    colorHex: "#f59e0b"
   },
-  commercial_ku_uplink: {
-    name: "Commercial Ku-Band Uplink Barrage",
-    operator: "Commercial Broadcast / VSAT",
-    regime: "Uplink SATCOM Jamming",
-    carrierFreqGhz: 14.0,
-    legitimatePowerW: 250,
-    legitDistanceKm: 35786,
-    jammerPowerW: 1500,
-    jammerDistanceKm: 35786,
-    spreadSpectrumChipRateMcps: 0, // No DSSS
-    dataRateKbps: 10000, // 10 Mbps
-    description: "Direct carrier saturation against transponder input amplifier on unhardened commercial bus.",
+  "DOWNLINK_RADAR_JAM": {
+    name: "Coherent Deception SAR Repeater",
+    threatBand: "X-Band Radar (9.6 GHz)",
+    emitterPowerKw: 8.0,
+    targetFrequencyGhz: 9.6,
+    jammerAntennaGainDbi: 38.0,
+    threatDescription: "Digital Radio Frequency Memory (DRFM) repeater synthesizing false radar targets and noise stripes.",
+    colorHex: "#d946ef"
   },
+  "WIDEBAND_BARRAGE": {
+    name: "Counter-Space Tactical Barrage",
+    threatBand: "Ku/Ka Band (18.0 GHz)",
+    emitterPowerKw: 25.0,
+    targetFrequencyGhz: 18.0,
+    jammerAntennaGainDbi: 45.0,
+    threatDescription: "High-flux wideband noise swamping designed to break inter-satellite and ground gateway links.",
+    colorHex: "#38bdf8"
+  }
 }
 
-export default function SpaceEWPage() {
-  const [selectedPresetKey, setSelectedPresetKey] = useState<string>("gps_l1_denial")
-  const [regime, setRegime] = useState<string>("Downlink Denial")
-  const [carrierFreqGhz, setCarrierFreqGhz] = useState<number>(1.575)
-  const [legitPowerW, setLegitPowerW] = useState<number>(50)
-  const [legitDistKm, setLegitDistKm] = useState<number>(20200)
-  const [jammerPowerW, setJammerPowerW] = useState<number>(20)
-  const [jammerDistKm, setJammerDistKm] = useState<number>(45)
-  const [chipRateMcps, setChipRateMcps] = useState<number>(1.023)
-  const [dataRateKbps, setDataRateKbps] = useState<number>(0.05)
+export default function ElectronicWarfarePage() {
+  const mountRef = useRef<HTMLDivElement | null>(null)
 
-  const preset = EW_PRESETS[selectedPresetKey]
+  const [threatType, setThreatType] = useState<ThreatType>("UPLINK_JAMMING")
+  const [jammerDistanceKm, setJammerDistanceKm] = useState(650)
+  const [crpaNullSteeringActive, setCrpaNullSteeringActive] = useState(true)
+  const [crpaNullDepthDb, setCrpaNullDepthDb] = useState(38) // Adaptive null depth
+  const [freqHoppingRateKhz, setFreqHoppingRateKhz] = useState(15) // 15,000 hops/sec
+  const [satelliteTxPowerWatts, setSatelliteTxPowerWatts] = useState(25)
 
-  const applyPreset = (key: string) => {
-    const p = EW_PRESETS[key]
-    setSelectedPresetKey(key)
-    setRegime(p.regime)
-    setCarrierFreqGhz(p.carrierFreqGhz)
-    setLegitPowerW(p.legitimatePowerW)
-    setLegitDistKm(p.legitDistanceKm)
-    setJammerPowerW(p.jammerPowerW)
-    setJammerDistKm(p.jammerDistanceKm)
-    setChipRateMcps(p.spreadSpectrumChipRateMcps)
-    setDataRateKbps(p.dataRateKbps)
-  }
+  const threat = THREAT_PRESETS[threatType]
 
-  // Space EW & Jamming Physics Calculations
-  const metrics = useMemo(() => {
-    // Free space path loss: FSPL = 20*log10(d) + 20*log10(f) + 92.45
-    const fsplLegit = 20 * Math.log10(legitDistKm) + 20 * Math.log10(carrierFreqGhz) + 92.45
-    const fsplJammer = 20 * Math.log10(jammerDistKm) + 20 * Math.log10(carrierFreqGhz) + 92.45
+  // Electronic Warfare Mathematics:
+  // 1. Jammer ERP (Effective Radiated Power):
+  const jammerPowerDbw = 10 * Math.log10(threat.emitterPowerKw * 1000)
+  const jammerErpDbw = jammerPowerDbw + threat.jammerAntennaGainDbi
 
-    // Received powers (dBW)
-    const legitPowerDbw = 10 * Math.log10(legitPowerW)
-    const jammerPowerDbw = 10 * Math.log10(jammerPowerW)
+  // 2. Legitimate Signal ERP:
+  const satPowerDbw = 10 * Math.log10(satelliteTxPowerWatts)
+  const satAntennaGainDbi = 18.0 // S-Band / X-Band patch array
+  const signalErpDbw = satPowerDbw + satAntennaGainDbi
 
-    const rxLegitDbw = legitPowerDbw - fsplLegit
-    const rxJammerDbw = jammerPowerDbw - fsplJammer
+  // 3. Free-Space Path Loss Ratio between Jammer & Legitimate Emitter:
+  // Legitimate ground station at 850 km
+  const legitStationDistKm = 850
+  const distanceRatioDb = 20 * Math.log10(legitStationDistKm / jammerDistanceKm)
 
-    // Raw Jammer-to-Signal Ratio (J/S in dB)
-    const rawJsDb = Math.round((rxJammerDbw - rxLegitDbw) * 10) / 10
+  // 4. Raw Jammer-to-Signal (J/S) Ratio at Satellite Aperture:
+  const rawJsRatioDb = jammerErpDbw - signalErpDbw + distanceRatioDb
 
-    // Anti-Jam Processing Gain (DSSS / FHSS)
-    // Gp = 10 * log10(ChipRate / DataRate)
-    let processingGainDb = 0
-    if (chipRateMcps > 0 && dataRateKbps > 0) {
-      const chipRateHz = chipRateMcps * 1e6
-      const dataRateHz = dataRateKbps * 1e3
-      if (chipRateHz > dataRateHz) {
-        processingGainDb = Math.round((10 * Math.log10(chipRateHz / dataRateHz)) * 10) / 10
-      }
+  // 5. Electronic Protection (EP) Attenuation:
+  // CRPA Adaptive Nulling + Direct Sequence / Frequency Hopping Processing Gain (Gp)
+  const crpaAttenuationDb = crpaNullSteeringActive ? crpaNullDepthDb : 0
+  const processingGainDb = 10 * Math.log10((freqHoppingRateKhz * 1000 * 20) / (250 * 1000))
+  const netJsRatioDb = rawJsRatioDb - crpaAttenuationDb - processingGainDb
+
+  // Operational Verdict
+  const isLinkSurvivable = netJsRatioDb <= 0
+  const isSeverelyDegraded = netJsRatioDb > 0 && netJsRatioDb < 10
+  const isDenied = netJsRatioDb >= 10
+
+  // 3D Three.js Contested Battlespace Scene
+  useEffect(() => {
+    const container = mountRef.current
+    if (!container) return
+
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#010308")
+
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
+    camera.position.set(0, 10, 22)
+    camera.lookAt(0, 1, 0)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
+    const sun = new THREE.DirectionalLight(0xfffaed, 2.5)
+    sun.position.set(15, 20, 15)
+    scene.add(sun)
+
+    // 1. Earth Curved Horizon
+    const earthRadius = 40
+    const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 32, 0, Math.PI * 2, 0, Math.PI * 0.12)
+    const earthMat = new THREE.MeshStandardMaterial({
+      color: 0x030712,
+      roughness: 0.9,
+      wireframe: true
+    })
+    const earth = new THREE.Mesh(earthGeo, earthMat)
+    earth.position.set(0, -earthRadius, 0)
+    scene.add(earth)
+
+    // 2. Satellite (Target Platform)
+    const satGroup = new THREE.Group()
+    satGroup.position.set(0, 6, 0)
+    scene.add(satGroup)
+
+    const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.6)
+    const busMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 })
+    const bus = new THREE.Mesh(busGeo, busMat)
+    satGroup.add(bus)
+
+    // CRPA Phased Array Antenna (4-Element Patch Array)
+    const crpaBaseGeo = new THREE.BoxGeometry(1.0, 0.08, 1.0)
+    const crpaBaseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9 })
+    const crpaBase = new THREE.Mesh(crpaBaseGeo, crpaBaseMat)
+    crpaBase.position.set(0, -0.65, 0)
+    satGroup.add(crpaBase)
+
+    // 3. Ground Threat Jammer Emitter
+    const jammerMesh = new THREE.Mesh(
+      new THREE.ConeGeometry(0.6, 1.2, 16),
+      new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.8 })
+    )
+    jammerMesh.position.set(6, 0.2, 2)
+    scene.add(jammerMesh)
+
+    // Directed RF Jamming Cone
+    const jammerDir = new THREE.Vector3().subVectors(satGroup.position, jammerMesh.position).normalize()
+    const dist = satGroup.position.distanceTo(jammerMesh.position)
+
+    const coneGeo = new THREE.ConeGeometry(2.4, dist, 24, 1, true)
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(threat.colorHex),
+      wireframe: true,
+      transparent: true,
+      opacity: isDenied ? 0.45 : isSeverelyDegraded ? 0.25 : 0.08
+    })
+    const jamCone = new THREE.Mesh(coneGeo, coneMat)
+    jamCone.position.copy(jammerMesh.position).addScaledVector(jammerDir, dist / 2)
+    jamCone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), jammerDir)
+    scene.add(jamCone)
+
+    // 4. CRPA Spatial Null Beam (Visualized as protective counter-cone)
+    const nullConeGeo = new THREE.ConeGeometry(1.8, 6, 16, 1, true)
+    const nullConeMat = new THREE.MeshBasicMaterial({
+      color: 0x10b981,
+      wireframe: true,
+      transparent: true,
+      opacity: crpaNullSteeringActive ? 0.35 : 0.0
+    })
+    const nullCone = new THREE.Mesh(nullConeGeo, nullConeMat)
+    nullCone.position.set(0, 3, 0)
+    nullCone.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), jammerDir)
+    satGroup.add(nullCone)
+
+    let animId: number
+    const animate = () => {
+      animId = requestAnimationFrame(animate)
+
+      const t = Date.now() * 0.003
+      
+      // Microwave interference pulsation
+      coneMat.opacity = (isDenied ? 0.4 : 0.15) + Math.sin(t * 8) * 0.08
+
+      // Slow orbital track
+      satGroup.rotation.y = Math.sin(t * 0.3) * 0.05
+
+      renderer.render(scene, camera)
     }
+    animate()
 
-    // Effective J/S after Anti-Jam processing
-    const effectiveJsDb = Math.round((rawJsDb - processingGainDb) * 10) / 10
-
-    // Link Survival Threshold: Standard communications drop when J/S > 0 dB post-processing
-    const linkDenied = effectiveJsDb > 0
-    const antiJamMarginDb = Math.round((-effectiveJsDb) * 10) / 10
-
-    // Burn-through Range: Range at which legitimate transmitter equals jammer power
-    // R_bt = R_j * sqrt((P_s * G_t) / (P_j * G_jt))
-    const burnThroughKm = Math.round(jammerDistKm * Math.sqrt(legitPowerW / Math.max(1, jammerPowerW)))
-
-    return {
-      fsplLegit: fsplLegit.toFixed(1),
-      fsplJammer: fsplJammer.toFixed(1),
-      rawJsDb,
-      processingGainDb,
-      effectiveJsDb,
-      linkDenied,
-      antiJamMarginDb,
-      burnThroughKm,
+    const onResize = () => {
+      if (!container) return
+      camera.aspect = container.clientWidth / container.clientHeight
+      camera.updateProjectionMatrix()
+      renderer.setSize(container.clientWidth, container.clientHeight)
     }
-  }, [carrierFreqGhz, legitPowerW, legitDistKm, jammerPowerW, jammerDistKm, chipRateMcps, dataRateKbps])
+    window.addEventListener("resize", onResize)
 
-  const exportEwCSV = () => {
-    const csv = `SPACE ELECTRONIC WARFARE & SPECTRUM JAMMING SPEC
-Preset Scenario,${preset.name}
-Operator / Threat,${preset.operator}
-Jamming Target Regime,${regime}
-Carrier Center Frequency,${carrierFreqGhz} GHz
-Legitimate Transmitter Power,${legitPowerW} W (${legitDistKm} km)
-Hostile Jammer Power,${jammerPowerW} W (${jammerDistKm} km)
-Spread Spectrum Chip Rate,${chipRateMcps} Mcps
-Payload Data Rate,${dataRateKbps} kbps
-Anti-Jam Processing Gain,${metrics.processingGainDb} dB
-Raw Jammer-to-Signal Ratio (J/S),${metrics.rawJsDb} dB
-Effective J/S After Anti-Jam,${metrics.effectiveJsDb} dB
-Anti-Jam Link Margin,${metrics.antiJamMarginDb} dB
-Link Status,${metrics.linkDenied ? "ELECTRONIC DENIAL / JAMMED" : "PROTECTED LINK OPERATIONAL"}
-Calculated Burn-Through Standoff,${metrics.burnThroughKm} km`
-
-    const blob = new Blob([csv], { type: "text/csv" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `veroyx-ew-jamming-${selectedPresetKey}.csv`
-    a.click()
-  }
+    return () => {
+      cancelAnimationFrame(animId)
+      window.removeEventListener("resize", onResize)
+      renderer.dispose()
+    }
+  }, [threat, isDenied, isSeverelyDegraded, crpaNullSteeringActive])
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 pt-28 pb-20 px-6 sm:px-12 font-sans selection:bg-cyan-500 selection:text-slate-950">
-      <div className="max-w-7xl mx-auto space-y-10">
-
-        {/* Header */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 text-xs font-mono uppercase tracking-widest mb-3">
-              <ShieldAlert className="w-3.5 h-3.5 animate-pulse text-red-400" />
-              Counter-Space Electronic Warfare (EW) &amp; J/S Ratio Engine
-            </div>
-            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white font-mono">
-              SPACE ELECTRONIC WARFARE (EW) SIMULATOR
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Model RF jamming-to-signal ($J/S$) ratios, spread-spectrum anti-jam processing gain (DSSS/FHSS), GNSS tactical denial, and uplink/downlink burn-through ranges.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 font-mono text-xs">
-            <button
-              onClick={exportEwCSV}
-              className="px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500 text-cyan-400 font-bold transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5" />
-              EXPORT EW DOSSIER
-            </button>
-          </div>
+    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-[#020617] font-sans text-slate-100 overflow-hidden">
+      
+      {/* LEFT PANEL: EW THREAT PARAMETERS */}
+      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
+        <div className="mb-6">
+          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
+            <Radio className="w-5 h-5 text-rose-500" /> Electronic Warfare (EW)
+          </h1>
+          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
+            RF Contested Domain &amp; CRPA Null Steering
+          </p>
         </div>
 
-        {/* Preset Selector */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 font-mono text-xs">
-          {Object.entries(EW_PRESETS).map(([k, v]) => (
-            <button
-              key={k}
-              onClick={() => applyPreset(k)}
-              className={`px-3.5 py-2 rounded-lg border transition-all whitespace-nowrap ${
-                selectedPresetKey === k
-                  ? "bg-cyan-950 border-cyan-500/50 text-cyan-300 font-bold"
-                  : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white"
-              }`}
-            >
-              {v.name}
-            </button>
-          ))}
-        </div>
+        <div className="space-y-6">
+          {/* Threat Class Selection */}
+          <div className="space-y-3">
+            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
+              <ShieldAlert className="w-3.5 h-3.5 text-rose-400" /> Directed Threat Profile
+            </label>
+            <div className="space-y-2">
+              {(["UPLINK_JAMMING", "GPS_PNT_SPOOFING", "DOWNLINK_RADAR_JAM", "WIDEBAND_BARRAGE"] as ThreatType[]).map(t => {
+                const item = THREAT_PRESETS[t]
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setThreatType(t)}
+                    className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                      threatType === t 
+                        ? "bg-rose-950/40 border-rose-500 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.2)]" 
+                        : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    <div>
+                      <div className="font-bold text-[11px] text-white">{item.name}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{item.threatBand}</div>
+                    </div>
+                    <div className="font-mono text-right text-[10px]">
+                      <span className="text-rose-400 font-bold block">{item.emitterPowerKw} kW</span>
+                      <span className="text-slate-500">+{item.jammerAntennaGainDbi} dBi</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-        {/* Workspace Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 font-mono text-xs">
-
-          {/* Configuration Form */}
-          <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-6">
-            <div className="flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm border-b border-slate-800 pb-3">
-              <Gauge className="w-4 h-4 text-cyan-400" />
-              EW Engagement Geometry
+          {/* Jammer Slant Range & Emitter Tuning */}
+          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Threat Geometry &amp; Standoff Range
             </div>
 
-            {/* Carrier Frequency */}
-            <div className="space-y-1.5">
-              <label className="text-slate-400 block uppercase font-bold">CARRIER FREQUENCY (GHz)</label>
-              <input
-                type="number"
-                step={0.1}
-                value={carrierFreqGhz}
-                onChange={(e) => setCarrierFreqGhz(Math.max(0.1, Number(e.target.value)))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-cyan-500 text-xs"
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-slate-400">JAMMER STANDOFF RANGE:</span>
+                <span className="text-rose-400 font-bold">{jammerDistanceKm} km</span>
+              </div>
+              <input 
+                type="range" min="150" max="2500" step="25"
+                value={jammerDistanceKm}
+                onChange={e => setJammerDistanceKm(Number(e.target.value))}
+                className="w-full accent-rose-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
             </div>
 
-            {/* Legitimate Signal Source */}
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              <span className="text-cyan-400 font-bold uppercase block text-[11px]">
-                Legitimate Transmitter Link
-              </span>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">TRANSMIT POWER (W)</span>
-                  <input
-                    type="number"
-                    value={legitPowerW}
-                    onChange={(e) => setLegitPowerW(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">LINK DISTANCE (km)</span>
-                  <input
-                    type="number"
-                    value={legitDistKm}
-                    onChange={(e) => setLegitDistKm(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">SATELLITE TX TRANSMIT POWER:</span>
+                <span className="text-cyan-400 font-bold">{satelliteTxPowerWatts} W</span>
               </div>
-            </div>
-
-            {/* Hostile Jammer Specs */}
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              <span className="text-red-400 font-bold uppercase block text-[11px]">
-                Adversary Jamming Source
-              </span>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">JAMMER POWER (W)</span>
-                  <input
-                    type="number"
-                    value={jammerPowerW}
-                    onChange={(e) => setJammerPowerW(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">JAMMER DISTANCE (km)</span>
-                  <input
-                    type="number"
-                    value={jammerDistKm}
-                    onChange={(e) => setJammerDistKm(Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Anti-Jam ECCM Configuration */}
-            <div className="space-y-3 pt-2 border-t border-slate-800/80">
-              <span className="text-purple-400 font-bold uppercase block text-[11px] flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" /> Anti-Jam Spread Spectrum (ECCM)
-              </span>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">DSSS CHIP RATE (Mcps)</span>
-                  <input
-                    type="number"
-                    step={0.1}
-                    value={chipRateMcps}
-                    onChange={(e) => setChipRateMcps(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 block">DATA RATE (kbps)</span>
-                  <input
-                    type="number"
-                    step={0.1}
-                    value={dataRateKbps}
-                    onChange={(e) => setDataRateKbps(Math.max(0.01, Number(e.target.value)))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-white"
-                  />
-                </div>
-              </div>
+              <input 
+                type="range" min="5" max="250" step="5"
+                value={satelliteTxPowerWatts}
+                onChange={e => setSatelliteTxPowerWatts(Number(e.target.value))}
+                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
             </div>
           </div>
 
-          {/* Results Telemetry Desk */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Primary KPI Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-red-400" /> RAW J/S RATIO
-                </div>
-                <div className="text-3xl font-black text-white">+{metrics.rawJsDb} dB</div>
-                <div className="text-[10px] text-slate-500">Unfiltered At Antenna</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  <Lock className="w-3 h-3 text-purple-400" /> DSSS PROCESSING GAIN
-                </div>
-                <div className="text-3xl font-black text-purple-400">+{metrics.processingGainDb} dB</div>
-                <div className="text-[10px] text-slate-500">Anti-Jam Nulling Depth</div>
-              </div>
-
-              <div className="p-5 rounded-xl bg-slate-900/40 border border-slate-800 space-y-1">
-                <div className="text-[10px] text-slate-500 uppercase flex items-center gap-1">
-                  {metrics.linkDenied ? (
-                    <AlertTriangle className="w-3 h-3 text-red-400" />
-                  ) : (
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                  )}
-                  NET ANTI-JAM MARGIN
-                </div>
-                <div className={`text-3xl font-black ${metrics.linkDenied ? "text-red-400" : "text-emerald-400"}`}>
-                  {metrics.antiJamMarginDb >= 0 ? `+${metrics.antiJamMarginDb}` : metrics.antiJamMarginDb} dB
-                </div>
-                <div className="text-[10px] text-slate-500">Threshold: &gt; 0 dB Margin</div>
-              </div>
+          {/* Electronic Protection (EP) Controls */}
+          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2 flex justify-between">
+              <span>Electronic Protection (EP)</span>
+              <span className="text-emerald-400 font-bold">{crpaNullSteeringActive ? "ACTIVE DEFENSE" : "UNPROTECTED"}</span>
             </div>
 
-            {/* Threat & Link Denial Dossier */}
-            <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                  <Crosshair className="w-4 h-4 text-cyan-400" />
-                  Electronic Warfare Tactical Assessment
-                </span>
-                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded border uppercase ${
-                  metrics.linkDenied
-                    ? "bg-red-950 border-red-500/40 text-red-300"
-                    : "bg-emerald-950 border-emerald-500/40 text-emerald-300"
-                }`}>
-                  {metrics.linkDenied ? "COMMUNICATIONS DENIED (JAMMED)" : "LINK PROTECTED & OPERATIONAL"}
-                </span>
-              </div>
-
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
-                <div className="text-[10px] text-slate-500 uppercase">SPECTRUM POWER DENSITY ANALYSIS</div>
-                <p className="text-slate-300 text-xs font-sans leading-relaxed">
-                  The hostile jammer at {jammerDistKm} km standoff delivers a raw power advantage of <strong className="text-red-400">+{metrics.rawJsDb} dB</strong> over the legitimate signal at the receiver aperture.
-                  {metrics.processingGainDb > 0 && (
-                    <span> Spread-spectrum modulation injects <strong className="text-purple-400">+{metrics.processingGainDb} dB</strong> of processing gain.</span>
-                  )}
-                  {metrics.linkDenied ? (
-                    <span className="text-red-400 block mt-1">
-                      Jammer power overrides the receiver discriminator by {metrics.effectiveJsDb} dB. The link experiences carrier lock loss and continuous packet drops.
-                    </span>
-                  ) : (
-                    <span className="text-emerald-400 block mt-1">
-                      Anti-jam processing gain successfully suppresses the jammer below the demodulator thermal noise floor with +{metrics.antiJamMarginDb} dB headroom.
-                    </span>
-                  )}
-                </p>
-              </div>
-
-              {/* Specs Breakdown */}
-              <div className="space-y-2 text-xs pt-2">
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Legitimate Signal Free Space Loss</span>
-                  <span className="text-white font-bold">{metrics.fsplLegit} dB</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Hostile Jammer Free Space Loss</span>
-                  <span className="text-white font-bold">{metrics.fsplJammer} dB</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Calculated Burn-Through Standoff</span>
-                  <span className="text-cyan-400 font-bold">{metrics.burnThroughKm.toLocaleString()} km</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800/50">
-                  <span className="text-slate-400">Electronic Warfare Status</span>
-                  <span className={`font-bold ${metrics.linkDenied ? "text-red-400" : "text-emerald-400"}`}>
-                    {metrics.linkDenied ? "JAMMING SUCCESSFUL" : "ANTI-JAM COUNTERMEASURE CLOSED"}
-                  </span>
-                </div>
-              </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">CRPA ADAPTIVE NULL STEERING:</span>
+              <button
+                onClick={() => setCrpaNullSteeringActive(!crpaNullSteeringActive)}
+                className={`px-3 py-1 rounded border text-[10px] font-bold ${
+                  crpaNullSteeringActive 
+                    ? "bg-emerald-950 border-emerald-500 text-emerald-300" 
+                    : "bg-rose-950 border-rose-500 text-rose-300"
+                }`}
+              >
+                {crpaNullSteeringActive ? "ENABLED (-38 dB)" : "DISABLED"}
+              </button>
             </div>
 
+            <div className="space-y-2 pt-2 border-t border-slate-800/60">
+              <div className="flex justify-between">
+                <span className="text-slate-400">FREQUENCY HOPPING RATE:</span>
+                <span className="text-emerald-400 font-bold">{freqHoppingRateKhz.toLocaleString()} hops/s</span>
+              </div>
+              <input 
+                type="range" min="1" max="50" step="1"
+                value={freqHoppingRateKhz}
+                onChange={e => setFreqHoppingRateKhz(Number(e.target.value))}
+                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500">
+                <span>Standard (1k)</span>
+                <span>Fast Hopping (15k)</span>
+                <span>Ultra-Agile (50k)</span>
+              </div>
+            </div>
           </div>
+        </div>
+      </div>
 
+      {/* CENTER PANEL: 3D CONTESTED BATTLESPACE HUD */}
+      <div className="flex-1 h-full relative flex flex-col">
+        <div className="absolute top-6 left-6 z-10 font-mono">
+          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">Contested RF Link Integrity</div>
+          <div className="flex items-baseline gap-3">
+            <span className={`text-4xl font-black ${isLinkSurvivable ? "text-emerald-400" : isSeverelyDegraded ? "text-amber-400" : "text-rose-400"}`}>
+              {netJsRatioDb > 0 ? `+${netJsRatioDb.toFixed(1)}` : netJsRatioDb.toFixed(1)} dB
+            </span>
+            <span className="text-slate-500 text-sm">NET J/S RATIO</span>
+          </div>
+          <div className="flex gap-4 mt-2 text-[11px]">
+            <span className="text-rose-400">RAW J/S: +{rawJsRatioDb.toFixed(1)} dB</span>
+            <span className="text-emerald-400">CRPA NULL: -{crpaAttenuationDb} dB</span>
+            <span className="text-cyan-400">HOPPING GAIN: +{processingGainDb.toFixed(1)} dB</span>
+          </div>
         </div>
 
+        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+
+        {/* Tactical EP Bar */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Zap className="w-5 h-5 text-rose-400" />
+            <div>
+              <span className="text-slate-500 block text-[9px]">JAMMER EMITTED ERP</span>
+              <span className="text-rose-400 font-bold text-sm">+{jammerErpDbw.toFixed(1)} dBW</span>
+            </div>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">LEGITIMATE SIGNAL ERP</span>
+            <span className="text-cyan-400 font-bold text-sm">+{signalErpDbw.toFixed(1)} dBW</span>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">SPATIAL ISOLATION</span>
+            <span className="text-emerald-400 font-bold text-sm">CRPA 4-NULL ADAPTIVE</span>
+          </div>
+          <div className="border-l border-slate-800 pl-6">
+            <span className="text-slate-500 block text-[9px]">COMMUNICATION TIER</span>
+            <span className={`text-sm font-bold ${isLinkSurvivable ? "text-emerald-400" : isSeverelyDegraded ? "text-amber-400 animate-pulse" : "text-rose-400 animate-pulse"}`}>
+              {isLinkSurvivable ? "OPERATIONAL (LINK PROTECTED)" : isSeverelyDegraded ? "MARGINAL THROUGHPUT" : "COMMUNICATION DENIED"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL: LINK BUDGET & COUNTERMEASURES */}
+      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
+        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
+          <Activity className="w-4 h-4 text-cyan-400" /> Anti-Jam Analysis
+        </h2>
+
+        <div className="space-y-6">
+          {/* Survivability Card */}
+          <div className={`p-5 rounded-2xl border ${isLinkSurvivable ? "bg-emerald-950/20 border-emerald-500/40" : "bg-rose-950/20 border-rose-500/40"}`}>
+            <div className="text-[10px] font-bold tracking-wider mb-1 text-slate-400">
+              ANTI-JAM SURVIVABILITY STATUS
+            </div>
+            <div className={`text-2xl font-black flex items-center gap-2 ${isLinkSurvivable ? "text-emerald-400" : "text-rose-400"}`}>
+              {isLinkSurvivable ? <ShieldCheck className="w-6 h-6" /> : <ShieldAlert className="w-6 h-6" />}
+              {isLinkSurvivable ? "LINK SECURED" : "LINK SEVERED"}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+              {isLinkSurvivable 
+                ? "Adaptive CRPA spatial nulling suppresses the jammer direction by 38 dB, maintaining carrier lock and command execution without telemetry drop." 
+                : "JAMMER DOMINANCE: Jammer power exceeds receiver dynamic range. Enable CRPA null steering or increase frequency agility to restore TT&C command authority."}
+            </p>
+          </div>
+
+          {/* EW Threat Profile Metrics */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2 text-[11px]">
+            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Electronic Threat Summary</div>
+            <div className="flex justify-between"><span className="text-slate-500">Threat Preset:</span><span className="text-white font-bold">{threat.name.split(" ")[0]}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Carrier Target:</span><span className="text-amber-400">{threat.targetFrequencyGhz} GHz</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Jammer RF Power:</span><span className="text-rose-400 font-bold">{threat.emitterPowerKw} kW</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Jammer Gain (G_j):</span><span className="text-white">+{threat.jammerAntennaGainDbi} dBi</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Raw J/S at Aperture:</span><span className="text-rose-400 font-bold">+{rawJsRatioDb.toFixed(1)} dB</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">CRPA Suppression:</span><span className="text-emerald-400 font-bold">-{crpaAttenuationDb} dB</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Spread Spectrum Gain:</span><span className="text-cyan-400 font-bold">+{processingGainDb.toFixed(1)} dB</span></div>
+            <div className="flex justify-between font-black text-sm border-t border-slate-700 pt-1.5"><span className="text-white">NET RESIDUAL J/S:</span><span className={isLinkSurvivable ? "text-emerald-400" : "text-rose-400"}>{netJsRatioDb > 0 ? `+${netJsRatioDb.toFixed(1)}` : netJsRatioDb.toFixed(1)} dB</span></div>
+          </div>
+
+          {/* Electronic Protection Technical Architecture */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2">
+            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
+              Counter-Countermeasure Architecture
+            </div>
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              Spatial beamforming creates deep destructive interference pattern notches directly along the threat line-of-sight vector, suppressing coherent repeater deception without requiring satellite reorientation.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
