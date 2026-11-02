@@ -3,20 +3,19 @@
 import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { 
   Sparkles, Globe, Orbit, Crosshair, ShieldCheck, Zap, 
   Eye, Radio, Activity, Layers, ArrowRight, Terminal, 
   Lock, Key, Database, Cpu, Compass, Flame, CheckCircle2, 
   ShieldAlert, Fingerprint, Unlock, ChevronDown 
 } from "lucide-react"
-import { createKerrBlackHole, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
+import { createKerrBlackHole, createHalleyCometSystem, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
 
 type ClearanceLevel = "TS_SCI_SITK" | "SECRET_NATO" | "SAP_GAMMA"
 
 export default function MasterHomePage() {
-  const router = useRouter()
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const pillarsRef = useRef<HTMLDivElement | null>(null)
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [clearanceTier, setClearanceTier] = useState<ClearanceLevel>("TS_SCI_SITK")
@@ -60,7 +59,11 @@ export default function MasterHomePage() {
     }
   }
 
-  // 3D Three.js Kerr Black Hole & Accretion Disk (Video 00:00 - 00:09)
+  const handleScrollToPillars = () => {
+    pillarsRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  // 3D Three.js Kerr Black Hole, Accretion Disk, Halley's Comet & Interactive Zoom
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -78,21 +81,63 @@ export default function MasterHomePage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8))
-    const pLight = new THREE.PointLight(0xffa200, 4.0, 60)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.85))
+    const pLight = new THREE.PointLight(0xffa200, 4.5, 70)
     pLight.position.set(0, 2, 8)
     scene.add(pLight)
 
-    const starfield = createDeepSpaceStarfield(1200, 600)
+    // Deep Space Starfield
+    const starfield = createDeepSpaceStarfield(1400, 700)
     scene.add(starfield)
 
-    const { group: bhGroup, disk, lensRing, astGroup } = createKerrBlackHole(3.0)
+    // 1. Relativistic Kerr Black Hole with Lensing (Video 00:00 - 00:09)
+    const { group: bhGroup, disk, lensRing, astGroup } = createKerrBlackHole(3.2)
     scene.add(bhGroup)
 
-    const { group: satGroup, plume } = createMilitarySatellite({ scale: 0.42 })
+    // 2. Halley's Comet System with Meteor Showers
+    const { group: cometGroup, comet, ionTail, dustTail, meteorGroup } = createHalleyCometSystem()
+    cometGroup.position.set(-16, 8, -6)
+    scene.add(cometGroup)
+    scene.add(meteorGroup)
+
+    // 3. Gold-Foil Military Reconnaissance Satellite
+    const { group: satGroup, plume } = createMilitarySatellite({ scale: 0.44 })
     satGroup.position.set(6.8, -2.2, 5.0)
     satGroup.rotation.y = -Math.PI / 4
     scene.add(satGroup)
+
+    // Interactive Drag Rotation & Motion Zooming
+    let isDragging = false
+    let prevMouseX = 0
+    let prevMouseY = 0
+
+    const onMouseDown = (e: MouseEvent) => {
+      isDragging = true
+      prevMouseX = e.clientX
+      prevMouseY = e.clientY
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return
+      const deltaX = e.clientX - prevMouseX
+      const deltaY = e.clientY - prevMouseY
+      prevMouseX = e.clientX
+      prevMouseY = e.clientY
+
+      bhGroup.rotation.y += deltaX * 0.005
+      bhGroup.rotation.x += deltaY * 0.005
+    }
+
+    const onMouseUp = () => { isDragging = false }
+
+    const onWheel = (e: WheelEvent) => {
+      camera.position.z = Math.max(10, Math.min(38, camera.position.z + e.deltaY * 0.025))
+    }
+
+    container.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    container.addEventListener("wheel", onWheel, { passive: true })
 
     const clock = new THREE.Clock()
     let animId: number
@@ -103,15 +148,31 @@ export default function MasterHomePage() {
       const delta = clock.getDelta()
       const elapsed = clock.getElapsedTime()
 
+      // Accretion Disk Swirl
       disk.rotation.z += 0.35 * delta
-      lensRing.rotation.z += 0.25 * delta
-      astGroup.rotation.y += 0.15 * delta
+      lensRing.rotation.z += 0.22 * delta
+      astGroup.rotation.y += 0.18 * delta
 
+      // Halley's Comet Orbiting across top
+      cometGroup.position.x = -18 + ((elapsed * 1.6) % 36)
+      cometGroup.position.y = 7.5 + Math.sin(elapsed * 0.4) * 1.5
+
+      // Meteor shower pulse
+      meteorGroup.children.forEach((m, idx) => {
+        m.position.x -= delta * (14 + idx * 2)
+        m.position.y -= delta * (8 + idx)
+        if (m.position.x < -30) {
+          m.position.x = 25 + Math.random() * 10
+          m.position.y = 10 + Math.random() * 15
+        }
+      })
+
+      // Satellite stationkeeping hover
       satGroup.position.y = -2.2 + Math.sin(elapsed * 0.8) * 0.25
       satGroup.position.x = 6.8 + Math.cos(elapsed * 0.5) * 0.3
       satGroup.lookAt(0, 0, 0)
 
-      plume.scale.setScalar(1.0 + Math.sin(elapsed * 12) * 0.25)
+      plume.scale.setScalar(1.0 + Math.sin(elapsed * 14) * 0.25)
 
       renderer.render(scene, camera)
     }
@@ -127,6 +188,10 @@ export default function MasterHomePage() {
 
     return () => {
       cancelAnimationFrame(animId)
+      container.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      container.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
       renderer.dispose()
     }
@@ -135,6 +200,7 @@ export default function MasterHomePage() {
   return (
     <div className="relative w-full min-h-screen bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
+      {/* ZERO-TRUST CLASSIFIED AUTHENTICATION GATE */}
       {!isAuthenticated ? (
         <div className="min-h-screen flex items-center justify-center pt-16 px-4 pb-12 z-20">
           <div className="w-full max-w-xl p-8 rounded-3xl bg-[#010614]/90 backdrop-blur-3xl border border-cyan-500/50 shadow-[0_0_80px_rgba(6,182,212,0.3)] space-y-6 font-mono text-xs">
@@ -218,6 +284,7 @@ export default function MasterHomePage() {
           </div>
         </div>
       ) : (
+        /* MASTER HOMEPAGE DASHBOARD */
         <div className="relative w-full min-h-screen">
           <div className="fixed top-14 left-0 right-0 z-40 bg-slate-950/85 backdrop-blur-md border-b border-cyan-500/30 px-6 py-2 flex items-center justify-between font-mono text-[11px]">
             <div className="flex items-center gap-2 text-cyan-300">
@@ -235,7 +302,14 @@ export default function MasterHomePage() {
           <section className="relative w-full min-h-[92vh] flex flex-col items-center justify-center pt-24 px-4 sm:px-6 select-none">
             <div ref={mountRef} className="absolute inset-0 w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing z-0" />
 
+            {/* Floating Telemetry Badge Instructions */}
+            <div className="absolute top-24 right-6 z-10 font-mono text-[10px] text-slate-400 bg-slate-950/70 border border-slate-800 px-3 py-1.5 rounded-xl pointer-events-none backdrop-blur-md hidden sm:block">
+              DRAG: ROTATE BLACK HOLE | SCROLL: MOTION ZOOM (10x-40x)
+            </div>
+
             <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-2xl mx-auto pointer-events-auto">
+              
+              {/* PURE BORDERLESS GLOWING V LOGO WITH SATELLITE (NO SQUARE BORDER) */}
               <div className="relative w-48 h-48 flex items-center justify-center">
                 <div className="absolute inset-0 rounded-full bg-cyan-500/25 blur-3xl animate-breathe-glow pointer-events-none" />
                 <div className="absolute w-44 h-44 rounded-full border border-cyan-500/40 border-dashed animate-spin [animation-duration:28s] pointer-events-none" />
