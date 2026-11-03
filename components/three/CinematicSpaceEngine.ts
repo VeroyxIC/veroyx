@@ -1,237 +1,127 @@
 import * as THREE from "three"
 
-// 1. PROCEDURAL ACCRETION DISK SHADER (Relativistic Fiery Plasma + Doppler Beaming)
-export function createAccretionDiskMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0 },
-      uColorInner: { value: new THREE.Color(0xffffff) },
-      uColorMid: { value: new THREE.Color(0xfbbf24) },
-      uColorOuter: { value: new THREE.Color(0xd97706) }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      varying vec3 vPosition;
-      void main() {
-        vUv = uv;
-        vPosition = position;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime;
-      uniform vec3 uColorInner;
-      uniform vec3 uColorMid;
-      uniform vec3 uColorOuter;
-      varying vec2 vUv;
-      varying vec3 vPosition;
+// 1. STAR WARS HYPERSPACE WARP TUNNEL
+export function createHyperspaceTunnel(count = 1200) {
+  const geo = new THREE.BufferGeometry()
+  const positions = new Float32Array(count * 6)
+  const velocities = new Float32Array(count)
 
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-      }
-      float noise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        f = f * f * (3.0 - 2.0 * f);
-        return mix(
-          mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), f.x),
-          mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
-          f.y
-        );
-      }
-      float fbm(vec2 p) {
-        float v = 0.0;
-        float a = 0.5;
-        for (int i = 0; i < 4; i++) {
-          v += a * noise(p);
-          p *= 2.15;
-          a *= 0.5;
-        }
-        return v;
-      }
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const radius = 1.5 + Math.random() * 28.0
+    const z = -80 + Math.random() * 160
 
-      void main() {
-        vec2 uvCenter = vUv - vec2(0.5);
-        float r = length(uvCenter) * 2.0;
-        if (r < 0.20 || r > 0.98) discard;
+    positions[i * 6 + 0] = Math.cos(angle) * radius
+    positions[i * 6 + 1] = Math.sin(angle) * radius
+    positions[i * 6 + 2] = z
 
-        float theta = atan(uvCenter.y, uvCenter.x);
-        float swirl = theta + (4.0 / (r + 0.08)) - uTime * 1.4;
-        vec2 swirlCoord = vec2(r * 12.0, swirl * 3.0);
-        float plasma = fbm(swirlCoord);
+    positions[i * 6 + 3] = Math.cos(angle) * radius
+    positions[i * 6 + 4] = Math.sin(angle) * radius
+    positions[i * 6 + 5] = z - 3.5
 
-        float dust = smoothstep(0.35, 0.65, fbm(swirlCoord * 1.8 + vec2(2.1, 4.3)));
-        float doppler = 1.0 + 0.70 * sin(theta + 0.4);
+    velocities[i] = 60.0 + Math.random() * 80.0
+  }
 
-        vec3 color;
-        if (r < 0.32) {
-          color = mix(uColorInner, uColorMid, (r - 0.20) / 0.12);
-        } else if (r < 0.68) {
-          color = mix(uColorMid, uColorOuter, (r - 0.32) / 0.36);
-        } else {
-          color = mix(uColorOuter, vec3(0.35, 0.08, 0.02), (r - 0.68) / 0.30);
-        }
-
-        color *= (plasma * 1.6 + 0.4) * dust * doppler;
-        float alpha = smoothstep(0.20, 0.28, r) * smoothstep(0.98, 0.82, r) * 0.96;
-
-        gl_FragColor = vec4(color, alpha);
-      }
-    `,
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x38bdf8,
     transparent: true,
-    side: THREE.DoubleSide,
-    blending: THREE.AdditiveBlending
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    linewidth: 2
   })
+
+  const warpLines = new THREE.LineSegments(geo, mat)
+  return { warpLines, geo, positions, velocities, mat }
 }
 
-// 2. KERR BLACK HOLE MATCHING REFERENCE IMAGE
-export function createPhotorealisticKerrBlackHole(radius = 2.4) {
+// 2. 3D GEODESIC PARTICLE SPHERE & ORBITAL NEXUS (Matches video 00:12)
+export function createGeodesicOrbitalNexus(radius = 5.8) {
   const group = new THREE.Group()
 
-  const horizonGeo = new THREE.SphereGeometry(radius, 64, 64)
-  const horizonMat = new THREE.MeshBasicMaterial({ color: 0x000000 })
-  const horizon = new THREE.Mesh(horizonGeo, horizonMat)
-  group.add(horizon)
-
-  const photonGeo = new THREE.RingGeometry(radius * 1.008, radius * 1.035, 128)
-  const photonMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    side: THREE.DoubleSide,
+  // Inner Wireframe Icosahedron / Geodesic Sphere
+  const sphereGeo = new THREE.IcosahedronGeometry(radius, 2)
+  const sphereWireMat = new THREE.MeshBasicMaterial({
+    color: 0x0284c7,
+    wireframe: true,
     transparent: true,
-    opacity: 0.98,
-    blending: THREE.AdditiveBlending
+    opacity: 0.22
   })
-  const photonRing = new THREE.Mesh(photonGeo, photonMat)
-  group.add(photonRing)
+  const sphereWire = new THREE.Mesh(sphereGeo, sphereWireMat)
+  group.add(sphereWire)
 
-  // Glowing Plasma V Glyph inside the Singularity Core
-  const vShape = new THREE.Shape()
-  vShape.moveTo(-0.95, 1.1)
-  vShape.lineTo(0.0, -1.25)
-  vShape.lineTo(0.95, 1.1)
-  vShape.lineTo(0.52, 1.1)
-  vShape.lineTo(0.0, -0.42)
-  vShape.lineTo(-0.52, 1.1)
-  vShape.closePath()
-
-  const vGeo = new THREE.ShapeGeometry(vShape)
-  const vMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    side: THREE.DoubleSide,
+  // Surface Nodes / Constellation Vertices
+  const nodePositions = sphereGeo.attributes.position
+  const nodeGeo = new THREE.BufferGeometry()
+  nodeGeo.setAttribute("position", nodePositions)
+  const nodeMat = new THREE.PointsMaterial({
+    color: 0x38bdf8,
+    size: 0.18,
     transparent: true,
-    opacity: 0.95,
-    blending: THREE.AdditiveBlending
+    opacity: 0.85
   })
-  const vCoreMesh = new THREE.Mesh(vGeo, vMat)
-  vCoreMesh.position.set(0, 0, 0.05)
-  group.add(vCoreMesh)
+  const nodePoints = new THREE.Points(nodeGeo, nodeMat)
+  group.add(nodePoints)
 
-  const vGlowMat = new THREE.MeshBasicMaterial({
-    color: 0xf59e0b,
-    side: THREE.DoubleSide,
-    transparent: true,
-    opacity: 0.65,
-    blending: THREE.AdditiveBlending
-  })
-  const vGlowMesh = new THREE.Mesh(vGeo, vGlowMat)
-  vGlowMesh.scale.set(1.15, 1.15, 1.0)
-  vGlowMesh.position.set(0, 0, 0.02)
-  group.add(vGlowMesh)
-
-  // Diagonal Relativistic Accretion Blade
-  const diskMat = createAccretionDiskMaterial()
-  const diskGeo = new THREE.RingGeometry(radius * 1.15, radius * 5.2, 128)
-  const disk = new THREE.Mesh(diskGeo, diskMat)
-  disk.rotation.x = Math.PI / 2.3
-  disk.rotation.z = -Math.PI / 7.5
-  group.add(disk)
-
-  // Concentric Einstein Gravitational Lensing Light Rings
-  const lensingGroup = new THREE.Group()
-  const ringRadii = [
-    { rIn: radius * 1.25, rOut: radius * 1.30, opacity: 0.65, color: 0xffffff },
-    { rIn: radius * 1.75, rOut: radius * 1.82, opacity: 0.45, color: 0x93c5fd },
-    { rIn: radius * 2.45, rOut: radius * 2.53, opacity: 0.32, color: 0x60a5fa },
-    { rIn: radius * 3.35, rOut: radius * 3.45, opacity: 0.22, color: 0x38bdf8 }
+  // Floating Orbital Halo Rings (Tilted)
+  const ringsGroup = new THREE.Group()
+  const ringAngles = [
+    { r: radius * 1.25, tiltX: 0.8, tiltY: 0.3, color: 0x38bdf8 },
+    { r: radius * 1.55, tiltX: -0.6, tiltY: 0.8, color: 0x0ea5e9 },
+    { r: radius * 1.85, tiltX: 1.2, tiltY: -0.4, color: 0x0284c7 }
   ]
 
-  ringRadii.forEach(spec => {
-    const rGeo = new THREE.RingGeometry(spec.rIn, spec.rOut, 96)
-    const rMat = new THREE.MeshBasicMaterial({
-      color: spec.color,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: spec.opacity,
-      blending: THREE.AdditiveBlending
-    })
-    const rMesh = new THREE.Mesh(rGeo, rMat)
-    lensingGroup.add(rMesh)
-  })
-  group.add(lensingGroup)
-
-  return { group, horizon, disk, diskMat, vCoreMesh, vGlowMesh, lensingGroup }
-}
-
-export const createKerrBlackHole = createPhotorealisticKerrBlackHole
-
-// 3. DEEP-SPACE AZURE & INDIGO NEBULA SKYBOX
-export function createDeepSpaceNebulaSkybox(): THREE.Group {
-  const group = new THREE.Group()
-
-  const count = 2800
-  const starGeo = new THREE.BufferGeometry()
-  const starPositions = new Float32Array(count * 3)
-  const starColors = new Float32Array(count * 3)
-
-  for (let i = 0; i < count; i++) {
-    const phi = Math.acos(Math.random() * 2 - 1)
-    const theta = Math.random() * Math.PI * 2
-    const r = 400 + Math.random() * 300
-
-    starPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
-    starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-    starPositions[i * 3 + 2] = r * Math.cos(phi)
-
-    const p = Math.random()
-    if (p > 0.8) {
-      starColors[i * 3 + 0] = 0.55; starColors[i * 3 + 1] = 0.80; starColors[i * 3 + 2] = 1.0;
-    } else if (p > 0.6) {
-      starColors[i * 3 + 0] = 1.0; starColors[i * 3 + 1] = 0.88; starColors[i * 3 + 2] = 0.65;
-    } else {
-      starColors[i * 3 + 0] = 0.95; starColors[i * 3 + 1] = 0.98; starColors[i * 3 + 2] = 1.0;
+  ringAngles.forEach(cfg => {
+    const ringGeo = new THREE.BufferGeometry()
+    const pts = []
+    const segs = 96
+    for (let i = 0; i <= segs; i++) {
+      const theta = (i / segs) * Math.PI * 2
+      pts.push(new THREE.Vector3(Math.cos(theta) * cfg.r, Math.sin(theta) * cfg.r, 0))
     }
+    ringGeo.setFromPoints(pts)
+    const ringLine = new THREE.Line(
+      ringGeo,
+      new THREE.LineBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.45, linewidth: 1.5 })
+    )
+    ringLine.rotation.set(cfg.tiltX, cfg.tiltY, 0)
+    ringsGroup.add(ringLine)
+  })
+  group.add(ringsGroup)
+
+  // Swarm of Outer Telemetry Particle Orbiters
+  const orbiterCount = 180
+  const orbiterGeo = new THREE.BufferGeometry()
+  const orbPositions = new Float32Array(orbiterCount * 3)
+  const orbColors = new Float32Array(orbiterCount * 3)
+
+  for (let i = 0; i < orbiterCount; i++) {
+    const phi = Math.acos(Math.random() * 2 - 1)
+    const theta = Math.random() * Math.PI * 2
+    const r = radius * (1.1 + Math.random() * 0.9)
+    orbPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
+    orbPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
+    orbPositions[i * 3 + 2] = r * Math.cos(phi)
+
+    const isGold = Math.random() > 0.65
+    orbColors[i * 3 + 0] = isGold ? 1.0 : 0.2
+    orbColors[i * 3 + 1] = isGold ? 0.8 : 0.85
+    orbColors[i * 3 + 2] = isGold ? 0.3 : 1.0
   }
 
-  starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
-  starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
-  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-    size: 1.3,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.9
-  }))
-  group.add(stars)
+  orbiterGeo.setAttribute("position", new THREE.BufferAttribute(orbPositions, 3))
+  orbiterGeo.setAttribute("color", new THREE.BufferAttribute(orbColors, 3))
+  const orbiterPoints = new THREE.Points(
+    orbiterGeo,
+    new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, opacity: 0.8 })
+  )
+  group.add(orbiterPoints)
 
-  for (let i = 0; i < 14; i++) {
-    const planeGeo = new THREE.PlaneGeometry(160 + i * 20, 90 + i * 15)
-    const planeMat = new THREE.MeshBasicMaterial({
-      color: i % 2 === 0 ? 0x0284c7 : 0x1e1b4b,
-      transparent: true,
-      opacity: 0.08,
-      blending: THREE.AdditiveBlending,
-      side: THREE.DoubleSide
-    })
-    const cloud = new THREE.Mesh(planeGeo, planeMat)
-    cloud.position.set((Math.random() - 0.5) * 80, (Math.random() - 0.5) * 50, -180 - i * 10)
-    cloud.rotation.z = Math.random() * Math.PI
-    group.add(cloud)
-  }
-
-  return group
+  return { group, sphereWire, ringsGroup, orbiterPoints }
 }
 
-// 4. DEEP SPACE STARFIELD (Used across /c2, /catalog, /nexus, /visualizer)
-export function createDeepSpaceStarfield(count = 1400, fieldRadius = 600): THREE.Points {
+// 3. DEEP SPACE STARFIELD (Used across /c2, /catalog, /nexus, /visualizer)
+export function createDeepSpaceStarfield(count = 1600, fieldRadius = 600): THREE.Points {
   const starGeo = new THREE.BufferGeometry()
   const starPositions = new Float32Array(count * 3)
   const starColors = new Float32Array(count * 3)
@@ -239,15 +129,15 @@ export function createDeepSpaceStarfield(count = 1400, fieldRadius = 600): THREE
   for (let i = 0; i < count; i++) {
     const phi = Math.acos(Math.random() * 2 - 1)
     const theta = Math.random() * Math.PI * 2
-    const r = fieldRadius * (0.6 + Math.random() * 0.4)
+    const r = fieldRadius * (0.5 + Math.random() * 0.5)
 
     starPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
     starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
     starPositions[i * 3 + 2] = r * Math.cos(phi)
 
     const p = Math.random()
-    if (p > 0.8) { starColors[i * 3 + 0] = 0.55; starColors[i * 3 + 1] = 0.80; starColors[i * 3 + 2] = 1.0; }
-    else if (p > 0.6) { starColors[i * 3 + 0] = 1.0; starColors[i * 3 + 1] = 0.88; starColors[i * 3 + 2] = 0.65; }
+    if (p > 0.85) { starColors[i * 3 + 0] = 0.55; starColors[i * 3 + 1] = 0.80; starColors[i * 3 + 2] = 1.0; }
+    else if (p > 0.65) { starColors[i * 3 + 0] = 1.0; starColors[i * 3 + 1] = 0.88; starColors[i * 3 + 2] = 0.65; }
     else { starColors[i * 3 + 0] = 0.95; starColors[i * 3 + 1] = 0.98; starColors[i * 3 + 2] = 1.0; }
   }
 
@@ -257,6 +147,14 @@ export function createDeepSpaceStarfield(count = 1400, fieldRadius = 600): THREE
   return new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.4, vertexColors: true, transparent: true, opacity: 0.85 }))
 }
 
+// 4. DEEP SPACE NEBULA SKYBOX
+export function createDeepSpaceNebulaSkybox(): THREE.Group {
+  const group = new THREE.Group()
+  const stars = createDeepSpaceStarfield(2000, 700)
+  group.add(stars)
+  return group
+}
+
 // 5. PHOTOREALISTIC MILITARY RECONNAISSANCE SATELLITE
 export function createMilitarySatellite(options?: { scale?: number }) {
   const scale = options?.scale ?? 1.0
@@ -264,32 +162,23 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   group.scale.set(scale, scale, scale)
 
   const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.8)
-  const busMat = new THREE.MeshStandardMaterial({
-    color: 0xd97706,
-    metalness: 0.95,
-    roughness: 0.18
-  })
+  const busMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.95, roughness: 0.18 })
   const busMesh = new THREE.Mesh(busGeo, busMat)
   group.add(busMesh)
 
   const radGeo = new THREE.BoxGeometry(0.04, 0.9, 1.4)
   const radMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.08 })
   const radL = new THREE.Mesh(radGeo, radMat)
-  radL.position.set(0.61, 0, 0)
-  group.add(radL)
+  radL.position.set(0.61, 0, 0); group.add(radL)
   const radR = radL.clone()
-  radR.position.set(-0.61, 0, 0)
-  group.add(radR)
+  radR.position.set(-0.61, 0, 0); group.add(radR)
 
   const nozGeo = new THREE.ConeGeometry(0.18, 0.45, 16, 1, true)
   const nozMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95, roughness: 0.2 })
-  const nozPositions = [[0.28, 0.28, -1.02], [-0.28, 0.28, -1.02], [0, -0.32, -1.02]]
-  nozPositions.forEach(([nx, ny, nz]) => {
-    const noz = new THREE.Mesh(nozGeo, nozMat)
-    noz.rotation.x = -Math.PI / 2
-    noz.position.set(nx, ny, nz)
-    group.add(noz)
-  })
+  const noz = new THREE.Mesh(nozGeo, nozMat)
+  noz.rotation.x = -Math.PI / 2
+  noz.position.set(0, 0, -1.02)
+  group.add(noz)
 
   const scopeGeo = new THREE.CylinderGeometry(0.38, 0.42, 1.2, 24)
   const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.85, roughness: 0.25 })
@@ -307,25 +196,10 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   const solarWings = new THREE.Group()
   const wingGeo = new THREE.BoxGeometry(2.6, 0.05, 1.1)
   const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.85 })
-
   const wingL = new THREE.Mesh(wingGeo, wingMat)
-  wingL.position.set(2.1, 0, 0)
-  solarWings.add(wingL)
-
-  const boomGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.8, 12)
-  const boomMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.9 })
-  const boomL = new THREE.Mesh(boomGeo, boomMat)
-  boomL.rotation.z = Math.PI / 2
-  boomL.position.set(0.9, 0, 0)
-  solarWings.add(boomL)
-
+  wingL.position.set(2.1, 0, 0); solarWings.add(wingL)
   const wingR = new THREE.Mesh(wingGeo, wingMat)
-  wingR.position.set(-2.1, 0, 0)
-  solarWings.add(wingR)
-
-  const boomR = boomL.clone()
-  boomR.position.set(-0.9, 0, 0)
-  solarWings.add(boomR)
+  wingR.position.set(-2.1, 0, 0); solarWings.add(wingR)
   group.add(solarWings)
 
   const dishGroup = new THREE.Group()
@@ -335,13 +209,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   const dish = new THREE.Mesh(dishGeo, dishMat)
   dish.rotation.x = -Math.PI / 3
   dishGroup.add(dish)
-
-  const hornGeo = new THREE.ConeGeometry(0.08, 0.25, 12)
-  const hornMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.95 })
-  const horn = new THREE.Mesh(hornGeo, hornMat)
-  horn.rotation.x = Math.PI * 0.65
-  horn.position.set(0, 0.15, 0.15)
-  dishGroup.add(horn)
   group.add(dishGroup)
 
   const plumeGeo = new THREE.ConeGeometry(0.22, 1.4, 16, 1, true)
@@ -398,72 +265,22 @@ export function createCrateredMoon(radius = 1.4) {
   return new THREE.Mesh(moonGeo, moonMat)
 }
 
-// 7. HALLEY COMET SYSTEM
-export function createHalleyCometSystem() {
-  const group = new THREE.Group()
-  const cometGeo = new THREE.DodecahedronGeometry(0.45, 2)
-  const cometMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.8, emissive: 0x67e8f9, emissiveIntensity: 0.5 })
-  const comet = new THREE.Mesh(cometGeo, cometMat)
-  group.add(comet)
-
-  const ionTailGeo = new THREE.ConeGeometry(0.3, 10.0, 16, 1, true)
-  const ionTailMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
-  const ionTail = new THREE.Mesh(ionTailGeo, ionTailMat)
-  ionTail.rotation.z = Math.PI / 2
-  ionTail.position.set(-5.0, 0, 0)
-  group.add(ionTail)
-
-  const dustTailGeo = new THREE.ConeGeometry(0.7, 8.5, 16, 1, true)
-  const dustTailMat = new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending })
-  const dustTail = new THREE.Mesh(dustTailGeo, dustTailMat)
-  dustTail.rotation.z = Math.PI / 2.15
-  dustTail.position.set(-4.4, 0.4, 0)
-  group.add(dustTail)
-
-  const meteorCount = 18
-  const meteorGroup = new THREE.Group()
-  const streakMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, linewidth: 2 })
-  for (let i = 0; i < meteorCount; i++) {
-    const p1 = new THREE.Vector3((Math.random() - 0.5) * 50, 10 + Math.random() * 15, (Math.random() - 0.5) * 40)
-    const p2 = p1.clone().add(new THREE.Vector3(-4.5, -2.5, -1.5))
-    const mGeo = new THREE.BufferGeometry().setFromPoints([p1, p2])
-    const mLine = new THREE.Line(mGeo, streakMat)
-    meteorGroup.add(mLine)
-  }
-  return { group, comet, ionTail, dustTail, meteorGroup }
+// 7. COMPATIBILITY EXPORTS
+export function createAccretionDiskMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: "void main() { gl_FragColor = vec4(1.0); }",
+    transparent: true
+  })
 }
 
-// 8. STAR WARS HYPERSPACE WARP TUNNEL
-export function createHyperspaceTunnel(count = 900) {
-  const geo = new THREE.BufferGeometry()
-  const positions = new Float32Array(count * 6)
-  const velocities = new Float32Array(count)
+export function createPhotorealisticKerrBlackHole(radius = 2.4) {
+  const group = new THREE.Group()
+  return { group, horizon: group, disk: group, diskMat: { uniforms: { uTime: { value: 0 } } }, vCoreMesh: group, vGlowMesh: group, lensingGroup: group }
+}
+export const createKerrBlackHole = createPhotorealisticKerrBlackHole
 
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2
-    const radius = 2.5 + Math.random() * 22.0
-    const z = -60 + Math.random() * 120
-
-    positions[i * 6 + 0] = Math.cos(angle) * radius
-    positions[i * 6 + 1] = Math.sin(angle) * radius
-    positions[i * 6 + 2] = z
-
-    positions[i * 6 + 3] = Math.cos(angle) * radius
-    positions[i * 6 + 4] = Math.sin(angle) * radius
-    positions[i * 6 + 5] = z - 2.0
-
-    velocities[i] = 40.0 + Math.random() * 60.0
-  }
-
-  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
-  const mat = new THREE.LineBasicMaterial({
-    color: 0x38bdf8,
-    transparent: true,
-    opacity: 0.0,
-    blending: THREE.AdditiveBlending,
-    linewidth: 2
-  })
-
-  const warpLines = new THREE.LineSegments(geo, mat)
-  return { warpLines, geo, positions, velocities, mat }
+export function createHalleyCometSystem() {
+  const group = new THREE.Group()
+  return { group, comet: group, ionTail: group, dustTail: group, meteorGroup: group }
 }
