@@ -2,135 +2,25 @@
 
 import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
+import Link from "next/link"
 import { 
-  Flame, Radar, Wind, Thermometer, Activity, ShieldAlert, 
-  ShieldCheck, Layers, Gauge, Compass, Play, Square, 
-  RotateCcw, Crosshair, AlertTriangle, Globe, Target 
+  Flame, Play, Pause, RotateCcw, Activity, 
+  Terminal, ShieldCheck, Sliders, BarChart3, Wind, Layers
 } from "lucide-react"
 
-type HgvClass = "AVANGARD_WAVERIDER" | "DF_ZF_GLIDER" | "DARK_EAGLE_LRHW" | "ZIRCON_SCRAMJET"
-
-interface HgvSpec {
-  name: string
-  country: string
-  entryMach: number
-  nominalAltitudeKm: number
-  liftToDrag: number
-  noseRadiusMm: number
-  massKg: number
-  rangeKm: number
-  maneuverEnvelope: string
-  colorHex: string
-}
-
-const HGV_PRESETS: Record<HgvClass, HgvSpec> = {
-  "AVANGARD_WAVERIDER": {
-    name: "Avangard Intercontinental Waverider",
-    country: "RUSSIAN FEDERATION",
-    entryMach: 22.5,
-    nominalAltitudeKm: 58,
-    liftToDrag: 4.2,
-    noseRadiusMm: 22,
-    massKg: 2100,
-    rangeKm: 6200,
-    maneuverEnvelope: "Dynamic Skip-Glide & ±800 km Cross-Range Weave",
-    colorHex: "#ef4444"
-  },
-  "DF_ZF_GLIDER": {
-    name: "DF-ZF Hypersonic Glide Vehicle",
-    country: "PRC",
-    entryMach: 15.2,
-    nominalAltitudeKm: 46,
-    liftToDrag: 3.6,
-    noseRadiusMm: 28,
-    massKg: 1400,
-    rangeKm: 2800,
-    maneuverEnvelope: "Mid-Atmospheric Equilibrium Glide with Dive-Pullup",
-    colorHex: "#f59e0b"
-  },
-  "DARK_EAGLE_LRHW": {
-    name: "Dark Eagle Long-Range Hypersonic Weapon (LRHW)",
-    country: "UNITED STATES",
-    entryMach: 17.0,
-    nominalAltitudeKm: 52,
-    liftToDrag: 3.1,
-    noseRadiusMm: 35,
-    massKg: 1800,
-    rangeKm: 3100,
-    maneuverEnvelope: "Common Hypersonic Glide Body (C-HGB) Precision Strike",
-    colorHex: "#38bdf8"
-  },
-  "ZIRCON_SCRAMJET": {
-    name: "3M22 Zircon Hypersonic Scramjet Cruise",
-    country: "RUSSIAN FEDERATION",
-    entryMach: 8.5,
-    nominalAltitudeKm: 32,
-    liftToDrag: 4.8,
-    noseRadiusMm: 45,
-    massKg: 950,
-    rangeKm: 1100,
-    maneuverEnvelope: "Sustained Scramjet Air-Breathing Cruise Maneuvers",
-    colorHex: "#d946ef"
-  }
-}
-
-export default function HypersonicPage() {
+export default function HypersonicSimulationPage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
+  const shockCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const dragCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const sensorCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const [threatClass, setThreatClass] = useState<HgvClass>("AVANGARD_WAVERIDER")
-  const [velocityKms, setVelocityKms] = useState<number>(6.2) // ~Mach 20
-  const [altitudeKm, setAltitudeKm] = useState<number>(55)
-  const [liftToDragRatio, setLiftToDragRatio] = useState<number>(3.8)
-  const [bankAngleDeg, setBankAngleDeg] = useState<number>(25)
-  const [simStep, setSimStep] = useState<number>(0)
-  const [isPlaying, setIsPlaying] = useState<boolean>(true)
+  const [isRunning, setIsRunning] = useState<boolean>(true)
+  const [simTime, setSimTime] = useState<number>(10.4)
+  const [machNumber, setMachNumber] = useState<number>(22.4)
+  const [altitudeKm, setAltitudeKm] = useState<number>(48.5)
+  const [angleAttackDeg, setAngleAttackDeg] = useState<number>(18.0)
 
-  const spec = HGV_PRESETS[threatClass]
-
-  // Atmospheric Model (US Standard Atmosphere approx)
-  const RHO_0 = 1.225 // kg/m3 sea level
-  const SCALE_HEIGHT_M = 7200
-  const currentDensityKgM3 = RHO_0 * Math.exp(-(altitudeKm * 1000) / SCALE_HEIGHT_M)
-  const localSpeedOfSoundMs = 300 // approx at 50 km stratopause
-  const currentMach = (velocityKms * 1000) / localSpeedOfSoundMs
-
-  // Aerothermal Stagnation Point Heating (Sutton-Graves)
-  const noseRadiusM = spec.noseRadiusMm / 1000
-  const K_SUTTON = 1.74e-4
-  const velMs = velocityKms * 1000
-  const stagnationHeatFluxWcm2 = (K_SUTTON * Math.sqrt(currentDensityKgM3 / noseRadiusM) * Math.pow(velMs, 3)) / 1e4
-  const heatFluxMwM2 = stagnationHeatFluxWcm2 / 100
-
-  // Surface Radiative Equilibrium Wall Temperature
-  const STEFAN_BOLTZMANN = 5.670374e-8
-  const EMISSIVITY = 0.88 // Ultra-High Temperature Ceramic (UHTC ZrB2-SiC)
-  const wallTempKelvin = Math.pow((heatFluxMwM2 * 1e6) / (EMISSIVITY * STEFAN_BOLTZMANN), 0.25)
-  const wallTempCelsius = wallTempKelvin - 273.15
-
-  // Lift, Drag, and G-Force
-  const refAreaM2 = 0.65
-  const dynPressureKpa = (0.5 * currentDensityKgM3 * Math.pow(velMs, 2)) / 1000
-  const liftForceKn = (dynPressureKpa * 1000 * refAreaM2 * 0.45 * liftToDragRatio) / 1000
-  const dragForceKn = liftForceKn / liftToDragRatio
-  const decelGs = (dragForceKn * 1000) / (spec.massKg * 9.80665)
-
-  // Overhead Persistent Infrared (OPIR) Tracking Detection
-  const trackingSatAltitudeKm = 550
-  const slantRangeToSatKm = Math.sqrt(Math.pow(trackingSatAltitudeKm - altitudeKm, 2) + Math.pow(180, 2))
-  const isDetectedByOpir = wallTempKelvin >= 900 // Intense thermal signature detection gate
-  const iipDivergenceKm = Math.min(650, Math.pow(currentMach, 1.4) * liftToDragRatio * (bankAngleDeg / 20))
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout
-    if (isPlaying) {
-      timer = setInterval(() => {
-        setSimStep(s => s + 1)
-      }, 50)
-    }
-    return () => clearInterval(timer)
-  }, [isPlaying])
-
-  // 3D Three.js Hypersonic Skip-Glide & OPIR Sensor Visualization
+  // 1. MAIN 3D HYPERSONIC STREAMLINE WIND TUNNEL (Image 2 Left Viewport)
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -138,10 +28,10 @@ export default function HypersonicPage() {
     const width = container.clientWidth
     const height = container.clientHeight
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#01040f")
+    scene.background = new THREE.Color("#020617")
 
     const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 10, 24)
+    camera.position.set(-10, 5, 14)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
@@ -150,149 +40,179 @@ export default function HypersonicPage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
-    const sun = new THREE.DirectionalLight(0xfffaed, 3.0)
-    sun.position.set(20, 25, 15)
-    scene.add(sun)
+    // Directional Lighting for Vehicle
+    const mainLight = new THREE.DirectionalLight(0xfffaed, 3.5)
+    mainLight.position.set(-15, 12, 10)
+    scene.add(mainLight)
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.5))
 
-    // 1. Curved Earth Surface & Atmospheric Glow Rim
-    const earthRadius = 38
-    const earthGeo = new THREE.SphereGeometry(earthRadius, 64, 32, 0, Math.PI * 2, 0, Math.PI * 0.18)
-    const earthMat = new THREE.MeshStandardMaterial({
-      color: 0x0284c7,
-      roughness: 0.8,
-      metalness: 0.1
-    })
-    const earth = new THREE.Mesh(earthGeo, earthMat)
-    earth.position.set(0, -earthRadius - 1.2, 0)
-    scene.add(earth)
+    // Hypersonic Spacecraft Assembly (Ablative Capsule + Service Module)
+    const spacecraft = new THREE.Group()
+    spacecraft.rotation.y = Math.PI / 5.5
+    spacecraft.rotation.z = (18 * Math.PI) / 180
 
-    // Atmosphere Layer (Stratosphere to Mesosphere Shell)
-    const atmoGeo = new THREE.SphereGeometry(earthRadius + 2.2, 64, 32, 0, Math.PI * 2, 0, Math.PI * 0.18)
-    const atmoMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.15
-    })
-    const atmo = new THREE.Mesh(atmoGeo, atmoMat)
-    atmo.position.copy(earth.position)
-    scene.add(atmo)
-
-    // 2. Hypersonic Waverider Glide Vehicle
-    const hgvGroup = new THREE.Group()
-    scene.add(hgvGroup)
-
-    // Sharp Wedge Waverider Hull
-    const hgvGeo = new THREE.ConeGeometry(0.8, 3.2, 4)
-    const hgvMat = new THREE.MeshStandardMaterial({
+    // Heat Shield (Blunt Forebody Stagnation Region)
+    const shieldGeo = new THREE.SphereGeometry(1.6, 32, 16, 0, Math.PI * 2, 0, Math.PI / 3)
+    const shieldMat = new THREE.MeshStandardMaterial({
       color: 0x1e293b,
-      metalness: 0.9,
-      roughness: 0.2
+      roughness: 0.85,
+      metalness: 0.1,
+      emissive: 0xef4444,
+      emissiveIntensity: 0.45
     })
-    const hgvBody = new THREE.Mesh(hgvGeo, hgvMat)
-    hgvBody.rotation.z = Math.PI / 2
-    hgvBody.scale.set(0.6, 1.0, 1.8) // Flattened lifting body
-    hgvGroup.add(hgvBody)
+    const heatShield = new THREE.Mesh(shieldGeo, shieldMat)
+    heatShield.rotation.x = Math.PI / 2
+    heatShield.position.set(0, 0, 1.1)
+    spacecraft.add(heatShield)
 
-    // Blazing Plasma Shock Wave Cone (High Temperature Glow)
-    const plasmaGeo = new THREE.ConeGeometry(1.2, 3.6, 16, 1, true)
-    const plasmaMat = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(spec.colorHex),
-      wireframe: true,
-      transparent: true,
-      opacity: 0.75,
-      blending: THREE.AdditiveBlending
+    // Conical Frustum Capsule Fuselage
+    const coneGeo = new THREE.CylinderGeometry(0.85, 1.6, 1.8, 32)
+    const coneMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.25, metalness: 0.9 })
+    const coneMesh = new THREE.Mesh(coneGeo, coneMat)
+    coneMesh.position.set(0, 0, 0)
+    coneMesh.rotation.x = Math.PI / 2
+    spacecraft.add(coneMesh)
+
+    // Service Module Cylinder
+    const smGeo = new THREE.CylinderGeometry(1.5, 1.5, 2.2, 32)
+    const smMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.85 })
+    const smMesh = new THREE.Mesh(smGeo, smMat)
+    smMesh.rotation.x = Math.PI / 2
+    smMesh.position.set(0, 0, -1.8)
+    spacecraft.add(smMesh)
+
+    // Solar Panel Wings
+    const wingGeo = new THREE.BoxGeometry(3.6, 0.04, 1.1)
+    const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.9 })
+    const wingL = new THREE.Mesh(wingGeo, wingMat)
+    wingL.position.set(2.8, 0, -1.8)
+    spacecraft.add(wingL)
+    const wingR = new THREE.Mesh(wingGeo, wingMat)
+    wingR.position.set(-2.8, 0, -1.8)
+    spacecraft.add(wingR)
+
+    // Engine Bells Cluster
+    const bellGeo = new THREE.ConeGeometry(0.24, 0.6, 16, 1, true)
+    const bellMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95 })
+    const offsets = [[0.35, 0.35, -3.0], [-0.35, 0.35, -3.0], [0, -0.4, -3.0]]
+    offsets.forEach(([bx, by, bz]) => {
+      const bell = new THREE.Mesh(bellGeo, bellMat)
+      bell.rotation.x = -Math.PI / 2
+      bell.position.set(bx, by, bz)
+      spacecraft.add(bell)
     })
-    const plasmaShock = new THREE.Mesh(plasmaGeo, plasmaMat)
-    plasmaShock.rotation.z = -Math.PI / 2
-    plasmaShock.position.set(-0.5, 0, 0)
-    hgvGroup.add(plasmaShock)
 
-    // Plasma Wake Trail Particles
-    const particleCount = 120
-    const particleGeo = new THREE.BufferGeometry()
-    const particlePositions = new Float32Array(particleCount * 3)
+    scene.add(spacecraft)
 
-    for (let i = 0; i < particleCount; i++) {
-      particlePositions[i * 3 + 0] = -(i * 0.15)
-      particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 0.4
-      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 0.4
+    // 2. High-Speed CFD Streamlines (Particles moving along aerodynamic flow curves)
+    const streamCount = 950
+    const streamGeo = new THREE.BufferGeometry()
+    const positions = new Float32Array(streamCount * 3)
+    const colors = new Float32Array(streamCount * 3)
+    const velocities = new Float32Array(streamCount)
+
+    for (let i = 0; i < streamCount; i++) {
+      // Spawn streamlines in front of the vehicle
+      const x = -14 + Math.random() * 28
+      const y = -7 + Math.random() * 14
+      const z = 10 + Math.random() * 4
+
+      positions[i * 3 + 0] = x
+      positions[i * 3 + 1] = y
+      positions[i * 3 + 2] = z
+      velocities[i] = 22.0 + Math.random() * 14.0
+
+      // Initial color assignment
+      colors[i * 3 + 0] = 0.2
+      colors[i * 3 + 1] = 0.8
+      colors[i * 3 + 2] = 1.0
     }
-    particleGeo.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3))
-    const particleMat = new THREE.PointsMaterial({
-      color: 0xf59e0b,
-      size: 0.12,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending
-    })
-    const wakePoints = new THREE.Points(particleGeo, particleMat)
-    hgvGroup.add(wakePoints)
 
-    // 3. Space-Layer Overhead OPIR Tracking Satellite
-    const satGroup = new THREE.Group()
-    satGroup.position.set(4, 7.5, 0)
-    scene.add(satGroup)
+    streamGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
+    streamGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3))
 
-    const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.7)
-    const satMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9 })
-    const satMesh = new THREE.Mesh(satGeo, satMat)
-    satGroup.add(satMesh)
+    const streamPoints = new THREE.Points(
+      streamGeo,
+      new THREE.PointsMaterial({
+        size: 0.16,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending
+      })
+    )
+    scene.add(streamPoints)
 
-    // OPIR Sensor Beam Cone
-    const beamGeo = new THREE.ConeGeometry(3.5, 8.5, 16, 1, true)
-    const beamMat = new THREE.MeshBasicMaterial({
-      color: 0x00f0ff,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.25
-    })
-    const beamCone = new THREE.Mesh(beamGeo, beamMat)
-    beamCone.position.set(0, -4.2, 0)
-    satGroup.add(beamCone)
+    // Interactive Drag Rotation
+    let isDragging = false
+    let prevX = 0, prevY = 0
+    const onMouseDown = (e: MouseEvent) => { isDragging = true; prevX = e.clientX; prevY = e.clientY }
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return
+      scene.rotation.y += (e.clientX - prevX) * 0.005
+      scene.rotation.x += (e.clientY - prevY) * 0.005
+      prevX = e.clientX; prevY = e.clientY
+    }
+    const onMouseUp = () => { isDragging = false }
+    const onWheel = (e: WheelEvent) => {
+      camera.position.z = Math.max(8, Math.min(32, camera.position.z + e.deltaY * 0.02))
+    }
 
-    // OPIR Tracking Laser Line
-    const irTrackGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()])
-    const irTrackMat = new THREE.LineBasicMaterial({
-      color: 0x00f0ff,
-      linewidth: 2,
-      transparent: true,
-      opacity: isDetectedByOpir ? 0.9 : 0.0
-    })
-    const irTrackLine = new THREE.Line(irTrackGeo, irTrackMat)
-    scene.add(irTrackLine)
+    container.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    container.addEventListener("wheel", onWheel, { passive: true })
 
+    const clock = new THREE.Clock()
     let animId: number
+
     const animate = () => {
       animId = requestAnimationFrame(animate)
+      const delta = clock.getDelta()
 
-      // Oscillating Skip-Glide Altitude Dynamics
-      const skipAltitude = Math.sin(simStep * 0.04) * 0.65
-      const bankRad = (bankAngleDeg * Math.PI) / 180
-      hgvGroup.position.set(-2, skipAltitude, 0)
-      hgvGroup.rotation.x = bankRad * 0.5
+      // Animate Streamlines passing spacecraft
+      const pArr = streamGeo.attributes.position.array as Float32Array
+      const cArr = streamGeo.attributes.color.array as Float32Array
 
-      // Jitter wake particles
-      const pos = particleGeo.attributes.position.array as Float32Array
-      for (let i = 0; i < particleCount; i++) {
-        pos[i * 3 + 0] -= 0.04
-        if (pos[i * 3 + 0] < -18.0) {
-          pos[i * 3 + 0] = -0.5
+      for (let i = 0; i < streamCount; i++) {
+        pArr[i * 3 + 2] -= velocities[i] * delta
+
+        const x = pArr[i * 3 + 0]
+        const y = pArr[i * 3 + 1]
+        const z = pArr[i * 3 + 2]
+
+        // Deflect particles around the blunt nose
+        const distToNose = Math.sqrt(x * x + y * y + (z - 1.1) * (z - 1.1))
+        if (distToNose < 2.4 && z > -1.0) {
+          pArr[i * 3 + 0] += x * 0.12
+          pArr[i * 3 + 1] += y * 0.12
+
+          // Color shift to Stagnation Red/Orange
+          cArr[i * 3 + 0] = 1.0
+          cArr[i * 3 + 1] = 0.2
+          cArr[i * 3 + 2] = 0.1
+        } else if (z < -1.0 && z > -4.0) {
+          // Flank expansion: Green / Yellow
+          cArr[i * 3 + 0] = 0.8
+          cArr[i * 3 + 1] = 0.9
+          cArr[i * 3 + 2] = 0.1
+        } else {
+          // Freestream: Cyan / Blue
+          cArr[i * 3 + 0] = 0.1
+          cArr[i * 3 + 1] = 0.6
+          cArr[i * 3 + 2] = 1.0
+        }
+
+        // Reset particle loop
+        if (pArr[i * 3 + 2] < -10) {
+          pArr[i * 3 + 0] = -14 + Math.random() * 28
+          pArr[i * 3 + 1] = -7 + Math.random() * 14
+          pArr[i * 3 + 2] = 12 + Math.random() * 3
         }
       }
-      particleGeo.attributes.position.needsUpdate = true
 
-      // Update OPIR Tracking Vector
-      const satPos = satGroup.position
-      const hgvPos = hgvGroup.position
-      const linePositions = new Float32Array([
-        satPos.x, satPos.y, satPos.z,
-        hgvPos.x, hgvPos.y, hgvPos.z
-      ])
-      irTrackGeo.setAttribute("position", new THREE.BufferAttribute(linePositions, 3))
-      irTrackGeo.attributes.position.needsUpdate = true
+      streamGeo.attributes.position.needsUpdate = true
+      streamGeo.attributes.color.needsUpdate = true
 
       renderer.render(scene, camera)
     }
@@ -308,249 +228,308 @@ export default function HypersonicPage() {
 
     return () => {
       cancelAnimationFrame(animId)
+      container.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      container.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
       renderer.dispose()
     }
-  }, [threatClass, bankAngleDeg, isDetectedByOpir, simStep, spec])
+  }, [])
+
+  // 2. 2D THERMAL SHOCKWAVE CONTOUR PLOT (Image 2 Top Right)
+  useEffect(() => {
+    const canvas = shockCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const w = canvas.width
+    const h = canvas.height
+    ctx.fillStyle = "#020617"
+    ctx.fillRect(0, 0, w, h)
+
+    // Stagnation Bow Shock Heat Envelope (Red -> Yellow -> Blue)
+    const cx = w * 0.42, cy = h * 0.5
+    for (let r = 85; r > 10; r -= 3) {
+      const norm = (r - 10) / 75
+      if (norm < 0.2) ctx.fillStyle = "rgba(239, 68, 68, 0.95)" // 120+ Stagnation Peak
+      else if (norm < 0.45) ctx.fillStyle = "rgba(245, 158, 11, 0.85)"
+      else if (norm < 0.7) ctx.fillStyle = "rgba(34, 197, 94, 0.65)"
+      else ctx.fillStyle = "rgba(2, 132, 199, 0.35)"
+
+      ctx.beginPath()
+      ctx.ellipse(cx + (1.0 - norm) * 20, cy, r * 1.3, r * 0.85, 0, -Math.PI / 2, Math.PI / 2)
+      ctx.fill()
+    }
+
+    // Vehicle Blunt Outline
+    ctx.fillStyle = "#ffffff"
+    ctx.beginPath()
+    ctx.arc(cx + 25, cy, 18, -Math.PI / 2, Math.PI / 2)
+    ctx.fill()
+    ctx.fillRect(cx + 25, cy - 18, 45, 36)
+  }, [])
+
+  // 3. DRAG COEFFICIENT DYNAMIC CURVE (Image 2 Mid Right)
+  useEffect(() => {
+    const canvas = dragCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const w = canvas.width
+    const h = canvas.height
+    ctx.fillStyle = "#020617"
+    ctx.fillRect(0, 0, w, h)
+
+    // Grid lines
+    ctx.strokeStyle = "#1e293b"
+    ctx.lineWidth = 1
+    for (let y = 10; y < h; y += 20) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
+    }
+
+    // Drag Coefficient curve
+    ctx.strokeStyle = "#38bdf8"
+    ctx.lineWidth = 2.0
+    ctx.beginPath()
+    ctx.moveTo(10, h * 0.75)
+    ctx.bezierCurveTo(w * 0.3, h * 0.25, w * 0.6, h * 0.85, w - 10, h * 0.45)
+    ctx.stroke()
+  }, [])
+
+  // 4. SENSOR SPECTRAL TELEMETRY (Image 2 Bottom Right Oscilloscope)
+  useEffect(() => {
+    const canvas = sensorCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    let animId: number
+    let offset = 0
+
+    const render = () => {
+      animId = requestAnimationFrame(render)
+      offset += 0.05
+      const w = canvas.width
+      const h = canvas.height
+
+      ctx.fillStyle = "#020617"
+      ctx.fillRect(0, 0, w, h)
+
+      // Draw 4 Waveform Channels
+      const channels = [
+        { color: "#eab308", yBase: h * 0.2, freq: 0.08, amp: 10 },
+        { color: "#22c55e", yBase: h * 0.42, freq: 0.12, amp: 8 },
+        { color: "#38bdf8", yBase: h * 0.65, freq: 0.05, amp: 12 },
+        { color: "#ef4444", yBase: h * 0.85, freq: 0.18, amp: 6 }
+      ]
+
+      channels.forEach(ch => {
+        ctx.strokeStyle = ch.color
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        for (let x = 0; x < w; x += 2) {
+          const y = ch.yBase + Math.sin(x * ch.freq + offset) * ch.amp + (Math.random() - 0.5) * 2.5
+          if (x === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.stroke()
+      })
+    }
+    render()
+
+    return () => cancelAnimationFrame(animId)
+  }, [])
 
   return (
-    <div className="w-full h-full pt-20 px-8 pb-8 flex bg-[#01040f] font-sans text-slate-100 overflow-hidden">
+    <div className="w-full h-[calc(100vh-3.5rem)] pt-14 flex flex-col bg-[#01030a] font-mono text-xs text-slate-100 select-none overflow-hidden">
       
-      {/* LEFT PANEL: THREAT VEHICLE PROFILES & GLIDE PARAMETERS */}
-      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
-        <div className="mb-6">
-          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
-            <Wind className="w-5 h-5 text-amber-500" /> Hypersonic &amp; OPIR
-          </h1>
-          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
-            Non-Keplerian Glide &amp; Space-Layer Tracking
-          </p>
+      {/* TOP INDUSTRIAL HEADER (Image 2 Top) */}
+      <div className="h-11 px-4 border-b border-slate-800 bg-[#020617] flex items-center justify-between text-[11px] shrink-0">
+        <div className="flex items-center gap-4">
+          <span className="font-black tracking-widest text-white uppercase text-sm">AERO-ORBITAL SYSTEM SIMULATOR</span>
+          <div className="flex items-center gap-3 text-slate-400 text-[10px]">
+            <span className="text-white font-bold">File</span>
+            <span>Design</span>
+            <span className="text-cyan-400 font-bold">Simulation</span>
+            <span className="text-emerald-400 font-bold">Aerodynamics</span>
+            <span>Telemetry</span>
+            <span>Tools</span>
+          </div>
         </div>
+        <div className="flex items-center gap-4 text-slate-400 text-[10px]">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-emerald-400 font-bold">FLOW SOLVER: RUNNING (60 FPS)</span>
+          </span>
+          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
+            MACH: {machNumber.toFixed(1)}
+          </span>
+        </div>
+      </div>
 
-        <div className="space-y-6">
-          {/* Threat Class Selection */}
-          <div className="space-y-3">
-            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-amber-400" /> Hypersonic Glide Profiles
-            </label>
-            <div className="space-y-2">
-              {(["AVANGARD_WAVERIDER", "DF_ZF_GLIDER", "DARK_EAGLE_LRHW", "ZIRCON_SCRAMJET"] as HgvClass[]).map(c => {
-                const item = HGV_PRESETS[c]
-                return (
-                  <button
-                    key={c}
-                    onClick={() => {
-                      setThreatClass(c)
-                      setAltitudeKm(item.nominalAltitudeKm)
-                      setVelocityKms((item.entryMach * 300) / 1000)
-                      setLiftToDragRatio(item.liftToDrag)
-                    }}
-                    className={`w-full p-3.5 rounded-xl border text-left transition-all flex items-center justify-between ${
-                      threatClass === c 
-                        ? "bg-amber-950/40 border-amber-500 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.25)]" 
-                        : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
-                    }`}
-                  >
-                    <div>
-                      <div className="font-bold text-[11px] text-white flex items-center gap-2">
-                        {item.name}
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
-                        {item.country} | L/D: {item.liftToDrag} | Rn: {item.noseRadiusMm} mm
-                      </div>
-                    </div>
-                    <div className="font-mono text-right text-[10px]">
-                      <span className="text-amber-400 font-bold block">Mach {item.entryMach}</span>
-                      <span className="text-slate-500">{item.rangeKm.toLocaleString()} km</span>
-                    </div>
-                  </button>
-                )
-              })}
+      {/* MAIN DUAL-PANE WORKSTATION */}
+      <div className="flex-1 flex overflow-hidden">
+        
+        {/* LEFT VIEWPORT: 3D WIND TUNNEL & TIMELINE SCRUBBER (Image 2 Left) */}
+        <div className="flex-1 h-full relative flex flex-col border-r border-slate-800">
+          
+          {/* Top Subheader */}
+          <div className="absolute top-3 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-slate-300 backdrop-blur-md">
+              <span className="text-cyan-400 font-bold">3D Modeling Viewport</span>
+              <span className="mx-2 text-slate-600">|</span>
+              <span>Mach {machNumber.toFixed(1)} Super-Orbital Entry Flow</span>
+            </div>
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-amber-400 font-bold backdrop-blur-md">
+              ALTITUDE: {altitudeKm.toFixed(1)} KM // AoA: {angleAttackDeg}°
             </div>
           </div>
 
-          {/* Dynamic Flight Parameter Controls */}
-          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
-            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
-              Atmospheric Entry &amp; Glide Envelope
+          {/* Left Vertical Pressure Color-Bar Legend (Image 2 Left) */}
+          <div className="absolute left-4 top-20 z-10 p-2.5 rounded-xl bg-slate-950/85 border border-slate-800 backdrop-blur-md text-[9px] font-mono space-y-2 pointer-events-none">
+            <div className="text-slate-400 font-bold">Pressure [Kn/m²]</div>
+            <div className="h-44 w-4 rounded bg-gradient-to-t from-blue-600 via-green-500 via-yellow-400 to-red-600 border border-slate-800" />
+            <div className="space-y-3.5 text-slate-400 text-[8px] pl-1 font-bold">
+              <div>60</div><div>40</div><div>20</div><div>0</div>
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-slate-400">FLIGHT VELOCITY:</span>
-                <span className="text-white font-bold">{velocityKms.toFixed(2)} km/s (Mach {currentMach.toFixed(1)})</span>
-              </div>
-              <input 
-                type="range" min="2.5" max="7.8" step="0.1"
-                value={velocityKms}
-                onChange={e => setVelocityKms(Number(e.target.value))}
-                className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
+          {/* 3D WebGL Canvas */}
+          <div ref={mountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
 
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">GLIDE ALTITUDE:</span>
-                <span className="text-cyan-400 font-bold">{altitudeKm} km (MESOSPHERE)</span>
+          {/* BOTTOM TIMELINE & SUBSYSTEM MATRIX (Image 2 Bottom Left) */}
+          <div className="h-40 border-t border-slate-800 bg-[#020617]/95 p-3 flex flex-col justify-between shrink-0 font-mono text-[10px] z-10">
+            
+            {/* Timeline Scrubber */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>TIMELINE: <span className="text-white font-bold">{simTime.toFixed(1)} s</span></span>
+                <span className="text-cyan-400">STAGNATION PEAK: T+10.4s</span>
               </div>
-              <input 
-                type="range" min="25" max="85" step="1"
-                value={altitudeKm}
-                onChange={e => setAltitudeKm(Number(e.target.value))}
+              <input
+                type="range"
+                min="0"
+                max="18"
+                step="0.1"
+                value={simTime}
+                onChange={e => setSimTime(Number(e.target.value))}
                 className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
               />
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">LIFT-TO-DRAG RATIO (L/D):</span>
-                <span className="text-emerald-400 font-bold">{liftToDragRatio.toFixed(1)}</span>
+            {/* Subsystem Health Grid */}
+            <div className="grid grid-cols-4 gap-3 pt-2 border-t border-slate-800/80">
+              <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                <div className="text-slate-400 text-[9px]">THERMAL SHIELD</div>
+                <div className="text-emerald-400 font-bold text-xs mt-0.5">NOMINAL (94%)</div>
               </div>
-              <input 
-                type="range" min="1.5" max="5.5" step="0.1"
-                value={liftToDragRatio}
-                onChange={e => setLiftToDragRatio(Number(e.target.value))}
-                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">AERODYNAMIC BANK ANGLE (σ):</span>
-                <span className="text-rose-400 font-bold">{bankAngleDeg}° (CROSS-RANGE WEAVE)</span>
+              <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                <div className="text-slate-400 text-[9px]">RCS PROPULSION</div>
+                <div className="text-cyan-400 font-bold text-xs mt-0.5">ACTIVE (88%)</div>
               </div>
-              <input 
-                type="range" min="0" max="65" step="5"
-                value={bankAngleDeg}
-                onChange={e => setBankAngleDeg(Number(e.target.value))}
-                className="w-full accent-rose-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
+              <div className="p-2 rounded bg-slate-900/60 border border-slate-800">
+                <div className="text-slate-400 text-[9px]">BUS POWER (EPS)</div>
+                <div className="text-emerald-400 font-bold text-xs mt-0.5">99.2% CHARGED</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsRunning(r => !r)}
+                  className={`flex-1 py-3 rounded-xl font-bold uppercase transition-all flex items-center justify-center gap-1.5 ${
+                    isRunning 
+                      ? "bg-slate-800 text-slate-300 hover:bg-slate-700" 
+                      : "bg-emerald-600 text-white shadow-[0_0_15px_rgba(34,197,94,0.4)]"
+                  }`}
+                >
+                  {isRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  <span>{isRunning ? "PAUSE" : "RUN"}</span>
+                </button>
+              </div>
             </div>
-          </div>
 
-          {/* Simulation Controls */}
-          <div className="p-4 bg-slate-900/60 border border-slate-700/80 rounded-xl space-y-3">
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-slate-400 font-bold uppercase">OPIR Stereo Tracking</span>
-              <span className={`font-bold ${isDetectedByOpir ? "text-cyan-400" : "text-slate-500"}`}>
-                {isDetectedByOpir ? "SPACE-LAYER TRACK LOCKED" : "SIGNATURE SUB-THRESHOLD"}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className={`flex-1 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
-                  isPlaying 
-                    ? "bg-slate-800 hover:bg-slate-700 text-white" 
-                    : "bg-amber-600 hover:bg-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.4)]"
-                }`}
-              >
-                {isPlaying ? <Square className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
-                {isPlaying ? "HOLD TRAJECTORY" : "RUN SKIP-GLIDE"}
-              </button>
-
-              <button
-                onClick={() => setSimStep(0)}
-                className="p-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                title="Restart Approach"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CENTER PANEL: 3D THREE.JS ATMOSPHERIC VISUALIZER & FLIGHT HUD */}
-      <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-6 left-6 z-10 font-mono">
-          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">
-            Aerothermal Hypersonic Tracking [SDA PWSA Tracking Layer]
-          </div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-black text-amber-400">
-              {wallTempCelsius.toFixed(0)}°C
-            </span>
-            <span className="text-slate-500 text-sm">STAGNATION WALL TEMP ({wallTempKelvin.toFixed(0)} K)</span>
-          </div>
-          <div className="flex gap-4 mt-2 text-[11px]">
-            <span className="text-rose-400">HEAT FLUX: {heatFluxMwM2.toFixed(2)} MW/m²</span>
-            <span className="text-cyan-400">DYNAMIC PRESSURE: {dynPressureKpa.toFixed(1)} kPa</span>
-            <span className="text-emerald-400">DECELERATION: {decelGs.toFixed(1)} G</span>
           </div>
         </div>
 
-        <div ref={mountRef} className="flex-1 w-full cursor-move" />
+        {/* RIGHT ANALYTICAL PANELS (Image 2 Right Side) */}
+        <div className="w-[520px] h-full flex flex-col bg-[#020617] overflow-y-auto">
+          
+          {/* Top Panel: Aerodynamic Analysis Heatmap & Drag Curve (Image 2 Top Right) */}
+          <div className="p-4 border-b border-slate-800 space-y-4">
+            <div className="flex items-center justify-between text-[11px] font-bold border-b border-slate-800 pb-1.5">
+              <span className="text-white">Aerodynamic Analysis</span>
+              <div className="flex gap-3 text-[10px]">
+                <span className="text-cyan-400">✓ Thermal heating</span>
+                <span className="text-amber-400">✓ Drag coefficient</span>
+              </div>
+            </div>
 
-        {/* Tactical Status HUD Bar */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Flame className="w-5 h-5 text-amber-500" />
-            <div>
-              <span className="text-slate-500 block text-[9px]">AERODYNAMIC REGIME</span>
-              <span className="text-white font-bold text-sm">EQUILIBRIUM GLIDE (L/D = {liftToDragRatio.toFixed(1)})</span>
+            {/* 2D Stagnation Heatmap & Drag Curve Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <div className="text-[9px] text-slate-400">BOW SHOCK STAGNATION PLOT</div>
+                <canvas ref={shockCanvasRef} width={220} height={110} className="w-full h-28 rounded-lg border border-slate-800 bg-black" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-[9px] text-slate-400">DRAG COEFFICIENT vs TIME</div>
+                <canvas ref={dragCanvasRef} width={220} height={110} className="w-full h-28 rounded-lg border border-slate-800 bg-black" />
+              </div>
             </div>
           </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">BALLISTIC TRAJECTORY DIVERGENCE</span>
-            <span className="text-rose-400 font-bold text-sm">+{iipDivergenceKm.toFixed(0)} km CROSS-RANGE</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">OVERHEAD SENSOR (LEO)</span>
-            <span className="text-cyan-400 font-bold text-sm">SDA-TRACK-08 (MWIR 3–5µm)</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">SLANT RANGE TO OPIR</span>
-            <span className="text-emerald-400 font-bold text-sm">{slantRangeToSatKm.toFixed(0)} km</span>
-          </div>
-        </div>
-      </div>
 
-      {/* RIGHT PANEL: AEROTHERMAL ANALYTICS & SENSOR FUSION */}
-      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-cyan-400" /> Aerothermal Telemetry
-        </h2>
-
-        <div className="space-y-6">
-          {/* Threat Detection Card */}
-          <div className={`p-5 rounded-2xl border ${isDetectedByOpir ? "bg-amber-950/20 border-amber-500/40" : "bg-slate-900/40 border-slate-800"}`}>
-            <div className="text-[10px] font-bold tracking-wider mb-1 text-slate-400">
-              OVERHEAD SENSOR CUSTODY
+          {/* Middle Panel: Aerodynamic Coefficients & Orbital Parameters */}
+          <div className="p-4 border-b border-slate-800 grid grid-cols-2 gap-4 text-[10px]">
+            
+            {/* Aerodynamic Coefficients Table */}
+            <div className="space-y-1.5">
+              <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
+                Aero Coefficients
+              </div>
+              <div className="flex justify-between"><span className="text-slate-500">Cd (DRAG):</span><span className="text-white font-bold">0.3355</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Cl (LIFT):</span><span className="text-cyan-400 font-bold">0.2008</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">L/D RATIO:</span><span className="text-emerald-400 font-bold">0.598</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Cm (PITCH):</span><span className="text-white">-0.0125</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">STAGNATION T0:</span><span className="text-rose-400 font-bold">3,650 K</span></div>
             </div>
-            <div className={`text-xl font-black flex items-center gap-2 ${isDetectedByOpir ? "text-amber-400" : "text-slate-400"}`}>
-              {isDetectedByOpir ? <Radar className="w-5 h-5 text-cyan-400" /> : <AlertTriangle className="w-5 h-5 text-amber-500" />}
-              {isDetectedByOpir ? "OPIR TRACK VALIDATED" : "INFRARED DORMANT"}
+
+            {/* Orbital Parameters */}
+            <div className="space-y-1.5">
+              <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
+                Orbital Parameters
+              </div>
+              <div className="flex justify-between"><span className="text-slate-500">ALTITUDE:</span><span className="text-white font-bold">{altitudeKm.toFixed(1)} km</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">VELOCITY:</span><span className="text-amber-400 font-bold">27,500 m/s</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">DYNAMIC PRESS:</span><span className="text-white font-bold">48.2 kPa</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">HEATING RATE:</span><span className="text-rose-400 font-bold">185 W/cm²</span></div>
+              <div className="flex justify-between"><span className="text-slate-500">ENTRY FLIGHT PATH:</span><span className="text-white">-1.45°</span></div>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-              {isDetectedByOpir 
-                ? `Stagnation shock wave temperature of ${(wallTempCelsius).toFixed(0)}°C generates intense mid-wavelength infrared (MWIR) radiant flux, enabling overhead LEO Tracking Layer satellites to compute stereoscopic state vectors despite non-Keplerian weave maneuvers.`
-                : "Atmospheric density is insufficient to sustain luminous aerothermal shock wave emissions. Object remains undetectable to satellite optical IR payloads."}
-            </p>
           </div>
 
-          {/* Aerothermal Breakdown */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2 text-[11px]">
-            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Aerodynamic Boundary Layer</div>
-            <div className="flex justify-between"><span className="text-slate-500">Free Stream Velocity:</span><span className="text-white font-bold">{velocityKms.toFixed(2)} km/s</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Mach Number:</span><span className="text-amber-400 font-bold">Mach {currentMach.toFixed(1)}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Atmospheric Density:</span><span className="text-white">{(currentDensityKgM3 * 1000).toFixed(3)} g/m³</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Stagnation Heat Flux:</span><span className="text-rose-400 font-bold">{heatFluxMwM2.toFixed(2)} MW/m²</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Aero Lift Force:</span><span className="text-emerald-400 font-bold">{liftForceKn.toFixed(1)} kN</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Aero Drag Force:</span><span className="text-white">{dragForceKn.toFixed(1)} kN</span></div>
-            <div className="flex justify-between font-black text-sm border-t border-slate-700 pt-1.5"><span className="text-white">WALL TEMP:</span><span className="text-amber-400">{wallTempCelsius.toFixed(0)}°C</span></div>
+          {/* Lower Panel: Sensor Spectral Simulation Oscilloscope (Image 2 Bottom Right) */}
+          <div className="p-4 border-b border-slate-800 space-y-2">
+            <div className="flex justify-between text-[10px] font-bold text-slate-400 border-b border-slate-800 pb-1">
+              <span>Sensor Spectral Telemetry</span>
+              <span className="text-emerald-400">RF IONIZATION SHEATH</span>
+            </div>
+            <canvas ref={sensorCanvasRef} width={460} height={90} className="w-full h-24 rounded-lg border border-slate-800 bg-black" />
           </div>
 
-          {/* Skip-Glide Mechanics Principle */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2">
-            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
-              Non-Keplerian Glide Dynamics
+          {/* Bottom Terminal Output Stream */}
+          <div className="p-4 flex-1 flex flex-col space-y-2">
+            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex items-center gap-2">
+              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Execution Logs // Aero-Thermal Stream</span>
             </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed">
-              Unlike classical ballistic missiles whose impact point is fixed at booster burnout, waveriders bounce against dense atmospheric layers like a flat stone on water. Real-time OPIR stereo track correlation is mandatory to counter evasive bank-to-turn maneuvers.
-            </p>
+            <div className="flex-1 p-3 rounded-xl bg-black border border-slate-800 text-[10px] font-mono text-emerald-400 space-y-1 overflow-y-auto">
+              <div>[SOLVER] Navier-Stokes compressible flow initialized...</div>
+              <div>[HYPERSONIC] Mach {machNumber.toFixed(1)} stagnation point verified at nose tip.</div>
+              <div className="text-rose-400">[THERMAL] Max heat flux 185 W/cm² absorbed by carbon-phenolic shield.</div>
+              <div className="text-cyan-400">[AERO] L/D equilibrium 0.598 maintains entry corridor guidance.</div>
+              <div className="text-slate-500">[STATUS] All sensor channels nominal. Blackout margins stable.</div>
+            </div>
           </div>
+
         </div>
       </div>
     </div>
