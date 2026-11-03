@@ -29,33 +29,33 @@ export default function HypersonicSimulationPage() {
   const [showThermalMap, setShowThermalMap] = useState<boolean>(true)
   const [showWireframe, setShowWireframe] = useState<boolean>(false)
 
-  // Physical Aerodynamic Calculations (US Standard Atmosphere 1976 + Hypersonic Theory)
+  // Physical Aerodynamic Calculations (US Standard Atmosphere 1976 + Hypersonic Stagnation Theory)
   const physics = useMemo(() => {
     const rho0 = 1.225 // kg/m^3
     const H = 7.2 // scale height km
     const rho = rho0 * Math.exp(-altitudeKm / H)
     
-    const T_inf = altitudeKm < 50 ? 270.0 : 220.0 // K
+    const T_inf = altitudeKm < 50 ? 270.0 : 220.0
     const gamma = 1.4
     const R_gas = 287.05
     const soundSpeed = Math.sqrt(gamma * R_gas * T_inf)
-    const velocity = machNumber * soundSpeed // m/s
+    const velocity = machNumber * soundSpeed
     const dynamicPressureKPa = (0.5 * rho * velocity * velocity) / 1000.0
 
-    // Stagnation Temperature with dissociation damping
+    // Stagnation Temperature with real-gas dissociation damping
     const stagnationTempK = Math.min(4200.0, 300.0 + 150.0 * machNumber)
 
     // Sutton-Graves Stagnation Heat Flux (W/cm^2)
-    const Rn = 1.65 // Nose radius in meters
+    const Rn = 1.85
     const k_sg = 1.7415e-4
     const heatFluxWcm2 = (k_sg * Math.sqrt(rho / Rn) * Math.pow(velocity, 3)) / 10000.0
 
     // Billig Hypersonic Bow Shock Standoff Distance (m)
     const shockStandoff = Rn * 0.143 * Math.exp(3.24 / (machNumber * machNumber))
 
-    // Lift/Drag based on Newtonian Theory & Angle of Attack
+    // Lift/Drag equilibrium
     const alphaRad = (angleAttackDeg * Math.PI) / 180.0
-    const Cd = 0.31 + 0.15 * Math.sin(alphaRad) * Math.sin(alphaRad)
+    const Cd = 0.315 + 0.14 * Math.sin(alphaRad) * Math.sin(alphaRad)
     const Cl = 0.22 * Math.sin(alphaRad) * Math.cos(alphaRad)
     const L_D = Cl / Math.max(0.01, Cd)
 
@@ -72,12 +72,20 @@ export default function HypersonicSimulationPage() {
     }
   }, [machNumber, altitudeKm, angleAttackDeg])
 
-  const paramsRef = useRef({ machNumber, altitudeKm, angleAttackDeg, isRunning, showStreamlines, showBowShock, showThermalMap, showWireframe, shockStandoff: physics.shockStandoff })
+  const paramsRef = useRef({ 
+    machNumber, altitudeKm, angleAttackDeg, isRunning, 
+    showStreamlines, showBowShock, showThermalMap, showWireframe, 
+    shockStandoff: physics.shockStandoff 
+  })
   useEffect(() => {
-    paramsRef.current = { machNumber, altitudeKm, angleAttackDeg, isRunning, showStreamlines, showBowShock, showThermalMap, showWireframe, shockStandoff: physics.shockStandoff }
+    paramsRef.current = { 
+      machNumber, altitudeKm, angleAttackDeg, isRunning, 
+      showStreamlines, showBowShock, showThermalMap, showWireframe, 
+      shockStandoff: physics.shockStandoff 
+    }
   }, [machNumber, altitudeKm, angleAttackDeg, isRunning, showStreamlines, showBowShock, showThermalMap, showWireframe, physics.shockStandoff])
 
-  // 1. 3D WEBGL WIND TUNNEL & SPACECRAFT ASSEMBLY
+  // 1. 3D WEBGL WIND TUNNEL & SEAMLESS SPACECRAFT ASSEMBLY
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -85,7 +93,7 @@ export default function HypersonicSimulationPage() {
     const width = container.clientWidth
     const height = container.clientHeight
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#060a12")
+    scene.background = new THREE.Color("#050811")
 
     const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 1000)
     camera.position.set(-16, 6.5, 14)
@@ -98,11 +106,11 @@ export default function HypersonicSimulationPage() {
     container.appendChild(renderer.domElement)
 
     // Lighting
-    const keyLight = new THREE.DirectionalLight(0xfffaed, 4.0)
+    const keyLight = new THREE.DirectionalLight(0xfffaed, 4.2)
     keyLight.position.set(-18, 14, 14)
     scene.add(keyLight)
 
-    const fillLight = new THREE.DirectionalLight(0x38bdf8, 1.8)
+    const fillLight = new THREE.DirectionalLight(0x38bdf8, 2.0)
     fillLight.position.set(16, -10, -10)
     scene.add(fillLight)
     scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
@@ -116,7 +124,29 @@ export default function HypersonicSimulationPage() {
     const vehicleBody = new THREE.Group()
     vehicleRoot.add(vehicleBody)
 
-    // Finite Element Thermal Surface Shader
+    // =========================================================================
+    // SEAMLESS 1-PIECE WATERTIGHT LATHE GEOMETRY (ZERO GAPS, NO FLOATING BOWLS)
+    // =========================================================================
+    const lathePoints: THREE.Vector2[] = [
+      new THREE.Vector2(0.0, -1.8),   // Apex of blunt heatshield (stagnation point)
+      new THREE.Vector2(0.5, -1.75),
+      new THREE.Vector2(1.0, -1.62),
+      new THREE.Vector2(1.5, -1.35),
+      new THREE.Vector2(1.85, -0.95),
+      new THREE.Vector2(1.95, -0.65), // Heatshield shoulder radius
+      new THREE.Vector2(1.85, -0.1),  // Conical capsule backshell
+      new THREE.Vector2(1.72, 0.4),
+      new THREE.Vector2(1.65, 0.8),   // Service module forward ring
+      new THREE.Vector2(1.65, 1.6),   // Kapton gold foil band
+      new THREE.Vector2(1.65, 2.4),   // Radiator panel band
+      new THREE.Vector2(1.65, 3.0),   // Service module aft bulkhead
+      new THREE.Vector2(0.6, 3.0),    // Recessed engine deck
+      new THREE.Vector2(0.0, 3.0)     // Center of aft deck
+    ]
+
+    const vehicleGeo = new THREE.LatheGeometry(lathePoints, 64)
+
+    // Advanced Aerodynamic Heatmap Shader
     const tileVertexShader = `
       varying vec3 vPosition;
       varying vec3 vNormal;
@@ -136,37 +166,50 @@ export default function HypersonicSimulationPage() {
       uniform float uWireframeOn;
 
       void main() {
-        // Temperature gradient based on distance from blunt nose tip (x = -1.6)
-        float heat = smoothstep(1.8, -1.6, vPosition.x);
+        // Temperature gradient along axial height (y in [-1.8, 3.0])
+        float heat = smoothstep(1.5, -1.8, vPosition.y);
         
-        // TPS Ceramic Tile Grid lines
+        // Quad CAD & Ceramic Tile Grid Lines
         vec2 grid = abs(fract(vUv * vec2(36.0, 18.0) - 0.5) - 0.5) / fwidth(vUv * vec2(36.0, 18.0));
         float line = min(grid.x, grid.y);
         float tileLine = 1.0 - min(line, 1.0);
 
         vec3 col;
         if (uThermalOn > 0.5) {
-          if (heat > 0.72) {
-            col = mix(vec3(0.98, 0.65, 0.05), vec3(0.95, 0.12, 0.02), (heat - 0.72) / 0.28);
-          } else if (heat > 0.42) {
-            col = mix(vec3(0.2, 0.85, 0.2), vec3(0.98, 0.65, 0.05), (heat - 0.42) / 0.30);
-          } else if (heat > 0.18) {
-            col = mix(vec3(0.05, 0.6, 0.95), vec3(0.2, 0.85, 0.2), (heat - 0.18) / 0.24);
+          if (vPosition.y < 0.6) {
+            // Capsule & Heatshield FEA Thermal Map
+            if (heat > 0.75) {
+              col = mix(vec3(0.98, 0.65, 0.05), vec3(0.95, 0.10, 0.02), (heat - 0.75) / 0.25);
+            } else if (heat > 0.45) {
+              col = mix(vec3(0.2, 0.88, 0.2), vec3(0.98, 0.65, 0.05), (heat - 0.45) / 0.30);
+            } else if (heat > 0.20) {
+              col = mix(vec3(0.05, 0.6, 0.95), vec3(0.2, 0.88, 0.2), (heat - 0.20) / 0.25);
+            } else {
+              col = mix(vec3(0.12, 0.16, 0.28), vec3(0.05, 0.6, 0.95), heat / 0.20);
+            }
+          } else if (vPosition.y < 1.8) {
+            // Service module gold Kapton MLI foil band
+            col = vec3(0.85, 0.55, 0.12);
           } else {
-            col = mix(vec3(0.12, 0.16, 0.26), vec3(0.05, 0.6, 0.95), heat / 0.18);
+            // Service module white aluminum radiator band
+            col = vec3(0.88, 0.90, 0.94);
           }
         } else {
-          col = vec3(0.85, 0.88, 0.92);
+          // Unshaded CAD Mode
+          if (vPosition.y < -0.6) col = vec3(0.25, 0.25, 0.28);
+          else if (vPosition.y < 0.6) col = vec3(0.85, 0.88, 0.92);
+          else if (vPosition.y < 1.8) col = vec3(0.85, 0.55, 0.12);
+          else col = vec3(0.88, 0.90, 0.94);
         }
 
         col = mix(col, vec3(0.01, 0.02, 0.04), tileLine * 0.45);
         if (uWireframeOn > 0.5) {
-          col = mix(col, vec3(0.2, 0.9, 1.0), tileLine * 0.85);
+          col = mix(col, vec3(0.2, 0.9, 1.0), tileLine * 0.9);
         }
         gl_FragColor = vec4(col, 1.0);
       }
     `
-    const heatshieldMat = new THREE.ShaderMaterial({
+    const vehicleMat = new THREE.ShaderMaterial({
       vertexShader: tileVertexShader,
       fragmentShader: tileFragmentShader,
       uniforms: {
@@ -175,48 +218,46 @@ export default function HypersonicSimulationPage() {
       }
     })
 
-    // 1. Blunt Forebody Heatshield Cap
-    const shieldGeo = new THREE.SphereGeometry(1.65, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2.8)
-    const shieldMesh = new THREE.Mesh(shieldGeo, heatshieldMat)
-    shieldMesh.rotation.z = Math.PI / 2
-    shieldMesh.position.set(-1.15, 0, 0)
-    vehicleBody.add(shieldMesh)
+    const vehicleMesh = new THREE.Mesh(vehicleGeo, vehicleMat)
+    // Rotate Lathe so axis of revolution lies along the X axis, blunt nose pointing to -X
+    vehicleMesh.rotation.z = -Math.PI / 2
+    vehicleBody.add(vehicleMesh)
 
-    // 2. Conical Forebody Frustum (Crew Module)
-    const coneGeo = new THREE.CylinderGeometry(0.9, 1.65, 1.8, 48)
-    const coneMesh = new THREE.Mesh(coneGeo, heatshieldMat)
-    coneMesh.position.set(0, 0, 0)
-    coneMesh.rotation.z = Math.PI / 2
-    vehicleBody.add(coneMesh)
+    // =========================================================================
+    // GaAs SOLAR ARRAY WINGS WITH CELL GRIDS & GIMBAL MOUNTS
+    // =========================================================================
+    const wingGroup = new THREE.Group()
+    const wingGeo = new THREE.BoxGeometry(0.05, 1.25, 4.2)
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      metalness: 0.9,
+      roughness: 0.22
+    })
 
-    // 3. Ribbed Service Module Cylinder
-    const smGeo = new THREE.CylinderGeometry(1.55, 1.55, 2.6, 48)
-    const smMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.92, roughness: 0.18 })
-    const smMesh = new THREE.Mesh(smGeo, smMat)
-    smMesh.rotation.z = Math.PI / 2
-    smMesh.position.set(2.2, 0, 0)
-    vehicleBody.add(smMesh)
-
-    // 4. Corrugated Kapton Gold Foil Insulation Band
-    const foilGeo = new THREE.CylinderGeometry(1.57, 1.57, 0.9, 48)
-    const foilMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.98, roughness: 0.15 })
-    const foilMesh = new THREE.Mesh(foilGeo, foilMat)
-    foilMesh.rotation.z = Math.PI / 2
-    foilMesh.position.set(1.4, 0, 0)
-    vehicleBody.add(foilMesh)
-
-    // 5. GaAs Multi-Junction Photovoltaic Wings
-    const wingGeo = new THREE.BoxGeometry(0.04, 1.25, 4.4)
-    const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.22, metalness: 0.9 })
     const wingL = new THREE.Mesh(wingGeo, wingMat)
-    wingL.position.set(2.2, 0, 3.2)
-    vehicleBody.add(wingL)
-    const wingR = new THREE.Mesh(wingGeo, wingMat)
-    wingR.position.set(2.2, 0, -3.2)
-    vehicleBody.add(wingR)
+    wingL.position.set(2.0, 0, 3.2)
+    wingGroup.add(wingL)
 
-    // 6. Tri-Bell Vacuum Rocket Engine Cluster
-    const bellGeo = new THREE.ConeGeometry(0.26, 0.7, 24, 1, true)
+    const wingR = new THREE.Mesh(wingGeo, wingMat)
+    wingR.position.set(2.0, 0, -3.2)
+    wingGroup.add(wingR)
+
+    // Carbon-composite array backing frames
+    const frameGeo = new THREE.BoxGeometry(0.06, 1.3, 4.3)
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.85 })
+    const frameL = new THREE.Mesh(frameGeo, frameMat)
+    frameL.position.set(1.98, 0, 3.2)
+    wingGroup.add(frameL)
+    const frameR = new THREE.Mesh(frameGeo, frameMat)
+    frameR.position.set(1.98, 0, -3.2)
+    wingGroup.add(frameR)
+
+    vehicleBody.add(wingGroup)
+
+    // =========================================================================
+    // VACUUM ENGINE BELLS & RCS ATTITUDE CONTROL QUADS
+    // =========================================================================
+    const bellGeo = new THREE.ConeGeometry(0.26, 0.75, 24, 1, true)
     const bellMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.95, roughness: 0.18 })
     const bellOffsets = [[3.5, 0.4, 0.4], [3.5, -0.4, 0.4], [3.5, 0, -0.45]]
     bellOffsets.forEach(([bx, by, bz]) => {
@@ -226,54 +267,68 @@ export default function HypersonicSimulationPage() {
       vehicleBody.add(bell)
     })
 
-    // 7. RCS Quad Thrusters on Capsule Flanks
+    // 4 RCS Thruster Pods around the capsule
     const rcsGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18)
-    const rcsMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.9 })
-    const rcsOffsets = [[0.2, 1.45, 0], [0.2, -1.45, 0], [0.2, 0, 1.45], [0.2, 0, -1.45]]
+    const rcsMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.92 })
+    const rcsOffsets = [[0.0, 1.68, 0], [0.0, -1.68, 0], [0.0, 0, 1.68], [0.0, 0, -1.68]]
     rcsOffsets.forEach(([rx, ry, rz]) => {
       const rcs = new THREE.Mesh(rcsGeo, rcsMat)
       rcs.position.set(rx, ry, rz)
       vehicleBody.add(rcs)
     })
 
-    // 8. Volumetric Bow Shock Paraboloid Shell (Luminous shock standoff wave)
-    const shockShellGeo = new THREE.CylinderGeometry(0.1, 4.2, 3.8, 36, 1, true)
-    const shockShellMat = new THREE.MeshBasicMaterial({
+    // =========================================================================
+    // VOLUMETRIC BOW SHOCK PARABOLOID SHELL (Matching Schlieren Shock Standoff)
+    // =========================================================================
+    const shockPts: THREE.Vector2[] = []
+    for (let i = 0; i <= 32; i++) {
+      const t = i / 32
+      const r = t * 4.6
+      const x = (r * r) / 5.2
+      shockPts.push(new THREE.Vector2(r, x))
+    }
+    const shockGeo = new THREE.LatheGeometry(shockPts, 48)
+    const shockMat = new THREE.MeshBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
-      opacity: 0.18,
+      opacity: 0.15,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending
     })
-    const shockShell = new THREE.Mesh(shockShellGeo, shockShellMat)
-    shockShell.rotation.z = -Math.PI / 2
+    const shockShell = new THREE.Mesh(shockGeo, shockMat)
+    shockShell.rotation.z = Math.PI / 2
     shockShell.position.set(-1.8, 0, 0)
     vehicleBody.add(shockShell)
 
-    // 9. DENSE LAMINAR 3D STREAMLINE FLOW FIELD (Using Exact Stream Tube Conservation)
+    // Intense Stagnation Plasma Glow at the Nose Tip
+    const plasmaLight = new THREE.PointLight(0xff6600, 3.5, 6)
+    plasmaLight.position.set(-2.0, 0, 0)
+    vehicleBody.add(plasmaLight)
+
+    // =========================================================================
+    // 140 ANIMATED DENSE CFD STREAMLINES WITH CONTINUOUS FLOW VELOCITY
+    // =========================================================================
     const streamlinesGroup = new THREE.Group()
     const numStreamlines = 140
     const stepsPerLine = 75
 
-    // Helper for boundary layer radius
-    const rBoundary = (x: number, standoff: number) => {
-      if (x < -1.8 - standoff) return 0.0
-      if (x < -1.6) {
-        const t = (x - (-1.8 - standoff)) / 0.2
-        return 0.35 * t * t
+    const rStreamline = (x: number, r0: number, standoff: number) => {
+      const dx_nose = x - (-1.8)
+      let r_disp = 0
+      if (x < -1.8) {
+        const t = Math.exp(dx_nose / 2.2)
+        r_disp = 1.95 * t
+      } else if (x <= 3.0) {
+        const t = (x - (-1.8)) / 4.8
+        r_disp = 1.95 - t * 0.35
+      } else {
+        const dx_wake = x - 3.0
+        r_disp = Math.max(0.4, 1.6 * Math.exp(-dx_wake / 5.5))
       }
-      if (x < -0.6) {
-        const t = (x - (-1.6)) / 1.0
-        return Math.sqrt(Math.max(0.01, 1.4 * 1.4 * t)) + standoff
-      }
-      if (x < 0.8) {
-        const t = (x - (-0.6)) / 1.4
-        return 1.4 + 0.25 * t + standoff
-      }
-      if (x <= 2.8) return 1.65 + standoff
-      const dx = x - 2.8
-      return Math.max(0.6, 1.65 + standoff - 0.12 * dx)
+      return Math.sqrt(r0 * r0 + Math.pow(r_disp + standoff, 2))
     }
+
+    const allLineGeos: THREE.BufferGeometry[] = []
 
     for (let s = 0; s < numStreamlines; s++) {
       const theta = (s / numStreamlines) * Math.PI * 2
@@ -284,34 +339,33 @@ export default function HypersonicSimulationPage() {
 
       for (let i = 0; i < stepsPerLine; i++) {
         const t = i / (stepsPerLine - 1)
-        const x = -16.0 + t * 32.0 // Inflow along +X
+        const x = -16.0 + t * 32.0
 
-        // Stream tube conservation: r(x) = sqrt(r0^2 + r_boundary^2)
-        const r_bound = rBoundary(x, 0.25)
-        const r = Math.sqrt(rSeed * rSeed + r_bound * r_bound)
-
+        const r = rStreamline(x, rSeed, 0.25)
         const y = r * Math.cos(theta)
         const z = r * Math.sin(theta)
         points.push(new THREE.Vector3(x, y, z))
 
-        // Physical Aerodynamic Flow Colormap
+        // Physical Aerodynamic Temperature Color Map
         const col = new THREE.Color()
         if (x < -6.0) {
           col.setRGB(0.05, 0.65, 1.0) // Freestream Electric Cyan
         } else if (x < -1.8) {
-          col.setRGB(0.15, 0.92, 0.2) // Shock Compression Green
+          col.setRGB(0.15, 0.92, 0.2) // Shock Compression Lime Green
         } else if (x < 1.0 && rSeed < 2.0) {
-          col.setRGB(1.0, 0.15, 0.02) // Stagnation Bow-Shock Red
+          col.setRGB(1.0, 0.15, 0.02) // Stagnation Bow-Shock Incandescent Red
         } else if (x < 3.8) {
           col.setRGB(0.98, 0.78, 0.08) // Flank Expansion Amber / Yellow
         } else {
-          col.setRGB(0.12, 0.48, 0.95) // Wake Expansion Blue
+          col.setRGB(0.12, 0.48, 0.95) // Wake Recirculation Blue
         }
         colors.push(col.r, col.g, col.b)
       }
 
       const lineGeo = new THREE.BufferGeometry().setFromPoints(points)
       lineGeo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3))
+      allLineGeos.push(lineGeo)
+
       const lineMat = new THREE.LineBasicMaterial({
         vertexColors: true,
         transparent: true,
@@ -356,15 +410,17 @@ export default function HypersonicSimulationPage() {
       vehicleBody.rotation.z = (angleAttackDeg * Math.PI) / 180.0
 
       // Update shock standoff position
-      shockShell.position.x = -1.6 - shockStandoff
-      shockShell.scale.set(1.0, 1.0 + (30.0 / Math.max(10.0, paramsRef.current.machNumber * paramsRef.current.machNumber)), 1.0)
+      shockShell.position.x = -1.8 - shockStandoff
+      plasmaLight.position.x = -1.8 - shockStandoff * 0.5
+      plasmaLight.intensity = 2.8 + Math.sin(t * 18.0) * 0.8
 
       // Layer visibilities
       streamlinesGroup.visible = showStreamlines
       shockShell.visible = showBowShock
-      heatshieldMat.uniforms.uThermalOn.value = showThermalMap ? 1.0 : 0.0
-      heatshieldMat.uniforms.uWireframeOn.value = showWireframe ? 1.0 : 0.0
+      vehicleMat.uniforms.uThermalOn.value = showThermalMap ? 1.0 : 0.0
+      vehicleMat.uniforms.uWireframeOn.value = showWireframe ? 1.0 : 0.0
 
+      // Animate flow speed & aerodynamic flutter
       if (isRunning) {
         streamlinesGroup.rotation.x = Math.sin(t * 3.5) * 0.02
       }
@@ -392,7 +448,7 @@ export default function HypersonicSimulationPage() {
     }
   }, [])
 
-  // 2. 2D STAGNATION HEATMAP (Image 2 Top Right)
+  // 2. 2D STAGNATION HEATMAP (Matching image_9.png Top Right)
   useEffect(() => {
     const canvas = shockCanvasRef.current
     if (!canvas) return
@@ -423,7 +479,7 @@ export default function HypersonicSimulationPage() {
     ctx.fillRect(cx + 20, cy - 15, 38, 30)
   }, [machNumber])
 
-  // 3. DRAG COEFFICIENT DYNAMIC CURVE (Image 2 Mid Right)
+  // 3. DRAG COEFFICIENT DYNAMIC CURVE (Matching image_9.png Mid Right)
   useEffect(() => {
     const canvas = dragCanvasRef.current
     if (!canvas) return
@@ -448,7 +504,7 @@ export default function HypersonicSimulationPage() {
     ctx.stroke()
   }, [machNumber, angleAttackDeg])
 
-  // 4. CROSS-SECTIONAL AIRFLOW 2D WIND TUNNEL (Image 2 Center Right)
+  // 4. CROSS-SECTIONAL AIRFLOW 2D WIND TUNNEL (Matching image_9.png Center Right)
   useEffect(() => {
     const canvas = tunnelCanvasRef.current
     if (!canvas) return
@@ -474,7 +530,7 @@ export default function HypersonicSimulationPage() {
     ctx.fillRect(w * 0.42, cy - 14, 32, 28)
   }, [])
 
-  // 5. SENSOR SPECTRAL TELEMETRY (Image 2 Bottom Right Oscilloscope)
+  // 5. SENSOR SPECTRAL TELEMETRY (Matching image_9.png Bottom Right Oscilloscope)
   useEffect(() => {
     const canvas = sensorCanvasRef.current
     if (!canvas) return
@@ -519,7 +575,7 @@ export default function HypersonicSimulationPage() {
   return (
     <div className="w-full h-[calc(100vh-3.5rem)] pt-14 flex flex-col bg-[#01030a] font-mono text-xs text-slate-100 select-none overflow-hidden">
       
-      {/* TOP INDUSTRIAL TOOLBAR (Matches image_9.png exactly) */}
+      {/* TOP INDUSTRIAL TOOLBAR */}
       <div className="h-11 px-4 border-b border-slate-800 bg-[#020617] flex items-center justify-between text-[11px] shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -584,7 +640,7 @@ export default function HypersonicSimulationPage() {
             </div>
           </div>
 
-          {/* Left Vertical Pressure Color-Bar Legend (Matches image_9.png) */}
+          {/* Left Vertical Pressure Color-Bar Legend */}
           <div className="absolute left-4 top-20 z-10 p-2.5 rounded-xl bg-slate-950/85 border border-slate-800 backdrop-blur-md text-[9px] font-mono space-y-2 pointer-events-none">
             <div className="text-slate-400 font-bold">Pressure [kN/m²]</div>
             <div className="h-44 w-4 rounded bg-gradient-to-t from-blue-600 via-green-500 via-yellow-400 to-red-600 border border-slate-800" />
@@ -617,7 +673,7 @@ export default function HypersonicSimulationPage() {
           {/* 3D WebGL Canvas */}
           <div ref={mountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
 
-          {/* BOTTOM ENGINEERING SLIDERS & TIMELINE DOCK (Matches image_9.png) */}
+          {/* BOTTOM ENGINEERING SLIDERS & TIMELINE DOCK */}
           <div className="h-44 border-t border-slate-800 bg-[#020617]/95 p-3 flex flex-col justify-between shrink-0 font-mono text-[10px] z-10">
             
             {/* Live Sliders for Aerospace Scientists */}
@@ -703,7 +759,7 @@ export default function HypersonicSimulationPage() {
           </div>
         </div>
 
-        {/* RIGHT ANALYTICAL PANELS (Matches image_9.png Right Side) */}
+        {/* RIGHT ANALYTICAL PANELS */}
         <div className="w-[520px] h-full flex flex-col bg-[#020617] overflow-y-auto">
           
           {/* Top Panel: Aerodynamic Analysis Heatmap & Drag Curve */}
