@@ -230,7 +230,7 @@ export function createDeepSpaceNebulaSkybox(): THREE.Group {
   return group
 }
 
-// 4. DEEP SPACE STARFIELD (Essential export for /c2, /catalog, /nexus, /visualizer)
+// 4. DEEP SPACE STARFIELD (Used across /c2, /catalog, /nexus, /visualizer)
 export function createDeepSpaceStarfield(count = 1400, fieldRadius = 600): THREE.Points {
   const starGeo = new THREE.BufferGeometry()
   const starPositions = new Float32Array(count * 3)
@@ -431,4 +431,39 @@ export function createHalleyCometSystem() {
     meteorGroup.add(mLine)
   }
   return { group, comet, ionTail, dustTail, meteorGroup }
+}
+
+// 8. STAR WARS HYPERSPACE WARP TUNNEL
+export function createHyperspaceTunnel(count = 900) {
+  const geo = new THREE.BufferGeometry()
+  const positions = new Float32Array(count * 6)
+  const velocities = new Float32Array(count)
+
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2
+    const radius = 2.5 + Math.random() * 22.0
+    const z = -60 + Math.random() * 120
+
+    positions[i * 6 + 0] = Math.cos(angle) * radius
+    positions[i * 6 + 1] = Math.sin(angle) * radius
+    positions[i * 6 + 2] = z
+
+    positions[i * 6 + 3] = Math.cos(angle) * radius
+    positions[i * 6 + 4] = Math.sin(angle) * radius
+    positions[i * 6 + 5] = z - 2.0
+
+    velocities[i] = 40.0 + Math.random() * 60.0
+  }
+
+  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.0,
+    blending: THREE.AdditiveBlending,
+    linewidth: 2
+  })
+
+  const warpLines = new THREE.LineSegments(geo, mat)
+  return { warpLines, geo, positions, velocities, mat }
 }
