@@ -6,24 +6,17 @@ import Link from "next/link"
 import { 
   Globe, Orbit, ShieldCheck, Zap, ArrowRight, Terminal, 
   Lock, Database, Cpu, Unlock, ShieldAlert, Fingerprint, 
-  Crosshair, Activity, Radio, BarChart3, ChevronRight, Sliders,
-  Compass, Eye, Satellite, Target
+  ChevronRight, Radio, Activity
 } from "lucide-react"
 import { 
-  createCinematicEarth, createMilitarySatellite, 
-  createDeepSpaceStarfield, createHyperspaceTunnel 
+  createCinematicEarth, createDeepSpaceStarfield, 
+  createHyperspaceTunnel 
 } from "@/components/three/CinematicSpaceEngine"
 
 export default function MasterHomePage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
-  const sdaCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const interceptCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const satMiniMountRef = useRef<HTMLDivElement | null>(null)
-  const radarCanvasRef = useRef<HTMLCanvasElement | null>(null)
-
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [isWarping, setIsWarping] = useState<boolean>(false)
-  const [simSeconds, setSimSeconds] = useState<number>(13150)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -52,7 +45,7 @@ export default function MasterHomePage() {
   }
 
   // =========================================================================
-  // 1. 3D WEBGL ENGINE: HOLLYWOOD EARTH + CONSTELLATION LASER MESH
+  // 3D WEBGL ENGINE: SPACEX MARS-STYLE EARTH POSITIONED TO THE RIGHT
   // =========================================================================
   useEffect(() => {
     const container = mountRef.current
@@ -63,9 +56,9 @@ export default function MasterHomePage() {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#000000") // Pure SpaceX black
 
-    // Framing: Earth centered in view with room for clean top & bottom HUDs
-    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 2000)
-    camera.position.set(0, 0, 21.5)
+    // Perspective camera
+    const camera = new THREE.PerspectiveCamera(36, width / height, 0.1, 2000)
+    camera.position.set(0, 0, 18)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" })
@@ -75,101 +68,53 @@ export default function MasterHomePage() {
     container.appendChild(renderer.domElement)
 
     // Deep-Space Starfield
-    const starfield = createDeepSpaceStarfield(1800, 800)
+    const starfield = createDeepSpaceStarfield(1400, 800)
     scene.add(starfield)
 
-    // Directional Solar Lighting (Upper Left to create realistic crescent / terminator)
-    const sunLight = new THREE.DirectionalLight(0xfffaee, 4.8)
-    sunLight.position.set(-28, 16, 14)
+    // Cinematic Lighting: Directional Sun from the right/top to light the right crescent
+    const sunLight = new THREE.DirectionalLight(0xfffaee, 4.2)
+    sunLight.position.set(22, 14, 16)
     scene.add(sunLight)
 
-    const cyanRimLight = new THREE.DirectionalLight(0x00f0ff, 2.0)
-    cyanRimLight.position.set(22, -12, -10)
-    scene.add(cyanRimLight)
+    const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.8)
+    rimLight.position.set(-20, -10, -10)
+    scene.add(rimLight)
 
-    const ambientLight = new THREE.AmbientLight(0x0a1128, 1.6)
+    const ambientLight = new THREE.AmbientLight(0x060b18, 1.4)
     scene.add(ambientLight)
 
-    // Photorealistic Earth
-    const earthRadius = 5.6
+    // Cinematic Earth shifted to the RIGHT (x = 4.8), exactly like Mars on SpaceX
+    const earthRadius = 5.2
     const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
+    
+    // Position Earth on the right side of the screen
+    const isMobile = width < 768
+    earthGroup.position.set(isMobile ? 0 : 5.2, isMobile ? -2.0 : 0, 0)
+    earthGroup.rotation.z = (23.4 * Math.PI) / 180.0 // True axial tilt
     scene.add(earthGroup)
 
-    // Atmospheric Rayleigh Limb Glow Shell
-    const atmoGlowGeo = new THREE.SphereGeometry(earthRadius * 1.055, 64, 64)
-    const atmoGlowMat = new THREE.MeshBasicMaterial({
+    // Subtle, elegant orbital ring (Thin & restrained)
+    const ringPts: THREE.Vector3[] = []
+    const ringRadius = earthRadius * 1.38
+    for (let i = 0; i <= 96; i++) {
+      const theta = (i / 96) * Math.PI * 2
+      ringPts.push(new THREE.Vector3(Math.cos(theta) * ringRadius, Math.sin(theta) * ringRadius * 0.45, Math.sin(theta) * ringRadius))
+    }
+    const ringGeo = new THREE.BufferGeometry().setFromPoints(ringPts)
+    const ringMat = new THREE.LineBasicMaterial({
       color: 0x38bdf8,
       transparent: true,
-      opacity: 0.32,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide
+      opacity: 0.35,
+      linewidth: 1
     })
-    const atmoGlow = new THREE.Mesh(atmoGlowGeo, atmoGlowMat)
-    earthGroup.add(atmoGlow)
+    const orbitRing = new THREE.Line(ringGeo, ringMat)
+    earthGroup.add(orbitRing)
 
-    // Multi-Inclination Constellation Rings & Satellites (Video 1 00:00 - 00:02)
-    const ringConfigs = [
-      { r: earthRadius * 1.34, inc: 51.6, color: 0x10b981 }, // Green LEO
-      { r: earthRadius * 1.48, inc: 97.4, color: 0x06b6d4 }, // Cyan SSO
-      { r: earthRadius * 1.62, inc: 28.5, color: 0x3b82f6 }, // Blue Equatorial
-      { r: earthRadius * 1.74, inc: -45.0, color: 0x10b981 } // Green Cross
-    ]
-
-    const orbitRingsGroup = new THREE.Group()
-    const satelliteNodes: { mesh: THREE.Mesh; r: number; inc: number; speed: number; angle: number }[] = []
-
-    ringConfigs.forEach((cfg, idx) => {
-      const pts: THREE.Vector3[] = []
-      const segs = 96
-      const incRad = (cfg.inc * Math.PI) / 180.0
-
-      for (let i = 0; i <= segs; i++) {
-        const theta = (i / segs) * Math.PI * 2
-        const x = cfg.r * Math.cos(theta)
-        const y = cfg.r * Math.sin(theta) * Math.sin(incRad)
-        const z = cfg.r * Math.sin(theta) * Math.cos(incRad)
-        pts.push(new THREE.Vector3(x, y, z))
-      }
-
-      const ringGeo = new THREE.BufferGeometry().setFromPoints(pts)
-      const ringMat = new THREE.LineBasicMaterial({
-        color: cfg.color,
-        transparent: true,
-        opacity: 0.75,
-        linewidth: 1.8
-      })
-      orbitRingsGroup.add(new THREE.Line(ringGeo, ringMat))
-
-      // 2 Satellite Nodes per Orbital Ring
-      for (let s = 0; s < 2; s++) {
-        const nodeGeo = new THREE.SphereGeometry(0.18, 16, 16)
-        const nodeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
-        const nodeMesh = new THREE.Mesh(nodeGeo, nodeMat)
-        orbitRingsGroup.add(nodeMesh)
-        satelliteNodes.push({
-          mesh: nodeMesh,
-          r: cfg.r,
-          inc: cfg.inc,
-          speed: 0.32 + idx * 0.06,
-          angle: (s * Math.PI) + idx * 0.6
-        })
-      }
-    })
-    scene.add(orbitRingsGroup)
-
-    // Dynamic Inter-Satellite Laser Crosslinks (OISL)
-    const laserMat = new THREE.LineBasicMaterial({
-      color: 0x10b981,
-      transparent: true,
-      opacity: 0.85,
-      linewidth: 2.0
-    })
-    const laserGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(), new THREE.Vector3(),
-      new THREE.Vector3(), new THREE.Vector3()
-    ])
-    const laserLines = new THREE.LineSegments(laserGeo, laserMat)
-    scene.add(laserLines)
+    // Single subtle satellite node on the orbit ring
+    const satNodeGeo = new THREE.SphereGeometry(0.12, 16, 16)
+    const satNodeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff })
+    const satNode = new THREE.Mesh(satNodeGeo, satNodeMat)
+    earthGroup.add(satNode)
 
     // Star Wars Hyperspace Warp Lines
     const { warpLines, velocities } = createHyperspaceTunnel(1200)
@@ -189,7 +134,7 @@ export default function MasterHomePage() {
     }
     const onMouseUp = () => { isDragging = false }
     const onWheel = (e: WheelEvent) => {
-      camera.position.z = Math.max(11, Math.min(36, camera.position.z + e.deltaY * 0.02))
+      camera.position.z = Math.max(12, Math.min(30, camera.position.z + e.deltaY * 0.02))
     }
 
     container.addEventListener("mousedown", onMouseDown)
@@ -198,6 +143,7 @@ export default function MasterHomePage() {
     container.addEventListener("wheel", onWheel, { passive: true })
 
     const clock = new THREE.Clock()
+    let satAngle = 0
     let animId: number
 
     const animate = () => {
@@ -222,38 +168,23 @@ export default function MasterHomePage() {
         warpLines.geometry.attributes.position.needsUpdate = true
       } else {
         warpLines.material.opacity = Math.max(0.0, warpLines.material.opacity - delta * 3.0)
-        if (camera.fov > 38.0) {
-          camera.fov = Math.max(38.0, camera.fov - delta * 40.0)
+        if (camera.fov > 36.0) {
+          camera.fov = Math.max(36.0, camera.fov - delta * 40.0)
           camera.updateProjectionMatrix()
         }
       }
 
       // Smooth Earth & Cloud Rotation
-      earthMesh.rotation.y += 0.035 * delta
-      cloudsMesh.rotation.y += 0.055 * delta
+      earthMesh.rotation.y += 0.025 * delta
+      cloudsMesh.rotation.y += 0.045 * delta
 
-      // Orbit satellites and update laser crosslinks
-      const currentPositions: THREE.Vector3[] = []
-      satelliteNodes.forEach(sat => {
-        sat.angle += sat.speed * delta
-        const incRad = (sat.inc * Math.PI) / 180.0
-        const x = sat.r * Math.cos(sat.angle)
-        const y = sat.r * Math.sin(sat.angle) * Math.sin(incRad)
-        const z = sat.r * Math.sin(sat.angle) * Math.cos(incRad)
-        sat.mesh.position.set(x, y, z)
-        currentPositions.push(new THREE.Vector3(x, y, z))
-      })
-
-      if (currentPositions.length >= 4) {
-        const laserPts = [
-          currentPositions[0], currentPositions[2],
-          currentPositions[1], currentPositions[3],
-          currentPositions[2], currentPositions[5],
-          currentPositions[4], currentPositions[6]
-        ]
-        laserLines.geometry.setFromPoints(laserPts)
-        laserLines.geometry.attributes.position.needsUpdate = true
-      }
+      // Move satellite along orbit
+      satAngle += 0.25 * delta
+      satNode.position.set(
+        Math.cos(satAngle) * ringRadius,
+        Math.sin(satAngle) * ringRadius * 0.45,
+        Math.sin(satAngle) * ringRadius
+      )
 
       renderer.render(scene, camera)
     }
@@ -261,9 +192,14 @@ export default function MasterHomePage() {
 
     const onResize = () => {
       if (!container) return
-      camera.aspect = container.clientWidth / container.clientHeight
+      const w = container.clientWidth
+      const h = container.clientHeight
+      camera.aspect = w / h
       camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
+      renderer.setSize(w, h)
+
+      const mobile = w < 768
+      earthGroup.position.set(mobile ? 0 : 5.2, mobile ? -2.0 : 0, 0)
     }
     window.addEventListener("resize", onResize)
 
@@ -278,236 +214,18 @@ export default function MasterHomePage() {
     }
   }, [isWarping])
 
-  // =========================================================================
-  // 2. CARD 1: SPACE DOMAIN AWARENESS RADAR CANVAS (Video 1 00:09 Left Card)
-  // =========================================================================
-  useEffect(() => {
-    const canvas = sdaCanvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    let animId: number
-    let angle = 0
-
-    const render = () => {
-      animId = requestAnimationFrame(render)
-      angle += 0.02
-      const w = canvas.width, h = canvas.height
-      ctx.fillStyle = "#030712"
-      ctx.fillRect(0, 0, w, h)
-
-      // Earth Center Dot
-      ctx.fillStyle = "#38bdf8"
-      ctx.beginPath(); ctx.arc(w * 0.42, h * 0.5, 6, 0, Math.PI * 2); ctx.fill()
-
-      // Elliptical Moon Orbit
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.35)"
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.ellipse(w * 0.42, h * 0.5, w * 0.36, h * 0.38, -0.2, 0, Math.PI * 2)
-      ctx.stroke()
-
-      // Orbiting Moon Marker
-      const mx = w * 0.42 + Math.cos(angle) * (w * 0.36)
-      const my = h * 0.5 + Math.sin(angle) * (h * 0.38)
-      ctx.fillStyle = "#f8fafc"
-      ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill()
-
-      // Sensor Vector Line
-      ctx.strokeStyle = "#10b981"
-      ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(w * 0.42, h * 0.5); ctx.lineTo(mx, my); ctx.stroke()
-    }
-    render()
-
-    return () => cancelAnimationFrame(animId)
-  }, [])
-
-  // =========================================================================
-  // 3. CARD 2: KINETIC INTERCEPT TRAJECTORY CANVAS (Video 1 00:09 Center Card)
-  // =========================================================================
-  useEffect(() => {
-    const canvas = interceptCanvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    let animId: number
-    let pulse = 0
-
-    const render = () => {
-      animId = requestAnimationFrame(render)
-      pulse += 0.04
-      const w = canvas.width, h = canvas.height
-      ctx.fillStyle = "#030712"
-      ctx.fillRect(0, 0, w, h)
-
-      // Target Primary Orbit (Blue Arc)
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.5)"
-      ctx.lineWidth = 1.5
-      ctx.beginPath()
-      ctx.arc(w * 0.5, h * 0.85, w * 0.42, -Math.PI * 0.85, -Math.PI * 0.15)
-      ctx.stroke()
-
-      // Intercept Transfer Trajectory (Red Elliptical Arc)
-      ctx.strokeStyle = "#ef4444"
-      ctx.lineWidth = 2.0
-      ctx.beginPath()
-      ctx.ellipse(w * 0.5, h * 0.55, w * 0.32, h * 0.32, 0.4, -Math.PI * 0.9, -Math.PI * 0.05)
-      ctx.stroke()
-
-      // Collision Intercept Point (IN-01 Pulsing Node)
-      const ix = w * 0.55, iy = h * 0.32
-      const radius = 4 + Math.sin(pulse) * 2
-      ctx.fillStyle = "#ef4444"
-      ctx.beginPath(); ctx.arc(ix, iy, radius, 0, Math.PI * 2); ctx.fill()
-
-      ctx.strokeStyle = "rgba(239, 68, 68, 0.4)"
-      ctx.beginPath(); ctx.arc(ix, iy, radius * 2.2, 0, Math.PI * 2); ctx.stroke()
-    }
-    render()
-
-    return () => cancelAnimationFrame(animId)
-  }, [])
-
-  // =========================================================================
-  // 4. CARD 3: SATELLITE ASSET MINI 3D VIEWPORT (Video 1 00:09 Right Card)
-  // =========================================================================
-  useEffect(() => {
-    const container = satMiniMountRef.current
-    if (!container) return
-
-    const w = container.clientWidth, h = container.clientHeight
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#030712")
-
-    const camera = new THREE.PerspectiveCamera(35, w / h, 0.1, 100)
-    camera.position.set(3.5, 2.0, 4.5)
-    camera.lookAt(0, 0, 0)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(w, h)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    const light = new THREE.DirectionalLight(0xffffff, 3.2)
-    light.position.set(5, 5, 5)
-    scene.add(light)
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.4))
-
-    const { group: satGroup } = createMilitarySatellite({ scale: 0.75 })
-    scene.add(satGroup)
-
-    let animId: number
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
-      satGroup.rotation.y += 0.015
-      renderer.render(scene, camera)
-    }
-    animate()
-
-    return () => {
-      cancelAnimationFrame(animId)
-      renderer.dispose()
-    }
-  }, [])
-
-  // =========================================================================
-  // 5. RIGHT HUD PANEL: POLAR SGP4 RADAR CANVAS (Video 1 00:01)
-  // =========================================================================
-  useEffect(() => {
-    const canvas = radarCanvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    let animId: number
-    let sweepAngle = 0
-
-    const render = () => {
-      animId = requestAnimationFrame(render)
-      sweepAngle += 0.03
-      const w = canvas.width, h = canvas.height
-      const cx = w / 2, cy = h / 2
-      const rMax = Math.min(cx, cy) - 6
-
-      ctx.fillStyle = "#030712"
-      ctx.fillRect(0, 0, w, h)
-
-      // Range Rings (500 km, 1000 km, 2000 km)
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.22)"
-      ctx.lineWidth = 1
-      for (let r = rMax * 0.33; r <= rMax; r += rMax * 0.33) {
-        ctx.beginPath()
-        ctx.arc(cx, cy, r, 0, Math.PI * 2)
-        ctx.stroke()
-      }
-
-      // Compass Crosshairs & Azimuth Ticks
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.3)"
-      ctx.beginPath()
-      ctx.moveTo(cx, 4); ctx.lineTo(cx, h - 4)
-      ctx.moveTo(4, cy); ctx.lineTo(w - 4, cy)
-      ctx.stroke()
-
-      // Rotating Phosphor Sweep Line
-      const sweepX = cx + Math.cos(sweepAngle) * rMax
-      const sweepY = cy + Math.sin(sweepAngle) * rMax
-      ctx.strokeStyle = "rgba(16, 185, 129, 0.9)"
-      ctx.lineWidth = 1.8
-      ctx.beginPath()
-      ctx.moveTo(cx, cy)
-      ctx.lineTo(sweepX, sweepY)
-      ctx.stroke()
-
-      // Radar Target Blips
-      const blips = [
-        { r: rMax * 0.52, a: 1.15 },
-        { r: rMax * 0.75, a: 2.75 },
-        { r: rMax * 0.38, a: 4.45 }
-      ]
-      blips.forEach(b => {
-        const bx = cx + Math.cos(b.a) * b.r
-        const by = cy + Math.sin(b.a) * b.r
-        ctx.fillStyle = "#00f0ff"
-        ctx.beginPath()
-        ctx.arc(bx, by, 3, 0, Math.PI * 2)
-        ctx.fill()
-      })
-    }
-    render()
-
-    return () => cancelAnimationFrame(animId)
-  }, [])
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSimSeconds(s => s + 1)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const formatHMS = (totalSeconds: number) => {
-    const hours = Math.floor(totalSeconds / 3600) % 24
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
-  }
-
   return (
-    <div className="relative w-full min-h-screen bg-[#000000] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
+    <div className="relative w-full min-h-screen bg-[#000000] text-white font-sans selection:bg-cyan-500/30 overflow-x-hidden">
       
-      {/* 3D WebGL World Canvas */}
+      {/* 3D WebGL Earth Viewport (Earth on the Right Side) */}
       <div ref={mountRef} className="fixed inset-0 w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing z-0" />
 
       {/* STATE 1: ZERO-TRUST WARP GATEWAY (Preserved Star Wars Entrance) */}
       {!isAuthenticated ? (
         <div className="min-h-screen flex items-center justify-center pt-16 px-4 pb-12 z-20 select-none">
-          <div className="w-full max-w-xl p-8 rounded-3xl bg-[#030712]/90 backdrop-blur-2xl border border-cyan-500/40 shadow-[0_0_70px_rgba(6,182,212,0.25)] space-y-6 font-mono text-xs pointer-events-auto">
+          <div className="w-full max-w-xl p-8 rounded-3xl bg-[#030712]/90 backdrop-blur-2xl border border-white/10 shadow-[0_0_70px_rgba(6,182,212,0.25)] space-y-6 font-mono text-xs pointer-events-auto">
             
-            <div className="text-center space-y-2 border-b border-slate-800 pb-4">
+            <div className="text-center space-y-2 border-b border-white/10 pb-4">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-950/60 border border-rose-500/50 text-rose-300 text-[10px] font-bold">
                 <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
                 <span>RESTRICTED ACCESS // U.S. SPACE SYSTEMS COMMAND</span>
@@ -518,7 +236,7 @@ export default function MasterHomePage() {
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 space-y-3">
+            <div className="p-4 rounded-2xl bg-black/60 border border-white/10 space-y-3">
               <div className="flex items-center justify-between text-[11px]">
                 <div className="flex items-center gap-2 text-slate-300 font-bold">
                   <Fingerprint className="w-4 h-4 text-cyan-400" />
@@ -526,7 +244,7 @@ export default function MasterHomePage() {
                 </div>
                 <span className="text-emerald-400 font-bold text-[10px]">AUTH PIN: 8942-0129</span>
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800/80 text-[10px] text-cyan-300">
+              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-[10px] text-cyan-300">
                 <span className="font-bold">[ ZERO-KNOWLEDGE CRYPTOGRAPHIC TOKEN VERIFIED ]</span>
               </div>
             </div>
@@ -542,16 +260,16 @@ export default function MasterHomePage() {
           </div>
         </div>
       ) : (
-        /* STATE 2: THE SPACEX-GRADE CINEMATIC THEATER (Video 1 00:00 - 00:02 & 00:07 - 00:09) */
+        /* STATE 2: SPACEX-STYLE EDITORIAL HERO VIEW (Clean Left Typography + Earth on the Right) */
         <div className="relative w-full min-h-screen z-10 pointer-events-none select-none flex flex-col justify-between">
           
           {/* Top Session Security Banner */}
-          <div className="fixed top-14 left-0 right-0 z-40 bg-black/85 backdrop-blur-md border-b border-white/10 px-6 py-2.5 flex items-center justify-between font-mono text-[11px] pointer-events-auto">
+          <div className="fixed top-14 left-0 right-0 z-40 bg-black/85 backdrop-blur-md border-b border-white/10 px-8 py-2.5 flex items-center justify-between font-mono text-[11px] pointer-events-auto">
             <div className="flex items-center gap-3 text-cyan-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="font-bold text-white tracking-wider">VEROYX SPACE DOMAIN AWARENESS // TS-SCI</span>
+              <span className="font-bold text-white tracking-wider">VEROYX // ORBITAL ARCHITECTURE</span>
               <span className="text-slate-600">|</span>
-              <span className="text-slate-400">109 PRODUCTION MODULES DEPLOYED</span>
+              <span className="text-slate-400">CLEARANCE: TS-SCI</span>
             </div>
             <button onClick={handleLockTerminal} className="px-3 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 font-bold transition-all flex items-center gap-1.5 text-[10px]">
               <Lock className="w-3 h-3" />
@@ -559,168 +277,91 @@ export default function MasterHomePage() {
             </button>
           </div>
 
-          {/* FLOATING DEEP-SPACE VECTOR CALLOUTS (Matches Video 1 00:09) */}
-          <div className="absolute top-28 left-12 z-20 font-mono text-[10px] text-slate-400 pointer-events-none flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full border border-cyan-400 bg-cyan-400/20" />
-            <span className="font-bold text-white tracking-wider">SF59</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-cyan-400">C2 DEFENSE BEACON</span>
-          </div>
-
-          <div className="absolute top-44 left-16 z-20 font-mono text-[10px] text-slate-400 pointer-events-none flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full border border-amber-400 bg-amber-400/20" />
-            <span className="font-bold text-white tracking-wider">SWDIA</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-amber-400">CISLUNAR RADAR RELAY</span>
-          </div>
-
-          <div className="absolute top-32 right-16 z-20 font-mono text-[10px] text-slate-400 pointer-events-none flex items-center gap-2">
-            <span className="font-bold text-emerald-400 tracking-wider">VEROYX-01</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-white">LINK ACTIVE (100 Gbps)</span>
-            <div className="w-2 h-2 rounded-full border border-emerald-400 bg-emerald-400/20" />
-          </div>
-
-          {/* LEFT & RIGHT HUD FLIGHT DECKS (Video 1 00:00 - 00:02) */}
-          <div className="relative w-full pt-20 px-6 flex justify-between items-start pointer-events-none">
-            
-            {/* Left HUD Panel: Mission Propagation */}
-            <div className="w-72 p-4 rounded-2xl bg-black/80 border border-white/10 shadow-2xl backdrop-blur-xl font-mono text-xs space-y-3 pointer-events-auto">
-              <div className="border-b border-white/10 pb-2">
-                <div className="text-white font-black text-sm uppercase tracking-wider">MISSION PROPAGATION</div>
-                <div className="text-[10px] text-cyan-400 font-bold">NORAD ID: 48219 // LEO 51.6°</div>
-              </div>
-              <div className="space-y-1 text-[10px]">
-                <div className="flex justify-between"><span className="text-slate-500">VELOCITY:</span><span className="text-amber-400 font-bold">7.612 km/s</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">ALTITUDE:</span><span className="text-white font-bold">550.2 km</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">PERIOD:</span><span className="text-slate-300 font-bold">95.3 min</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">OISL LINK:</span><span className="text-emerald-400 font-bold">100 Gbps</span></div>
+          {/* MAIN EDITORIAL COLUMN (Left 50%, completely unobstructed, exactly like SpaceX) */}
+          <div className="relative w-full max-w-7xl mx-auto px-8 pt-36 pb-20 flex-1 flex flex-col justify-center pointer-events-none">
+            <div className="w-full max-w-xl space-y-6 pointer-events-auto">
+              
+              {/* Clearance Pill */}
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-cyan-300 text-[10px] font-mono tracking-widest uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
+                <span>ALLIED JADC2 &amp; SPACE DOMAIN DEFENSE</span>
               </div>
 
-              {/* EPS Battery storage */}
-              <div className="space-y-1 pt-1 border-t border-white/10">
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-slate-500">EPS BATTERY:</span>
-                  <span className="text-emerald-400 font-bold">99.4%</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full w-[99%] bg-gradient-to-r from-cyan-500 to-emerald-400" />
-                </div>
+              {/* Bold SpaceX-Style Editorial Headline */}
+              <div className="space-y-1">
+                <h1 className="text-5xl sm:text-7xl font-black uppercase tracking-tight text-white leading-[1.05]">
+                  SECURING<br />
+                  THE HIGH<br />
+                  GROUND
+                </h1>
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-1 space-y-1.5">
-                <Link href="/hypersonic" className="w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[10px] font-bold tracking-wider uppercase flex items-center justify-between px-3 transition-all">
+              {/* Minimalist Sub-Copy */}
+              <p className="text-sm sm:text-base text-slate-400 font-sans leading-relaxed max-w-lg">
+                Veroyx provides institutional-grade orbital mechanics, autonomous kinetic intercept modeling, and multi-domain space domain awareness for allied defense operations.
+              </p>
+
+              {/* Clean SpaceX Outline CTA Buttons */}
+              <div className="pt-4 flex flex-wrap items-center gap-4">
+                <Link
+                  href="/visualizer"
+                  className="px-8 py-3.5 rounded-none border border-white text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center gap-3 hover:scale-105"
+                >
+                  <span>EXPLORE PLATFORM</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+
+                <Link
+                  href="/hypersonic"
+                  className="px-6 py-3.5 rounded-none border border-white/20 text-slate-300 font-mono text-xs font-bold uppercase tracking-widest hover:border-white hover:text-white transition-all"
+                >
                   <span>AERO-ORBITAL CFD</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-cyan-400" />
                 </Link>
-                <Link href="/planetary-defense" className="w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[10px] font-bold tracking-wider uppercase flex items-center justify-between px-3 transition-all">
+
+                <Link
+                  href="/planetary-defense"
+                  className="px-6 py-3.5 rounded-none border border-white/20 text-slate-300 font-mono text-xs font-bold uppercase tracking-widest hover:border-rose-400 hover:text-rose-300 transition-all"
+                >
                   <span>KINETIC INTERCEPT</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-rose-400" />
                 </Link>
               </div>
-            </div>
 
-            {/* Right HUD Panel: SGP4 Polar Radar Reticle */}
-            <div className="w-72 p-4 rounded-2xl bg-black/80 border border-white/10 shadow-2xl backdrop-blur-xl font-mono text-xs space-y-3 pointer-events-auto">
-              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              {/* Subdued Telemetry Ticker (Bottom-Left) */}
+              <div className="pt-8 border-t border-white/10 flex flex-wrap items-center gap-6 font-mono text-[10px] text-slate-500">
                 <div>
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">PROPAGATION</div>
-                  <div className="text-base font-black text-white">SGP4</div>
+                  <span className="text-slate-400 block font-bold">RSO TRACKED</span>
+                  <span className="text-white text-sm font-bold">48,219</span>
                 </div>
-                <div className="text-right">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">EPOCH</div>
-                  <div className="text-xs font-bold text-cyan-400">{formatHMS(simSeconds)}</div>
+                <div>
+                  <span className="text-slate-400 block font-bold">PROPAGATION</span>
+                  <span className="text-cyan-400 text-sm font-bold">SGP4 / J2</span>
                 </div>
-              </div>
-              <canvas ref={radarCanvasRef} width={260} height={130} className="w-full h-32 rounded-xl border border-white/10 bg-black" />
-              
-              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/10 text-center">
-                <div className="p-2 rounded-lg bg-white/5 border border-white/10">
-                  <div className="text-[9px] text-slate-500 uppercase">COVERAGE</div>
-                  <div className="text-lg font-black text-white">5697</div>
+                <div>
+                  <span className="text-slate-400 block font-bold">OISL MESH</span>
+                  <span className="text-emerald-400 text-sm font-bold">100 Gbps</span>
                 </div>
-                <div className="p-2 rounded-lg bg-white/5 border border-white/10">
-                  <div className="text-[9px] text-slate-500 uppercase">SURVIVAL</div>
-                  <div className="text-lg font-black text-emerald-400">538</div>
+                <div>
+                  <span className="text-slate-400 block font-bold">CLEARANCE</span>
+                  <span className="text-amber-400 text-sm font-bold">TS-SCI</span>
                 </div>
               </div>
+
             </div>
-
           </div>
 
-          {/* CLEAN SPACEX-STYLE EDITORIAL HERO WORDMARK (Centered & Uncluttered) */}
-          <div className="relative w-full flex flex-col items-center justify-center my-auto pointer-events-none z-10">
-            <h1 className="text-6xl sm:text-8xl font-black tracking-[0.28em] text-white uppercase select-none drop-shadow-[0_0_40px_rgba(255,255,255,0.4)]">
-              VEROYX
-            </h1>
-            <p className="text-xs sm:text-sm font-mono text-cyan-400 tracking-[0.35em] uppercase mt-2">
-              Allied Space Domain Awareness &amp; JADC2 Command
-            </p>
-          </div>
-
-          {/* THE THREE LOWER TELEMETRY HUD CARDS (Matches Video 1 00:09 Bottom Center) */}
-          <div className="relative w-full max-w-5xl mx-auto px-4 pb-6 z-20 pointer-events-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
-              
-              {/* CARD 1: SPACE DOMAIN AWARENESS (Video 1 00:09 Left) */}
-              <div className="p-4 rounded-2xl bg-black/85 border border-white/10 shadow-2xl backdrop-blur-xl space-y-2">
-                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[10px]">
-                  <span className="text-white font-bold uppercase tracking-wider flex items-center gap-1.5">
-                    <Eye className="w-3.5 h-3.5 text-cyan-400" />
-                    SPACE DOMAIN AWARENESS
-                  </span>
-                  <span className="text-cyan-400 font-bold">CISLUNAR</span>
-                </div>
-                <div className="h-28 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
-                  <canvas ref={sdaCanvasRef} width={280} height={112} className="w-full h-full" />
-                </div>
-                <div className="grid grid-cols-2 gap-1 text-[9px] text-slate-400 pt-1 border-t border-white/10">
-                  <div>ALT: <span className="text-white font-bold">384,400 KM</span></div>
-                  <div>PHASE: <span className="text-amber-400 font-bold">0.74 WAXING</span></div>
-                  <div>PERIGEE: <span className="text-slate-300">363,300 KM</span></div>
-                  <div>SENSOR: <span className="text-emerald-400 font-bold">LOCKED</span></div>
-                </div>
-              </div>
-
-              {/* CARD 2: KINETIC INTERCEPT (Video 1 00:09 Center) */}
-              <div className="p-4 rounded-2xl bg-black/85 border border-white/10 shadow-2xl backdrop-blur-xl space-y-2">
-                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[10px]">
-                  <span className="text-white font-bold uppercase tracking-wider flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-rose-400" />
-                    KINETIC INTERCEPT
-                  </span>
-                  <span className="text-rose-400 font-bold">NODE: IN-01</span>
-                </div>
-                <div className="h-28 w-full rounded-lg overflow-hidden border border-white/10 bg-black">
-                  <canvas ref={interceptCanvasRef} width={280} height={112} className="w-full h-full" />
-                </div>
-                <div className="grid grid-cols-2 gap-1 text-[9px] text-slate-400 pt-1 border-t border-white/10">
-                  <div>CLOSING VEL: <span className="text-white font-bold">11.24 KM/S</span></div>
-                  <div>MISS DIST: <span className="text-emerald-400 font-bold">0.00 M</span></div>
-                  <div>PROBABILITY: <span className="text-rose-400 font-bold">99.8%</span></div>
-                  <div>STATUS: <span className="text-cyan-400 font-bold">TERMINAL</span></div>
-                </div>
-              </div>
-
-              {/* CARD 3: KINETIC INTERCEPT // SATELLITE ASSET (Video 1 00:09 Right) */}
-              <div className="p-4 rounded-2xl bg-black/85 border border-white/10 shadow-2xl backdrop-blur-xl space-y-2">
-                <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[10px]">
-                  <span className="text-white font-bold uppercase tracking-wider flex items-center gap-1.5">
-                    <Satellite className="w-3.5 h-3.5 text-emerald-400" />
-                    KINETIC INTERCEPT
-                  </span>
-                  <span className="text-emerald-400 font-bold">ASSET PBR</span>
-                </div>
-                <div ref={satMiniMountRef} className="h-28 w-full rounded-lg overflow-hidden border border-white/10 bg-black cursor-grab active:cursor-grabbing" />
-                <div className="grid grid-cols-2 gap-1 text-[9px] text-slate-400 pt-1 border-t border-white/10">
-                  <div>EPS BUS: <span className="text-emerald-400 font-bold">99.4%</span></div>
-                  <div>PROPULSION: <span className="text-white font-bold">ARMED</span></div>
-                  <div>OISL MESH: <span className="text-cyan-400 font-bold">100 GBPS</span></div>
-                  <div>CRYPTO: <span className="text-slate-300">KYBER-512</span></div>
-                </div>
-              </div>
-
+          {/* Simple Bottom SpaceX-Style Footer Bar */}
+          <div className="relative w-full px-8 py-4 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-500 z-20 pointer-events-auto">
+            <div className="flex items-center gap-4">
+              <span className="text-white font-bold tracking-wider">VEROYX AEROSPACE © 2026</span>
+              <span className="text-slate-700">|</span>
+              <span>MIL-STD-188 COMPLIANT</span>
+              <span className="text-slate-700">|</span>
+              <span>FIPS 140-3 HSM ZERO-TRUST</span>
+            </div>
+            <div className="flex items-center gap-6">
+              <Link href="/c2" className="hover:text-white transition-all">C2 BATTLE GLASS</Link>
+              <Link href="/nexus" className="hover:text-white transition-all">COMMAND NEXUS</Link>
+              <Link href="/catalog" className="hover:text-white transition-all">48K SATELLITE CATALOG</Link>
             </div>
           </div>
 
