@@ -5,22 +5,23 @@ import * as THREE from "three"
 import Link from "next/link"
 import { 
   Flame, Play, Pause, RotateCcw, Activity, 
-  Terminal, ShieldCheck, Sliders, BarChart3, Wind, Layers
+  Terminal, ShieldCheck, Sliders, BarChart3, Wind, Layers, ArrowRight
 } from "lucide-react"
 
 export default function HypersonicSimulationPage() {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const shockCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const dragCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const tunnelCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const sensorCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const [isRunning, setIsRunning] = useState<boolean>(true)
   const [simTime, setSimTime] = useState<number>(10.4)
   const [machNumber, setMachNumber] = useState<number>(22.4)
-  const [altitudeKm, setAltitudeKm] = useState<number>(48.5)
+  const [altitudeKm, setAltitudeKm] = useState<number>(27.2)
   const [angleAttackDeg, setAngleAttackDeg] = useState<number>(18.0)
 
-  // 1. MAIN 3D HYPERSONIC STREAMLINE WIND TUNNEL (Image 2 Left Viewport)
+  // 1. 3D CONTINUOUS SUPERSONIC STREAMLINES & FEA VEHICLE SHADER (Image 2 Left)
   useEffect(() => {
     const container = mountRef.current
     if (!container) return
@@ -30,8 +31,8 @@ export default function HypersonicSimulationPage() {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#020617")
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(-10, 5, 14)
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 1000)
+    camera.position.set(-14, 6, 12)
     camera.lookAt(0, 0, 0)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
@@ -40,110 +41,170 @@ export default function HypersonicSimulationPage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Directional Lighting for Vehicle
-    const mainLight = new THREE.DirectionalLight(0xfffaed, 3.5)
-    mainLight.position.set(-15, 12, 10)
-    scene.add(mainLight)
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.5))
+    // Directional Lighting
+    const sunLight = new THREE.DirectionalLight(0xfffaed, 3.5)
+    sunLight.position.set(-15, 12, 10)
+    scene.add(sunLight)
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.6))
 
-    // Hypersonic Spacecraft Assembly (Ablative Capsule + Service Module)
+    // Spacecraft Model with Finite Element Thermal Surface Shader
     const spacecraft = new THREE.Group()
-    spacecraft.rotation.y = Math.PI / 5.5
+    spacecraft.rotation.y = Math.PI / 4.8
     spacecraft.rotation.z = (18 * Math.PI) / 180
 
-    // Heat Shield (Blunt Forebody Stagnation Region)
-    const shieldGeo = new THREE.SphereGeometry(1.6, 32, 16, 0, Math.PI * 2, 0, Math.PI / 3)
-    const shieldMat = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.85,
-      metalness: 0.1,
-      emissive: 0xef4444,
-      emissiveIntensity: 0.45
-    })
-    const heatShield = new THREE.Mesh(shieldGeo, shieldMat)
-    heatShield.rotation.x = Math.PI / 2
-    heatShield.position.set(0, 0, 1.1)
-    spacecraft.add(heatShield)
+    // FEA Surface Heatmap Shader (Stagnation Red -> Yellow -> Green -> Blue)
+    const feaVertexShader = `
+      varying vec3 vPosition;
+      varying vec2 vUv;
+      void main() {
+        vPosition = position;
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `
+    const feaFragmentShader = `
+      varying vec3 vPosition;
+      varying vec2 vUv;
+      void main() {
+        // Temperature gradient based on distance from blunt nose tip (x = -1.8)
+        float heat = smoothstep(1.8, -1.8, vPosition.x);
+        
+        // Quad FEA Grid Overlay
+        vec2 grid = abs(fract(vUv * vec2(28.0, 14.0) - 0.5) - 0.5) / fwidth(vUv * vec2(28.0, 14.0));
+        float line = min(grid.x, grid.y);
+        float wireframe = 1.0 - min(line, 1.0);
 
-    // Conical Frustum Capsule Fuselage
-    const coneGeo = new THREE.CylinderGeometry(0.85, 1.6, 1.8, 32)
-    const coneMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.25, metalness: 0.9 })
-    const coneMesh = new THREE.Mesh(coneGeo, coneMat)
+        vec3 col;
+        if (heat > 0.75) {
+          col = mix(vec3(0.95, 0.65, 0.1), vec3(0.95, 0.15, 0.05), (heat - 0.75) / 0.25);
+        } else if (heat > 0.45) {
+          col = mix(vec3(0.2, 0.85, 0.2), vec3(0.95, 0.65, 0.1), (heat - 0.45) / 0.30);
+        } else if (heat > 0.20) {
+          col = mix(vec3(0.05, 0.6, 0.95), vec3(0.2, 0.85, 0.2), (heat - 0.20) / 0.25);
+        } else {
+          col = mix(vec3(0.08, 0.12, 0.22), vec3(0.05, 0.6, 0.95), heat / 0.20);
+        }
+
+        col = mix(col, vec3(0.02, 0.04, 0.08), wireframe * 0.45);
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+    const feaMat = new THREE.ShaderMaterial({
+      vertexShader: feaVertexShader,
+      fragmentShader: feaFragmentShader
+    })
+
+    // Blunt Forebody Heatshield
+    const shieldGeo = new THREE.SphereGeometry(1.65, 32, 16, 0, Math.PI * 2, 0, Math.PI / 3)
+    const shieldMesh = new THREE.Mesh(shieldGeo, feaMat)
+    shieldMesh.rotation.z = Math.PI / 2
+    shieldMesh.position.set(-1.1, 0, 0)
+    spacecraft.add(shieldMesh)
+
+    // Conical Forebody Frustum
+    const coneGeo = new THREE.CylinderGeometry(0.85, 1.65, 1.8, 32)
+    const coneMesh = new THREE.Mesh(coneGeo, feaMat)
     coneMesh.position.set(0, 0, 0)
-    coneMesh.rotation.x = Math.PI / 2
+    coneMesh.rotation.z = Math.PI / 2
     spacecraft.add(coneMesh)
 
     // Service Module Cylinder
-    const smGeo = new THREE.CylinderGeometry(1.5, 1.5, 2.2, 32)
-    const smMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.85 })
+    const smGeo = new THREE.CylinderGeometry(1.5, 1.5, 2.4, 32)
+    const smMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.3, metalness: 0.85 })
     const smMesh = new THREE.Mesh(smGeo, smMat)
-    smMesh.rotation.x = Math.PI / 2
-    smMesh.position.set(0, 0, -1.8)
+    smMesh.rotation.z = Math.PI / 2
+    smMesh.position.set(2.1, 0, 0)
     spacecraft.add(smMesh)
 
-    // Solar Panel Wings
-    const wingGeo = new THREE.BoxGeometry(3.6, 0.04, 1.1)
+    // Dual Photovoltaic Wings
+    const wingGeo = new THREE.BoxGeometry(0.04, 1.1, 3.6)
     const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.9 })
     const wingL = new THREE.Mesh(wingGeo, wingMat)
-    wingL.position.set(2.8, 0, -1.8)
+    wingL.position.set(2.1, 0, 2.8)
     spacecraft.add(wingL)
     const wingR = new THREE.Mesh(wingGeo, wingMat)
-    wingR.position.set(-2.8, 0, -1.8)
+    wingR.position.set(2.1, 0, -2.8)
     spacecraft.add(wingR)
 
-    // Engine Bells Cluster
+    // Rocket Propulsion Bells
     const bellGeo = new THREE.ConeGeometry(0.24, 0.6, 16, 1, true)
-    const bellMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95 })
-    const offsets = [[0.35, 0.35, -3.0], [-0.35, 0.35, -3.0], [0, -0.4, -3.0]]
-    offsets.forEach(([bx, by, bz]) => {
+    const bellMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95, roughness: 0.2 })
+    const bellOffsets = [[3.3, 0.35, 0.35], [3.3, -0.35, 0.35], [3.3, 0, -0.4]]
+    bellOffsets.forEach(([bx, by, bz]) => {
       const bell = new THREE.Mesh(bellGeo, bellMat)
-      bell.rotation.x = -Math.PI / 2
+      bell.rotation.z = Math.PI / 2
       bell.position.set(bx, by, bz)
       spacecraft.add(bell)
     })
 
     scene.add(spacecraft)
 
-    // 2. High-Speed CFD Streamlines (Particles moving along aerodynamic flow curves)
-    const streamCount = 950
-    const streamGeo = new THREE.BufferGeometry()
-    const positions = new Float32Array(streamCount * 3)
-    const colors = new Float32Array(streamCount * 3)
-    const velocities = new Float32Array(streamCount)
+    // 2. GENERATE CONTINUOUS 3D SUPERSONIC STREAMLINES (Matching Image 2 exactly)
+    const streamlinesGroup = new THREE.Group()
+    const numStreamlines = 72
+    const lineSteps = 70
 
-    for (let i = 0; i < streamCount; i++) {
-      // Spawn streamlines in front of the vehicle
-      const x = -14 + Math.random() * 28
-      const y = -7 + Math.random() * 14
-      const z = 10 + Math.random() * 4
+    for (let s = 0; s < numStreamlines; s++) {
+      const theta = (s / numStreamlines) * Math.PI * 2
+      const rSeed = 0.35 + Math.pow(Math.random(), 1.2) * 4.6
+      const seedY = rSeed * Math.cos(theta)
+      const seedZ = rSeed * Math.sin(theta)
 
-      positions[i * 3 + 0] = x
-      positions[i * 3 + 1] = y
-      positions[i * 3 + 2] = z
-      velocities[i] = 22.0 + Math.random() * 14.0
+      const points: THREE.Vector3[] = []
+      const colors: number[] = []
 
-      // Initial color assignment
-      colors[i * 3 + 0] = 0.2
-      colors[i * 3 + 1] = 0.8
-      colors[i * 3 + 2] = 1.0
-    }
+      for (let i = 0; i < lineSteps; i++) {
+        const t = i / (lineSteps - 1)
+        const x = -15.0 + t * 30.0 // Flow from left to right
 
-    streamGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3))
-    streamGeo.setAttribute("color", new THREE.BufferAttribute(colors, 3))
+        // Flow deflection around the blunt nose centered at x = -1.1
+        const dx = x - (-1.1)
+        let r = rSeed
 
-    const streamPoints = new THREE.Points(
-      streamGeo,
-      new THREE.PointsMaterial({
-        size: 0.16,
+        if (x < -1.1) {
+          // Upstream shock compression
+          const comp = Math.exp(-(dx * dx) / 5.5)
+          r = rSeed + (2.1 / (rSeed + 0.35)) * comp
+        } else {
+          // Downstream flow over cylinder body
+          r = Math.max(rSeed, 1.75 + (rSeed - 1.75) * 0.85)
+        }
+
+        const y = r * Math.cos(theta)
+        const z = r * Math.sin(theta)
+        points.push(new THREE.Vector3(x, y, z))
+
+        // Color gradient along the streamline
+        const col = new THREE.Color()
+        if (x < -5.0) {
+          col.setRGB(0.1, 0.65, 1.0) // Upstream Electric Cyan
+        } else if (x < -1.5) {
+          col.setRGB(0.2, 0.9, 0.15) // Shock compression Green
+        } else if (x < 1.0 && rSeed < 1.8) {
+          col.setRGB(1.0, 0.18, 0.05) // Stagnation Bow-Shock Red
+        } else if (x < 3.5) {
+          col.setRGB(0.95, 0.8, 0.1) // Flank expansion Yellow
+        } else {
+          col.setRGB(0.15, 0.5, 0.95) // Wake expansion Blue
+        }
+        colors.push(col.r, col.g, col.b)
+      }
+
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points)
+      lineGeo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3))
+      const lineMat = new THREE.LineBasicMaterial({
         vertexColors: true,
         transparent: true,
         opacity: 0.85,
-        blending: THREE.AdditiveBlending
+        linewidth: 1.5
       })
-    )
-    scene.add(streamPoints)
+      const streamline = new THREE.Line(lineGeo, lineMat)
+      streamlinesGroup.add(streamline)
+    }
 
-    // Interactive Drag Rotation
+    scene.add(streamlinesGroup)
+
+    // Interactive Drag Orbit Controls
     let isDragging = false
     let prevX = 0, prevY = 0
     const onMouseDown = (e: MouseEvent) => { isDragging = true; prevX = e.clientX; prevY = e.clientY }
@@ -170,50 +231,8 @@ export default function HypersonicSimulationPage() {
       animId = requestAnimationFrame(animate)
       const delta = clock.getDelta()
 
-      // Animate Streamlines passing spacecraft
-      const pArr = streamGeo.attributes.position.array as Float32Array
-      const cArr = streamGeo.attributes.color.array as Float32Array
-
-      for (let i = 0; i < streamCount; i++) {
-        pArr[i * 3 + 2] -= velocities[i] * delta
-
-        const x = pArr[i * 3 + 0]
-        const y = pArr[i * 3 + 1]
-        const z = pArr[i * 3 + 2]
-
-        // Deflect particles around the blunt nose
-        const distToNose = Math.sqrt(x * x + y * y + (z - 1.1) * (z - 1.1))
-        if (distToNose < 2.4 && z > -1.0) {
-          pArr[i * 3 + 0] += x * 0.12
-          pArr[i * 3 + 1] += y * 0.12
-
-          // Color shift to Stagnation Red/Orange
-          cArr[i * 3 + 0] = 1.0
-          cArr[i * 3 + 1] = 0.2
-          cArr[i * 3 + 2] = 0.1
-        } else if (z < -1.0 && z > -4.0) {
-          // Flank expansion: Green / Yellow
-          cArr[i * 3 + 0] = 0.8
-          cArr[i * 3 + 1] = 0.9
-          cArr[i * 3 + 2] = 0.1
-        } else {
-          // Freestream: Cyan / Blue
-          cArr[i * 3 + 0] = 0.1
-          cArr[i * 3 + 1] = 0.6
-          cArr[i * 3 + 2] = 1.0
-        }
-
-        // Reset particle loop
-        if (pArr[i * 3 + 2] < -10) {
-          pArr[i * 3 + 0] = -14 + Math.random() * 28
-          pArr[i * 3 + 1] = -7 + Math.random() * 14
-          pArr[i * 3 + 2] = 12 + Math.random() * 3
-        }
-      }
-
-      streamGeo.attributes.position.needsUpdate = true
-      streamGeo.attributes.color.needsUpdate = true
-
+      // Subtle atmospheric jitter & flow oscillation
+      streamlinesGroup.rotation.x = Math.sin(clock.getElapsedTime() * 4.0) * 0.02
       renderer.render(scene, camera)
     }
     animate()
@@ -237,38 +256,35 @@ export default function HypersonicSimulationPage() {
     }
   }, [])
 
-  // 2. 2D THERMAL SHOCKWAVE CONTOUR PLOT (Image 2 Top Right)
+  // 2. 2D STAGNATION HEATMAP (Image 2 Top Right)
   useEffect(() => {
     const canvas = shockCanvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const w = canvas.width
-    const h = canvas.height
+    const w = canvas.width, h = canvas.height
     ctx.fillStyle = "#020617"
     ctx.fillRect(0, 0, w, h)
 
-    // Stagnation Bow Shock Heat Envelope (Red -> Yellow -> Blue)
-    const cx = w * 0.42, cy = h * 0.5
-    for (let r = 85; r > 10; r -= 3) {
-      const norm = (r - 10) / 75
-      if (norm < 0.2) ctx.fillStyle = "rgba(239, 68, 68, 0.95)" // 120+ Stagnation Peak
-      else if (norm < 0.45) ctx.fillStyle = "rgba(245, 158, 11, 0.85)"
-      else if (norm < 0.7) ctx.fillStyle = "rgba(34, 197, 94, 0.65)"
+    const cx = w * 0.45, cy = h * 0.5
+    for (let r = 70; r > 8; r -= 3) {
+      const norm = (r - 8) / 62
+      if (norm < 0.22) ctx.fillStyle = "rgba(239, 68, 68, 0.98)"
+      else if (norm < 0.50) ctx.fillStyle = "rgba(245, 158, 11, 0.88)"
+      else if (norm < 0.75) ctx.fillStyle = "rgba(34, 197, 94, 0.65)"
       else ctx.fillStyle = "rgba(2, 132, 199, 0.35)"
 
       ctx.beginPath()
-      ctx.ellipse(cx + (1.0 - norm) * 20, cy, r * 1.3, r * 0.85, 0, -Math.PI / 2, Math.PI / 2)
+      ctx.ellipse(cx + (1.0 - norm) * 18, cy, r * 1.3, r * 0.85, 0, -Math.PI / 2, Math.PI / 2)
       ctx.fill()
     }
 
-    // Vehicle Blunt Outline
-    ctx.fillStyle = "#ffffff"
+    ctx.fillStyle = "#f8fafc"
     ctx.beginPath()
-    ctx.arc(cx + 25, cy, 18, -Math.PI / 2, Math.PI / 2)
+    ctx.arc(cx + 20, cy, 15, -Math.PI / 2, Math.PI / 2)
     ctx.fill()
-    ctx.fillRect(cx + 25, cy - 18, 45, 36)
+    ctx.fillRect(cx + 20, cy - 15, 38, 30)
   }, [])
 
   // 3. DRAG COEFFICIENT DYNAMIC CURVE (Image 2 Mid Right)
@@ -278,28 +294,51 @@ export default function HypersonicSimulationPage() {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const w = canvas.width
-    const h = canvas.height
+    const w = canvas.width, h = canvas.height
     ctx.fillStyle = "#020617"
     ctx.fillRect(0, 0, w, h)
 
-    // Grid lines
     ctx.strokeStyle = "#1e293b"
     ctx.lineWidth = 1
-    for (let y = 10; y < h; y += 20) {
+    for (let y = 10; y < h; y += 18) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke()
     }
 
-    // Drag Coefficient curve
     ctx.strokeStyle = "#38bdf8"
     ctx.lineWidth = 2.0
     ctx.beginPath()
-    ctx.moveTo(10, h * 0.75)
-    ctx.bezierCurveTo(w * 0.3, h * 0.25, w * 0.6, h * 0.85, w - 10, h * 0.45)
+    ctx.moveTo(10, h * 0.72)
+    ctx.bezierCurveTo(w * 0.35, h * 0.18, w * 0.65, h * 0.82, w - 10, h * 0.42)
     ctx.stroke()
   }, [])
 
-  // 4. SENSOR SPECTRAL TELEMETRY (Image 2 Bottom Right Oscilloscope)
+  // 4. CROSS-SECTIONAL AIRFLOW 2D WIND TUNNEL (Image 2 Center Right)
+  useEffect(() => {
+    const canvas = tunnelCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const w = canvas.width, h = canvas.height
+    ctx.fillStyle = "#020617"
+    ctx.fillRect(0, 0, w, h)
+
+    const cy = h * 0.5
+    for (let y = 10; y < h; y += 8) {
+      const distFromCenter = Math.abs(y - cy)
+      ctx.strokeStyle = distFromCenter < 22 ? "#ef4444" : distFromCenter < 40 ? "#eab308" : "#0284c7"
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.moveTo(10, y)
+      ctx.bezierCurveTo(w * 0.35, y * 0.7 + cy * 0.3, w * 0.65, y * 1.3 - cy * 0.3, w - 10, y)
+      ctx.stroke()
+    }
+
+    ctx.fillStyle = "#94a3b8"
+    ctx.fillRect(w * 0.42, cy - 14, 32, 28)
+  }, [])
+
+  // 5. SENSOR SPECTRAL TELEMETRY (Image 2 Bottom Right Oscilloscope)
   useEffect(() => {
     const canvas = sensorCanvasRef.current
     if (!canvas) return
@@ -311,19 +350,17 @@ export default function HypersonicSimulationPage() {
 
     const render = () => {
       animId = requestAnimationFrame(render)
-      offset += 0.05
-      const w = canvas.width
-      const h = canvas.height
+      offset += 0.06
+      const w = canvas.width, h = canvas.height
 
       ctx.fillStyle = "#020617"
       ctx.fillRect(0, 0, w, h)
 
-      // Draw 4 Waveform Channels
       const channels = [
-        { color: "#eab308", yBase: h * 0.2, freq: 0.08, amp: 10 },
-        { color: "#22c55e", yBase: h * 0.42, freq: 0.12, amp: 8 },
-        { color: "#38bdf8", yBase: h * 0.65, freq: 0.05, amp: 12 },
-        { color: "#ef4444", yBase: h * 0.85, freq: 0.18, amp: 6 }
+        { color: "#eab308", yBase: h * 0.20, freq: 0.08, amp: 9 },
+        { color: "#22c55e", yBase: h * 0.42, freq: 0.11, amp: 7 },
+        { color: "#38bdf8", yBase: h * 0.65, freq: 0.05, amp: 11 },
+        { color: "#ef4444", yBase: h * 0.85, freq: 0.16, amp: 5 }
       ]
 
       channels.forEach(ch => {
@@ -331,7 +368,7 @@ export default function HypersonicSimulationPage() {
         ctx.lineWidth = 1.5
         ctx.beginPath()
         for (let x = 0; x < w; x += 2) {
-          const y = ch.yBase + Math.sin(x * ch.freq + offset) * ch.amp + (Math.random() - 0.5) * 2.5
+          const y = ch.yBase + Math.sin(x * ch.freq + offset) * ch.amp + (Math.random() - 0.5) * 2.0
           if (x === 0) ctx.moveTo(x, y)
           else ctx.lineTo(x, y)
         }
@@ -346,17 +383,17 @@ export default function HypersonicSimulationPage() {
   return (
     <div className="w-full h-[calc(100vh-3.5rem)] pt-14 flex flex-col bg-[#01030a] font-mono text-xs text-slate-100 select-none overflow-hidden">
       
-      {/* TOP INDUSTRIAL HEADER (Image 2 Top) */}
+      {/* TOP INDUSTRIAL TOOLBAR (Image 2 Top) */}
       <div className="h-11 px-4 border-b border-slate-800 bg-[#020617] flex items-center justify-between text-[11px] shrink-0">
         <div className="flex items-center gap-4">
           <span className="font-black tracking-widest text-white uppercase text-sm">AERO-ORBITAL SYSTEM SIMULATOR</span>
           <div className="flex items-center gap-3 text-slate-400 text-[10px]">
-            <span className="text-white font-bold">File</span>
-            <span>Design</span>
-            <span className="text-cyan-400 font-bold">Simulation</span>
-            <span className="text-emerald-400 font-bold">Aerodynamics</span>
-            <span>Telemetry</span>
-            <span>Tools</span>
+            <span className="text-white font-bold cursor-pointer hover:text-cyan-400">File</span>
+            <span className="cursor-pointer hover:text-cyan-400">Design</span>
+            <span className="text-cyan-400 font-bold cursor-pointer">Simulation</span>
+            <span className="text-emerald-400 font-bold cursor-pointer">Aerodynamics</span>
+            <span className="cursor-pointer hover:text-cyan-400">Telemetry</span>
+            <span className="cursor-pointer hover:text-cyan-400">Tools</span>
           </div>
         </div>
         <div className="flex items-center gap-4 text-slate-400 text-[10px]">
@@ -370,13 +407,13 @@ export default function HypersonicSimulationPage() {
         </div>
       </div>
 
-      {/* MAIN DUAL-PANE WORKSTATION */}
+      {/* MAIN DUAL-PANE WORKSTATION VIEWPORT */}
       <div className="flex-1 flex overflow-hidden">
         
         {/* LEFT VIEWPORT: 3D WIND TUNNEL & TIMELINE SCRUBBER (Image 2 Left) */}
         <div className="flex-1 h-full relative flex flex-col border-r border-slate-800">
           
-          {/* Top Subheader */}
+          {/* Top Subheader Overlay */}
           <div className="absolute top-3 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
             <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-slate-300 backdrop-blur-md">
               <span className="text-cyan-400 font-bold">3D Modeling Viewport</span>
@@ -388,9 +425,9 @@ export default function HypersonicSimulationPage() {
             </div>
           </div>
 
-          {/* Left Vertical Pressure Color-Bar Legend (Image 2 Left) */}
+          {/* Left Vertical Pressure Color-Bar Legend (Image 2 Left Margin) */}
           <div className="absolute left-4 top-20 z-10 p-2.5 rounded-xl bg-slate-950/85 border border-slate-800 backdrop-blur-md text-[9px] font-mono space-y-2 pointer-events-none">
-            <div className="text-slate-400 font-bold">Pressure [Kn/m²]</div>
+            <div className="text-slate-400 font-bold">Pressure [kN/m²]</div>
             <div className="h-44 w-4 rounded bg-gradient-to-t from-blue-600 via-green-500 via-yellow-400 to-red-600 border border-slate-800" />
             <div className="space-y-3.5 text-slate-400 text-[8px] pl-1 font-bold">
               <div>60</div><div>40</div><div>20</div><div>0</div>
@@ -465,7 +502,6 @@ export default function HypersonicSimulationPage() {
               </div>
             </div>
 
-            {/* 2D Stagnation Heatmap & Drag Curve Grid */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <div className="text-[9px] text-slate-400">BOW SHOCK STAGNATION PLOT</div>
@@ -478,35 +514,33 @@ export default function HypersonicSimulationPage() {
             </div>
           </div>
 
-          {/* Middle Panel: Aerodynamic Coefficients & Orbital Parameters */}
+          {/* Mid Panel: Cross-Sectional Airflow Wind Tunnel (Image 2 Center Right) */}
+          <div className="p-4 border-b border-slate-800 space-y-2">
+            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
+              Cross-sectional Airflow
+            </div>
+            <canvas ref={tunnelCanvasRef} width={460} height={90} className="w-full h-24 rounded-lg border border-slate-800 bg-black" />
+          </div>
+
+          {/* Telemetry Metrics Table */}
           <div className="p-4 border-b border-slate-800 grid grid-cols-2 gap-4 text-[10px]">
-            
-            {/* Aerodynamic Coefficients Table */}
             <div className="space-y-1.5">
-              <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
-                Aero Coefficients
-              </div>
+              <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">Aero Coefficients</div>
               <div className="flex justify-between"><span className="text-slate-500">Cd (DRAG):</span><span className="text-white font-bold">0.3355</span></div>
               <div className="flex justify-between"><span className="text-slate-500">Cl (LIFT):</span><span className="text-cyan-400 font-bold">0.2008</span></div>
               <div className="flex justify-between"><span className="text-slate-500">L/D RATIO:</span><span className="text-emerald-400 font-bold">0.598</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">Cm (PITCH):</span><span className="text-white">-0.0125</span></div>
               <div className="flex justify-between"><span className="text-slate-500">STAGNATION T0:</span><span className="text-rose-400 font-bold">3,650 K</span></div>
             </div>
-
-            {/* Orbital Parameters */}
             <div className="space-y-1.5">
-              <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
-                Orbital Parameters
-              </div>
+              <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">Orbital Parameters</div>
               <div className="flex justify-between"><span className="text-slate-500">ALTITUDE:</span><span className="text-white font-bold">{altitudeKm.toFixed(1)} km</span></div>
               <div className="flex justify-between"><span className="text-slate-500">VELOCITY:</span><span className="text-amber-400 font-bold">27,500 m/s</span></div>
               <div className="flex justify-between"><span className="text-slate-500">DYNAMIC PRESS:</span><span className="text-white font-bold">48.2 kPa</span></div>
               <div className="flex justify-between"><span className="text-slate-500">HEATING RATE:</span><span className="text-rose-400 font-bold">185 W/cm²</span></div>
-              <div className="flex justify-between"><span className="text-slate-500">ENTRY FLIGHT PATH:</span><span className="text-white">-1.45°</span></div>
             </div>
           </div>
 
-          {/* Lower Panel: Sensor Spectral Simulation Oscilloscope (Image 2 Bottom Right) */}
+          {/* Lower Panel: Sensor Spectral Simulation Oscilloscope */}
           <div className="p-4 border-b border-slate-800 space-y-2">
             <div className="flex justify-between text-[10px] font-bold text-slate-400 border-b border-slate-800 pb-1">
               <span>Sensor Spectral Telemetry</span>
