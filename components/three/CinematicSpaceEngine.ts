@@ -88,13 +88,11 @@ export function createAccretionDiskMaterial(): THREE.ShaderMaterial {
 export function createPhotorealisticKerrBlackHole(radius = 2.4) {
   const group = new THREE.Group()
 
-  // Pitch-Black Event Horizon
   const horizonGeo = new THREE.SphereGeometry(radius, 64, 64)
   const horizonMat = new THREE.MeshBasicMaterial({ color: 0x000000 })
   const horizon = new THREE.Mesh(horizonGeo, horizonMat)
   group.add(horizon)
 
-  // Razor-Thin White-Hot Inner Photon Ring
   const photonGeo = new THREE.RingGeometry(radius * 1.008, radius * 1.035, 128)
   const photonMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
@@ -232,7 +230,7 @@ export function createDeepSpaceNebulaSkybox(): THREE.Group {
   return group
 }
 
-// 4. DEEP SPACE STARFIELD (Restored export required by other pages)
+// 4. DEEP SPACE STARFIELD (Essential export for /c2, /catalog, /nexus, /visualizer)
 export function createDeepSpaceStarfield(count = 1400, fieldRadius = 600): THREE.Points {
   const starGeo = new THREE.BufferGeometry()
   const starPositions = new Float32Array(count * 3)
