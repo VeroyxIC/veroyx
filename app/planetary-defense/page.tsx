@@ -1,170 +1,47 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef } from "react"
 import * as THREE from "three"
+import Link from "next/link"
 import { 
-  Globe, Target, Compass, Play, Square, RotateCcw, 
-  AlertTriangle, Activity, Layers, Gauge, Crosshair, 
-  ArrowRight, ShieldCheck, ShieldAlert, Zap, Orbit, Flame, Rocket 
+  ShieldAlert, Crosshair, Orbit, Radio, Globe, 
+  Terminal, Activity, Sparkles, ArrowRight, Check, AlertTriangle
 } from "lucide-react"
+import { createCinematicEarth, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
 
-type AsteroidPreset = "DIMORPHOS_DART" | "APOPHIS_99942" | "BENNU_101955" | "EXTINCTION_CLASS_1KM"
-
-interface AsteroidSpec {
+interface TrackingStation {
   name: string
-  diameterM: number
-  massKg: number
-  densityGcm3: number
-  composition: "RUBBLE_PILE_CHONDRITE" | "METALLIC_NIFE" | "CARBONACEOUS_B_TYPE" | "MONOLITHIC_SILICATE"
-  nominalRelativeVelKms: number
-  leadTimeYears: number
-  baselineImpactProbPct: number
-  description: string
-  colorHex: string
-}
-
-const PRESETS: Record<AsteroidPreset, AsteroidSpec> = {
-  "DIMORPHOS_DART": {
-    name: "Dimorphos (Didymos B Binary)",
-    diameterM: 160,
-    massKg: 4.3e9,
-    densityGcm3: 2.1,
-    composition: "RUBBLE_PILE_CHONDRITE",
-    nominalRelativeVelKms: 6.14,
-    leadTimeYears: 4.5,
-    baselineImpactProbPct: 100.0,
-    description: "NASA DART mission target validating momentum enhancement factor beta = 3.6 from high-speed ejecta momentum recoil.",
-    colorHex: "#38bdf8"
-  },
-  "APOPHIS_99942": {
-    name: "99942 Apophis (Potentially Hazardous)",
-    diameterM: 340,
-    massKg: 6.1e10,
-    densityGcm3: 2.6,
-    composition: "MONOLITHIC_SILICATE",
-    nominalRelativeVelKms: 12.8,
-    leadTimeYears: 8.0,
-    baselineImpactProbPct: 14.5,
-    description: "Near-Earth asteroid approaching within geosynchronous altitude (31,600 km) requiring early B-plane deflection.",
-    colorHex: "#f59e0b"
-  },
-  "BENNU_101955": {
-    name: "101955 Bennu (OSIRIS-REx Target)",
-    diameterM: 490,
-    massKg: 7.3e10,
-    densityGcm3: 1.19,
-    composition: "CARBONACEOUS_B_TYPE",
-    nominalRelativeVelKms: 10.5,
-    leadTimeYears: 12.0,
-    baselineImpactProbPct: 8.2,
-    description: "Extremely porous micro-gravity aggregate with low cohesive strength producing massive conical ejecta excavation.",
-    colorHex: "#10b981"
-  },
-  "EXTINCTION_CLASS_1KM": {
-    name: "Chicxulub Class Impactor (1.2 km)",
-    diameterM: 1200,
-    massKg: 2.2e12,
-    densityGcm3: 2.8,
-    composition: "METALLIC_NIFE",
-    nominalRelativeVelKms: 18.5,
-    leadTimeYears: 15.0,
-    baselineImpactProbPct: 100.0,
-    description: "Continental extinction-tier threat requiring multi-impactor kinetic campaign or nuclear standoff diversion.",
-    colorHex: "#ef4444"
-  }
+  status: "LOCKED" | "TRACKING" | "STANDBY"
+  signal: number
 }
 
 export default function PlanetaryDefensePage() {
-  const mountRef = useRef<HTMLDivElement | null>(null)
+  const globeMountRef = useRef<HTMLDivElement | null>(null)
+  const asteroidMountRef = useRef<HTMLDivElement | null>(null)
 
-  const [presetKey, setPresetKey] = useState<AsteroidPreset>("DIMORPHOS_DART")
-  const [impactorMassKg, setImpactorMassKg] = useState<number>(600) // DART dry mass ~570kg
-  const [impactVelocityKms, setImpactVelocityKms] = useState<number>(6.14) // 6.14 km/s
-  const [betaMomentumFactor, setBetaMomentumFactor] = useState<number>(3.6) // DART measured beta ~3.6
-  const [leadTimeYears, setLeadTimeYears] = useState<number>(4.5)
-  const [simStep, setSimStep] = useState<number>(-15)
-  const [isPlaying, setIsPlaying] = useState<boolean>(true)
+  const [betaCoupling, setBetaCoupling] = useState<number>(2.4)
+  const [impactorVelocity, setImpactorVelocity] = useState<number>(122.6)
+  const [deflectionDistanceKm, setDeflectionDistanceKm] = useState<number>(34.73)
 
-  const spec = PRESETS[presetKey]
+  const stations: TrackingStation[] = [
+    { name: "Goldstone DSN-14", status: "LOCKED", signal: 100 },
+    { name: "Goldstone DSN-24", status: "LOCKED", signal: 100 },
+    { name: "DART-2 Kinetic Probe", status: "TRACKING", signal: 94 },
+    { name: "JWST Near-IR Task", status: "TRACKING", signal: 90 },
+    { name: "Palomar Planetary Radar", status: "LOCKED", signal: 100 }
+  ]
 
-  // Kinetic Impactor Planetary Defense Physics Engine
-  const calculations = useMemo(() => {
-    const EARTH_RADIUS_KM = 6371
-    const JOULES_PER_MEGATON_TNT = 4.184e15
-
-    // Asteroid Impact Kinetic Energy (if Earth collided)
-    const earthImpactVelMs = spec.nominalRelativeVelKms * 1000
-    const kineticEnergyJoules = 0.5 * spec.massKg * Math.pow(earthImpactVelMs, 2)
-    const kineticEnergyMegatons = kineticEnergyJoules / JOULES_PER_MEGATON_TNT
-
-    // Impactor Delivered Momentum and Delta-V
-    const impactorVelMs = impactVelocityKms * 1000
-    const rawImpactorMomentumNs = impactorMassKg * impactorVelMs
-    const totalImpartedMomentumNs = betaMomentumFactor * rawImpactorMomentumNs
-
-    // Delta-v imparted to asteroid (m/s)
-    const deltaVMs = totalImpartedMomentumNs / spec.massKg
-    const deltaVMmS = deltaVMs * 1000 // Millimeters per second
-
-    // Secular Along-Track B-Plane Deflection after Lead Time (meters)
-    const leadTimeSec = leadTimeYears * 365.25 * 86400
-    // Secular orbit along-track deflection formula: delta_s = 3 * delta_v * t_lead
-    const deflectionDistanceM = 3.0 * deltaVMs * leadTimeSec
-    const deflectionDistanceKm = deflectionDistanceM / 1000
-    const deflectionEarthRadii = deflectionDistanceKm / EARTH_RADIUS_KM
-
-    // Critical Deflection Threshold: 2.5 Earth Radii (~16,000 km) guarantees miss
-    const isDeflectionSuccessful = deflectionEarthRadii >= 2.5
-
-    // Residual Impact Probability & Torino Scale Downgrade
-    const initialTorino = spec.diameterM >= 1000 ? 10 : spec.diameterM >= 300 ? 8 : 6
-    const residualImpactProbPct = isDeflectionSuccessful 
-      ? 0.0001 
-      : Math.max(0.1, spec.baselineImpactProbPct * (1.0 - Math.min(0.99, deflectionEarthRadii / 2.5)))
-    
-    const postDeflectionTorino = isDeflectionSuccessful ? 0 : Math.max(1, Math.round(initialTorino * (residualImpactProbPct / spec.baselineImpactProbPct)))
-
-    // Palermo Technical Hazard Scale
-    const palermoRating = (Math.log10(Math.max(1e-6, residualImpactProbPct / 100) / (0.03 * Math.pow(Math.max(1, kineticEnergyMegatons), -0.8) * leadTimeYears))).toFixed(2)
-
-    return {
-      kineticEnergyMegatons: Number(kineticEnergyMegatons.toFixed(1)),
-      deltaVMmS: Number(deltaVMmS.toFixed(2)),
-      deflectionDistanceKm: Number(deflectionDistanceKm.toFixed(0)),
-      deflectionEarthRadii: Number(deflectionEarthRadii.toFixed(2)),
-      isDeflectionSuccessful,
-      initialTorino,
-      postDeflectionTorino,
-      residualImpactProbPct: Number(residualImpactProbPct.toFixed(2)),
-      palermoRating
-    }
-  }, [spec, impactorMassKg, impactVelocityKms, betaMomentumFactor, leadTimeYears])
-
-  // Simulation Clock
+  // Main 3D Earth & Asteroid Orbital Plane Viewport (Image 4 Center)
   useEffect(() => {
-    let timer: NodeJS.Timeout
-    if (isPlaying) {
-      timer = setInterval(() => {
-        setSimStep(s => {
-          if (s >= 25) return -15
-          return s + 0.35
-        })
-      }, 50)
-    }
-    return () => clearInterval(timer)
-  }, [isPlaying])
-
-  // 3D Three.js Procedural Asteroid & Kinetic Impactor Collision Scene
-  useEffect(() => {
-    const container = mountRef.current
+    const container = globeMountRef.current
     if (!container) return
 
     const width = container.clientWidth
     const height = container.clientHeight
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#01040f")
+    scene.background = new THREE.Color("#020617")
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 2000)
     camera.position.set(0, 10, 24)
     camera.lookAt(0, 0, 0)
 
@@ -174,179 +51,97 @@ export default function PlanetaryDefensePage() {
     container.innerHTML = ""
     container.appendChild(renderer.domElement)
 
-    // Lighting
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
-    const sun = new THREE.DirectionalLight(0xfffaed, 3.2)
-    sun.position.set(25, 25, 20)
+    // Deep-Space Background
+    const starfield = createDeepSpaceStarfield(1400, 600)
+    scene.add(starfield)
+
+    const sun = new THREE.DirectionalLight(0xffffff, 3.5)
+    sun.position.set(-20, 15, 10)
     scene.add(sun)
+    scene.add(new THREE.AmbientLight(0x0f172a, 1.4))
 
-    // 1. Procedural 3D Asteroid Rubble Mesh with Bumps & Craters
-    const astGeo = new THREE.IcosahedronGeometry(2.8, 4)
-    const pos = astGeo.attributes.position.array as Float32Array
-
-    for (let i = 0; i < pos.length; i += 3) {
-      const v = new THREE.Vector3(pos[i], pos[i + 1], pos[i + 2])
-      const length = v.length()
-      const noise = Math.sin(v.x * 1.8) * Math.cos(v.y * 1.8) * Math.sin(v.z * 1.8) * 0.45
-      const craterNoise = Math.sin(v.x * 4.2) * Math.cos(v.z * 4.2) * 0.15
-      v.setLength(length + noise + craterNoise)
-      pos[i] = v.x
-      pos[i + 1] = v.y
-      pos[i + 2] = v.z
-    }
-    astGeo.computeVertexNormals()
-
-    const astMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 0.92,
-      metalness: 0.15,
-      flatShading: true
-    })
-    const asteroidMesh = new THREE.Mesh(astGeo, astMat)
-    scene.add(asteroidMesh)
-
-    // 2. Kinetic Impactor Spacecraft
-    const scGroup = new THREE.Group()
-    scene.add(scGroup)
-
-    const scBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.5, 0.8),
-      new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.9, roughness: 0.2 })
-    )
-    scGroup.add(scBody)
-
-    // Solar Wings
-    const wingGeo = new THREE.BoxGeometry(2.0, 0.04, 0.6)
-    const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 })
-    const wings = new THREE.Mesh(wingGeo, wingMat)
-    scGroup.add(wings)
-
-    // High Gain Antenna Dish
-    const dish = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.25, 0.05, 0.15, 16),
-      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.8 })
-    )
-    dish.rotation.z = Math.PI / 2
-    dish.position.set(-0.35, 0.25, 0)
-    scGroup.add(dish)
-
-    // Impactor Trajectory Line
-    const trajGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-18, 0, 0),
-      new THREE.Vector3(0, 0, 0)
-    ])
-    const trajMat = new THREE.LineDashedMaterial({
-      color: 0x38bdf8,
-      dashSize: 0.5,
-      gapSize: 0.2,
-      transparent: true,
-      opacity: 0.5
-    })
-    const trajLine = new THREE.Line(trajGeo, trajMat)
-    trajLine.computeLineDistances()
-    scene.add(trajLine)
-
-    // 3. Impact Flash & High-Speed Ejecta Particles (Momentum Recoil Plume)
-    const flashGeo = new THREE.SphereGeometry(0.8, 16, 16)
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 })
-    const flashMesh = new THREE.Mesh(flashGeo, flashMat)
-    flashMesh.position.set(-2.6, 0, 0)
-    scene.add(flashMesh)
-
-    const ejectaCount = 350
-    const ejectaGeo = new THREE.BufferGeometry()
-    const ejectaPositions = new Float32Array(ejectaCount * 3)
-    const ejectaVelocities: THREE.Vector3[] = []
-
-    for (let i = 0; i < ejectaCount; i++) {
-      ejectaPositions[i * 3 + 0] = -2.6
-      ejectaPositions[i * 3 + 1] = 0
-      ejectaPositions[i * 3 + 2] = 0
-
-      const coneAngle = (Math.random() * 0.6 + 0.1) * Math.PI
-      const phi = Math.random() * Math.PI * 2
-      const speed = 0.08 + Math.random() * 0.25
-
-      ejectaVelocities.push(new THREE.Vector3(
-        -Math.cos(coneAngle * 0.5) * speed,
-        Math.sin(coneAngle * 0.5) * Math.cos(phi) * speed,
-        Math.sin(coneAngle * 0.5) * Math.sin(phi) * speed
-      ))
-    }
-    ejectaGeo.setAttribute("position", new THREE.BufferAttribute(ejectaPositions, 3))
-
-    const ejectaMat = new THREE.PointsMaterial({
-      color: 0xf59e0b,
-      size: 0.15,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending
-    })
-    const ejectaPoints = new THREE.Points(ejectaGeo, ejectaMat)
-    scene.add(ejectaPoints)
-
-    // 4. Earth Model in Distant Background
-    const earthGroup = new THREE.Group()
-    earthGroup.position.set(12, -4, -12)
+    // NASA Blue Marble Earth
+    const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(4.8)
     scene.add(earthGroup)
 
-    const earthR = 3.2
-    const earthMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(earthR, 32, 32),
-      new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.8 })
-    )
-    earthGroup.add(earthMesh)
+    // Keplerian Asteroid Orbit Path (Red Elliptical Arc)
+    const orbitPts: THREE.Vector3[] = []
+    const a = 9.8, b = 6.2
+    for (let i = 0; i <= 128; i++) {
+      const theta = (i / 128) * Math.PI * 2
+      orbitPts.push(new THREE.Vector3(Math.cos(theta) * a - 2.5, Math.sin(theta) * 1.5, Math.sin(theta) * b))
+    }
+    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPts)
+    const orbitMat = new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2, transparent: true, opacity: 0.85 })
+    const orbitLine = new THREE.Line(orbitGeo, orbitMat)
+    scene.add(orbitLine)
 
-    // B-Plane Deflection Crosshair Vector
-    const deflColor = calculations.isDeflectionSuccessful ? 0x10b981 : 0xef4444
-    const bPlaneGeo = new THREE.RingGeometry(earthR * 1.1, earthR * 1.25, 32)
-    const bPlaneMat = new THREE.MeshBasicMaterial({ color: deflColor, side: THREE.DoubleSide, transparent: true, opacity: 0.7 })
-    const bPlaneRing = new THREE.Mesh(bPlaneGeo, bPlaneMat)
-    earthGroup.add(bPlaneRing)
+    // Deflected Trajectory Arc (Cyan Dashed Line)
+    const defPts: THREE.Vector3[] = []
+    for (let i = 0; i <= 128; i++) {
+      const theta = (i / 128) * Math.PI * 2
+      defPts.push(new THREE.Vector3(Math.cos(theta) * (a + 1.2) - 1.8, Math.sin(theta) * 2.1, Math.sin(theta) * (b + 0.8)))
+    }
+    const defGeo = new THREE.BufferGeometry().setFromPoints(defPts)
+    const defMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.4, gapSize: 0.2, linewidth: 2 })
+    const defLine = new THREE.Line(defGeo, defMat)
+    defLine.computeLineDistances()
+    scene.add(defLine)
 
+    // Orbit Nodes
+    const nodeGeo = new THREE.SphereGeometry(0.18, 16, 16)
+    const nodeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+    const nodePositions = [
+      new THREE.Vector3(5.8, 1.2, 4.2),
+      new THREE.Vector3(-4.8, -0.6, 5.1),
+      new THREE.Vector3(-7.5, 0.4, -2.1),
+      new THREE.Vector3(3.2, -1.1, -5.4)
+    ]
+    nodePositions.forEach(pos => {
+      const node = new THREE.Mesh(nodeGeo, nodeMat)
+      node.position.copy(pos)
+      scene.add(node)
+    })
+
+    // Asteroid Particle Position Marker
+    const astMarkerGeo = new THREE.SphereGeometry(0.25, 16, 16)
+    const astMarkerMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+    const astMarker = new THREE.Mesh(astMarkerGeo, astMarkerMat)
+    scene.add(astMarker)
+
+    // Drag Orbit Controls
+    let isDragging = false
+    let prevX = 0, prevY = 0
+    const onMouseDown = (e: MouseEvent) => { isDragging = true; prevX = e.clientX; prevY = e.clientY }
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return
+      scene.rotation.y += (e.clientX - prevX) * 0.005
+      scene.rotation.x += (e.clientY - prevY) * 0.005
+      prevX = e.clientX; prevY = e.clientY
+    }
+    const onMouseUp = () => { isDragging = false }
+    const onWheel = (e: WheelEvent) => {
+      camera.position.z = Math.max(12, Math.min(38, camera.position.z + e.deltaY * 0.02))
+    }
+
+    container.addEventListener("mousedown", onMouseDown)
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", onMouseUp)
+    container.addEventListener("wheel", onWheel, { passive: true })
+
+    const clock = new THREE.Clock()
     let animId: number
+    let theta = 0
+
     const animate = () => {
       animId = requestAnimationFrame(animate)
+      const delta = clock.getDelta()
+      theta += delta * 0.35
 
-      // Slow asteroid tumbling rotation
-      asteroidMesh.rotation.y += 0.002
-      asteroidMesh.rotation.x += 0.001
+      earthMesh.rotation.y += 0.05 * delta
+      cloudsMesh.rotation.y += 0.07 * delta
 
-      // Impactor Flight & Impact Phasing
-      if (simStep < 0) {
-        const flightFraction = (simStep + 15) / 15
-        const posX = -18 + flightFraction * (18 - 2.6)
-        scGroup.position.set(posX, 0, 0)
-        scGroup.visible = true
-        flashMat.opacity = 0
-        ejectaPoints.visible = false
-
-        const pArr = ejectaGeo.attributes.position.array as Float32Array
-        for (let i = 0; i < ejectaCount; i++) {
-          pArr[i * 3 + 0] = -2.6
-          pArr[i * 3 + 1] = 0
-          pArr[i * 3 + 2] = 0
-        }
-        ejectaGeo.attributes.position.needsUpdate = true
-      } else {
-        scGroup.visible = false
-        const tPost = simStep
-
-        flashMat.opacity = Math.max(0, 1.0 - tPost * 0.3)
-        flashMesh.scale.setScalar(1.0 + tPost * 0.6)
-
-        ejectaPoints.visible = true
-        const pArr = ejectaGeo.attributes.position.array as Float32Array
-        for (let i = 0; i < ejectaCount; i++) {
-          pArr[i * 3 + 0] = -2.6 + ejectaVelocities[i].x * tPost * 3.5
-          pArr[i * 3 + 1] = ejectaVelocities[i].y * tPost * 3.5
-          pArr[i * 3 + 2] = ejectaVelocities[i].z * tPost * 3.5
-        }
-        ejectaGeo.attributes.position.needsUpdate = true
-      }
-
-      earthMesh.rotation.y += 0.0008
-
+      astMarker.position.set(Math.cos(theta) * a - 2.5, Math.sin(theta) * 1.5, Math.sin(theta) * b)
       renderer.render(scene, camera)
     }
     animate()
@@ -361,260 +156,272 @@ export default function PlanetaryDefensePage() {
 
     return () => {
       cancelAnimationFrame(animId)
+      container.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", onMouseUp)
+      container.removeEventListener("wheel", onWheel)
       window.removeEventListener("resize", onResize)
       renderer.dispose()
     }
-  }, [spec, calculations.isDeflectionSuccessful, simStep])
+  }, [])
+
+  // 3D Asteroid Model Viewport (Image 4 Bottom-Left Box)
+  useEffect(() => {
+    const container = asteroidMountRef.current
+    if (!container) return
+
+    const width = container.clientWidth
+    const height = container.clientHeight
+    const scene = new THREE.Scene()
+    scene.background = new THREE.Color("#020617")
+
+    const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100)
+    camera.position.set(0, 0, 4.5)
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    renderer.setSize(width, height)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    container.innerHTML = ""
+    container.appendChild(renderer.domElement)
+
+    const light = new THREE.DirectionalLight(0xffffff, 3.0)
+    light.position.set(5, 5, 5)
+    scene.add(light)
+    scene.add(new THREE.AmbientLight(0x1e293b, 1.2))
+
+    // Irregular Asteroid Topography Geometry
+    const astGeo = new THREE.DodecahedronGeometry(1.3, 3)
+    const pos = astGeo.attributes.position
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i))
+      const noise = (Math.sin(v.x * 4.0) + Math.cos(v.y * 4.0) + Math.sin(v.z * 4.0)) * 0.12
+      v.multiplyScalar(1.0 + noise)
+      pos.setXYZ(i, v.x, v.y, v.z)
+    }
+    astGeo.computeVertexNormals()
+
+    const astMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.88,
+      metalness: 0.15,
+      flatShading: true
+    })
+    const asteroidMesh = new THREE.Mesh(astGeo, astMat)
+    scene.add(asteroidMesh)
+
+    let animId: number
+    const animate = () => {
+      animId = requestAnimationFrame(animate)
+      asteroidMesh.rotation.y += 0.012
+      asteroidMesh.rotation.x += 0.007
+      renderer.render(scene, camera)
+    }
+    animate()
+
+    return () => {
+      cancelAnimationFrame(animId)
+      renderer.dispose()
+    }
+  }, [])
 
   return (
-    <div className="w-full h-full pt-20 px-8 pb-8 flex bg-[#01040f] font-sans text-slate-100 overflow-hidden">
+    <div className="w-full h-[calc(100vh-3.5rem)] pt-14 flex flex-col bg-[#01030a] font-mono text-xs text-slate-100 select-none overflow-hidden">
       
-      {/* LEFT PANEL: ASTEROID TARGET & IMPACTION DYNAMICS */}
-      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
-        <div className="mb-6">
-          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
-            <Orbit className="w-5 h-5 text-amber-500" /> Planetary Defense
-          </h1>
-          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
-            Kinetic Impactor &amp; DART Ejecta Momentum Recoil
-          </p>
+      {/* TOP INDUSTRIAL HEADER BAR (Image 4 Top) */}
+      <div className="h-11 px-4 border-b border-slate-800 bg-[#020617] flex items-center justify-between text-[11px] shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="font-black tracking-widest text-white uppercase text-sm">AERO-ORBITAL SYSTEM SIMULATOR</span>
+          <span className="text-slate-600">|</span>
+          <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+            ASTEROID TRACKING <span className="text-slate-600">&gt;</span> DEFENSE MONITORING
+          </span>
+        </div>
+        <div className="flex items-center gap-4 text-slate-400 text-[10px]">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-emerald-400 font-bold">DSN MULTI-UPLINK: ACTIVE</span>
+          </span>
+          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
+            TORINO: 0 (SAFE)
+          </span>
+        </div>
+      </div>
+
+      {/* MAIN 3-COLUMN WORKSTATION VIEWPORT */}
+      <div className="flex-1 flex overflow-hidden">
+        
+        {/* CENTER VIEWPORT (The Earth, Asteroid Orbit, and 3D Crater Box) */}
+        <div className="flex-1 h-full relative flex flex-col border-r border-slate-800">
+          
+          {/* Subheader Overlay */}
+          <div className="absolute top-3 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-slate-300 backdrop-blur-md">
+              <span className="text-rose-400 font-bold">ASTEROID 9942 APOS TRACK</span>
+              <span className="mx-2 text-slate-600">|</span>
+              <span>INCLINATION: 3.33° // ECCENTRICITY: 0.191</span>
+            </div>
+            <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-emerald-400 font-bold backdrop-blur-md">
+              PERIHELION: 0.746 AU // APHELION: 1.098 AU
+            </div>
+          </div>
+
+          {/* 3D Earth Orbit Scene Canvas */}
+          <div ref={globeMountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
+
+          {/* Floating Live HUD Badges on Orbit Plane */}
+          <div className="absolute top-24 right-1/4 z-10 font-mono text-[9px] bg-slate-950/80 border border-rose-500/60 text-rose-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(244,63,94,0.4)]">
+            ● ASTEROID 9942 APOS // 31.42 km/s
+          </div>
+          <div className="absolute top-44 left-1/4 z-10 font-mono text-[9px] bg-slate-950/80 border border-cyan-500/60 text-cyan-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(6,182,212,0.4)]">
+            ● DART-2 IMPACT NODE // Δv: 34.73 km/s
+          </div>
+
+          {/* 3D Cratered Asteroid Box in Lower Left (Image 4 Bottom-Left) */}
+          <div className="absolute bottom-4 left-4 w-72 h-56 rounded-xl bg-slate-950/90 border border-slate-800 p-3 shadow-2xl backdrop-blur-xl z-10 flex flex-col">
+            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex justify-between">
+              <span>ASTEROID 9942 APOS TRACK</span>
+              <span className="text-amber-400">PBR SURFACE</span>
+            </div>
+            <div ref={asteroidMountRef} className="flex-1 w-full my-1 rounded-lg overflow-hidden bg-black/60 border border-slate-900" />
+            <div className="grid grid-cols-2 gap-1 text-[9px] text-slate-400 font-mono">
+              <div>VELOCITY: <span className="text-white font-bold">31.42 km/s</span></div>
+              <div>DISTANCE: <span className="text-white font-bold">0.14 AU</span></div>
+              <div>DIAMETER: <span className="text-white font-bold">~340m</span></div>
+              <div>EST. MASS: <span className="text-white font-bold">2.52e10 kg</span></div>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-6">
-          {/* Asteroid Presets */}
-          <div className="space-y-3">
-            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-amber-500" /> Potentially Hazardous Asteroid (PHA)
-            </label>
+        {/* RIGHT CONTROL DECK (Image 4 Right Columns) */}
+        <div className="w-[480px] h-full flex flex-col bg-[#020617] overflow-y-auto">
+          
+          {/* Top Panel: Target Info & Impact Risk Evaluation */}
+          <div className="p-4 border-b border-slate-800 grid grid-cols-2 gap-4">
+            
+            {/* Target Info */}
             <div className="space-y-2">
-              {(["DIMORPHOS_DART", "APOPHIS_99942", "BENNU_101955", "EXTINCTION_CLASS_1KM"] as AsteroidPreset[]).map(key => {
-                const item = PRESETS[key]
-                return (
-                  <button
-                    key={key}
-                    onClick={() => {
-                      setPresetKey(key)
-                      setImpactVelocityKms(item.nominalRelativeVelKms)
-                      setLeadTimeYears(item.leadTimeYears)
-                      setSimStep(-15)
-                    }}
-                    className={`w-full p-3.5 rounded-xl border text-left transition-all flex items-center justify-between ${
-                      presetKey === key 
-                        ? "bg-amber-950/40 border-amber-500 text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.25)]" 
-                        : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
-                    }`}
-                  >
+              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
+                Target Info: APOS (9942)
+              </div>
+              <div className="space-y-1 text-[10px]">
+                <div className="flex justify-between"><span className="text-slate-500">TARGET:</span><span className="text-white font-bold">APOS (9942)</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">VELOCITY:</span><span className="text-amber-400 font-bold">31.42 km/s</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">DISTANCE:</span><span className="text-white">0.14 AU</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">DIAMETER:</span><span className="text-white">~340 m</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">EST. MASS:</span><span className="text-white">2.520 kg·e10</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">CONNECTION:</span><span className="text-emerald-400 font-bold">0.05 s</span></div>
+              </div>
+            </div>
+
+            {/* Impact Risk Evaluation (Color Spectrum Curve) */}
+            <div className="space-y-2">
+              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex justify-between">
+                <span>Impact Risk Evaluation</span>
+                <span className="text-emerald-400 font-bold">0.00%</span>
+              </div>
+              <div className="h-16 w-full rounded-lg bg-gradient-to-r from-emerald-500 via-yellow-400 to-rose-600 p-0.5 relative flex items-center justify-center">
+                <div className="absolute inset-0 bg-[#020617]/70 rounded-lg" />
+                <div className="relative text-[9px] text-slate-300 font-bold text-center">
+                  <div>PALERMO: -2.88</div>
+                  <div className="text-emerald-400">NO TERRESTRIAL IMPACT</div>
+                </div>
+              </div>
+              <div className="flex justify-between text-[9px] text-slate-500">
+                <span>PROBABILITY: 0%</span>
+                <span>RISK: MINIMAL</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Middle Panel: Deep Space Tracking Stations & Kinetic Impactor Modeling */}
+          <div className="p-4 border-b border-slate-800 grid grid-cols-2 gap-4">
+            
+            {/* Tracking Stations Matrix */}
+            <div className="space-y-2">
+              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
+                Tracking Stations
+              </div>
+              <div className="space-y-1.5">
+                {stations.map(st => (
+                  <div key={st.name} className="flex items-center justify-between text-[10px] p-1.5 rounded bg-slate-900/60 border border-slate-800/80">
                     <div>
-                      <div className="font-bold text-[11px] text-white flex items-center gap-2">
-                        {item.name}
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
-                        Diameter: {item.diameterM}m | {(item.massKg / 1e9).toFixed(1)}M tonnes
-                      </div>
+                      <div className="text-white font-bold">{st.name}</div>
+                      <div className="text-[8px] text-emerald-400">{st.status}</div>
                     </div>
-                    <div className="font-mono text-right text-[10px]">
-                      <span className="text-amber-400 font-bold block">{item.nominalRelativeVelKms} km/s</span>
-                      <span className="text-slate-500">{item.leadTimeYears} yrs lead</span>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Kinetic Impactor Sizing */}
-          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
-            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2 flex justify-between">
-              <span>Kinetic Impactor Spacecraft Parameters</span>
-              <span className="text-cyan-400 font-bold">Δv = {calculations.deltaVMmS} mm/s</span>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-slate-400">IMPACTOR DRY MASS:</span>
-                <span className="text-white font-bold">{impactorMassKg} kg</span>
-              </div>
-              <input 
-                type="range" min="200" max="4000" step="50"
-                value={impactorMassKg}
-                onChange={e => setImpactorMassKg(Number(e.target.value))}
-                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">RELATIVE IMPACT SPEED:</span>
-                <span className="text-amber-400 font-bold">{impactVelocityKms.toFixed(2)} km/s</span>
-              </div>
-              <input 
-                type="range" min="3.0" max="25.0" step="0.2"
-                value={impactVelocityKms}
-                onChange={e => setImpactVelocityKms(Number(e.target.value))}
-                className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">EJECTA MOMENTUM FACTOR (β):</span>
-                <span className="text-emerald-400 font-bold">β = {betaMomentumFactor.toFixed(1)}x ({(betaMomentumFactor - 1.0).toFixed(1)}x RECOIL)</span>
-              </div>
-              <input 
-                type="range" min="1.0" max="5.0" step="0.1"
-                value={betaMomentumFactor}
-                onChange={e => setBetaMomentumFactor(Number(e.target.value))}
-                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>Inelastic Plastic (1.0)</span>
-                <span>NASA DART (3.6)</span>
-                <span>High Porosity (5.0)</span>
+                    <span className="text-cyan-400 font-bold text-[9px]">{st.signal}%</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">WARNING / DEFLECTION LEAD TIME:</span>
-                <span className="text-cyan-400 font-bold">{leadTimeYears.toFixed(1)} YEARS</span>
+            {/* Defensive Action: DART Kinetic Impactor Modeling */}
+            <div className="space-y-2.5">
+              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex justify-between">
+                <span>Defensive Action (DART)</span>
+                <span className="text-rose-400 font-bold">KINETIC</span>
               </div>
-              <input 
-                type="range" min="1.0" max="25.0" step="0.5"
-                value={leadTimeYears}
-                onChange={e => setLeadTimeYears(Number(e.target.value))}
-                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
+              
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400">BETA COUPLING (β):</span>
+                  <span className="text-cyan-400 font-bold">{betaCoupling.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="1.0"
+                  max="4.0"
+                  step="0.1"
+                  value={betaCoupling}
+                  onChange={e => setBetaCoupling(Number(e.target.value))}
+                  className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-400">IMPACTOR SPEED:</span>
+                  <span className="text-white font-bold">{impactorVelocity.toFixed(1)} km/s</span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="1"
+                  value={impactorVelocity}
+                  onChange={e => setImpactorVelocity(Number(e.target.value))}
+                  className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+
+              <div className="p-2 rounded bg-cyan-950/60 border border-cyan-800/80 text-[10px] space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">DEFLECTION Δv:</span>
+                  <span className="text-cyan-300 font-bold">{(betaCoupling * (580 / 2.52e10) * impactorVelocity * 1000).toFixed(4)} mm/s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">MISS DISTANCE:</span>
+                  <span className="text-emerald-400 font-bold">&gt;{deflectionDistanceKm.toFixed(2)} km</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Playback Controls */}
-          <div className="p-4 bg-slate-900/60 border border-slate-700/80 rounded-xl space-y-3">
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-slate-400 font-bold uppercase">Terminal Handoff Fly-In</span>
-              <span className={`font-bold ${simStep >= 0 ? "text-amber-400" : "text-cyan-400"}`}>
-                {simStep < 0 ? `T-${Math.abs(Math.round(simStep))}s APPROACH` : "IMPACT T+SEC"}
-              </span>
+          {/* Bottom Panel: System Console (Image 4 Bottom-Right) */}
+          <div className="p-4 flex-1 flex flex-col space-y-2">
+            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex items-center gap-2">
+              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+              <span>System Console // Trajectory Stream</span>
             </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className={`flex-1 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
-                  isPlaying 
-                    ? "bg-slate-800 hover:bg-slate-700 text-white" 
-                    : "bg-amber-600 hover:bg-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.4)]"
-                }`}
-              >
-                {isPlaying ? <Square className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
-                {isPlaying ? "HOLD APPROACH" : "RUN IMPACT RUN"}
-              </button>
-
-              <button
-                onClick={() => setSimStep(-15)}
-                className="p-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                title="Restart Impact"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
+            <div className="flex-1 p-3 rounded-xl bg-black border border-slate-800 text-[10px] font-mono text-emerald-400 space-y-1 overflow-y-auto">
+              <div>[SYSTEM] Terminal initialization sequence OK...</div>
+              <div>[EPHEMERIS] Asteroid 9942 Apophis state vector updated J2000.</div>
+              <div>[RADAR] Goldstone 70m metric range: 21,563,892 km.</div>
+              <div className="text-amber-400">[ALERT] Predicted close approach within 0.14 AU.</div>
+              <div className="text-cyan-400">[DART-2] Kinetic impactor deflection solution locked: Beta={betaCoupling.toFixed(1)}.</div>
+              <div className="text-slate-500">[STATUS] Trajectory offset active. Earth impact probability: 0.00%.</div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* CENTER PANEL: 3D THREE.JS ASTEROID COLLISION VIEWPORT */}
-      <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-6 left-6 z-10 font-mono">
-          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">
-            Planetary Defense Terminal Engagement [B-Plane Deflection]
-          </div>
-          <div className="flex items-baseline gap-3">
-            <span className={`text-4xl font-black ${calculations.isDeflectionSuccessful ? "text-emerald-400" : "text-rose-500"}`}>
-              {calculations.deflectionDistanceKm.toLocaleString()} KM
-            </span>
-            <span className="text-slate-500 text-sm">
-              MISS DISTANCE ({calculations.deflectionEarthRadii} EARTH RADII)
-            </span>
-          </div>
-          <div className="flex gap-4 mt-2 text-[11px]">
-            <span className="text-cyan-400">IMPARTED Δv: {calculations.deltaVMmS} mm/s</span>
-            <span className="text-amber-400">IMPACT ENERGY: {calculations.kineticEnergyMegatons.toLocaleString()} MT TNT</span>
-            <span className={calculations.isDeflectionSuccessful ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
-              TORINO SCALE: {calculations.initialTorino} &rarr; {calculations.postDeflectionTorino}
-            </span>
-          </div>
-        </div>
-
-        <div ref={mountRef} className="flex-1 w-full cursor-move" />
-
-        {/* Tactical HUD Footer */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Globe className="w-5 h-5 text-cyan-400" />
-            <div>
-              <span className="text-slate-500 block text-[9px]">PLANETARY IMPACT OUTCOME</span>
-              <span className={`font-bold text-sm ${calculations.isDeflectionSuccessful ? "text-emerald-400" : "text-rose-400 font-black animate-pulse"}`}>
-                {calculations.isDeflectionSuccessful ? "EARTH IMPACT PRECLUDED (SAFE BYPASS)" : "CRITICAL IMPACT OCCURS"}
-              </span>
-            </div>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">RESIDUAL IMPACT PROBABILITY</span>
-            <span className="text-white font-bold text-sm">{calculations.residualImpactProbPct}%</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">PALERMO HAZARD RATING</span>
-            <span className="text-amber-400 font-bold text-sm">P = {calculations.palermoRating}</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">EJECTA RECOIL BOOST</span>
-            <span className="text-emerald-400 font-bold text-sm">+{((betaMomentumFactor - 1.0) * 100).toFixed(0)}% MOMENTUM MULTIPLIER</span>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT PANEL: IMPACT RISK METRICS & GAUSS PERTURBATION CASCADE */}
-      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-cyan-400" /> Planetary Defense Risk
-        </h2>
-
-        <div className="space-y-6">
-          {/* Deflection Status Card */}
-          <div className={`p-5 rounded-2xl border ${calculations.isDeflectionSuccessful ? "bg-emerald-950/20 border-emerald-500/40" : "bg-rose-950/20 border-rose-500/40"}`}>
-            <div className="text-[10px] font-bold tracking-wider mb-1 text-slate-400">
-              EARTH B-PLANE MISS ANALYSIS
-            </div>
-            <div className={`text-xl font-black flex items-center gap-2 ${calculations.isDeflectionSuccessful ? "text-emerald-400" : "text-rose-400"}`}>
-              {calculations.isDeflectionSuccessful ? <ShieldCheck className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
-              {calculations.isDeflectionSuccessful ? "DEFLECTION ASSURED" : "INSUFFICIENT MISS MARGIN"}
-            </div>
-            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-              {calculations.isDeflectionSuccessful 
-                ? `Kinetic impact imparts ${calculations.deltaVMmS} mm/s change in velocity. Over ${leadTimeYears} years, this propagates into ${calculations.deflectionDistanceKm.toLocaleString()} km of along-track displacement, exceeding the 2.5 Earth-radii safety threshold.`
-                : "Deflection delta-v or lead time is insufficient to divert the asteroid's b-plane impact parameter outside the gravitational capture cross-section. Staged nuclear standoff detonation or multi-impactor fleet required."}
-            </p>
-          </div>
-
-          {/* Physics Breakdown */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2 text-[11px]">
-            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Impact Kinetic &amp; Orbital Budget</div>
-            <div className="flex justify-between"><span className="text-slate-500">Asteroid Target Mass:</span><span className="text-white font-bold">{(spec.massKg / 1e9).toFixed(1)}M tonnes</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Asteroid Diameter:</span><span className="text-white font-bold">{spec.diameterM} meters</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Impactor Energy:</span><span className="text-amber-400 font-bold">{calculations.kineticEnergyMegatons} MT TNT</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Velocity Change (Δv):</span><span className="text-emerald-400 font-bold">{calculations.deltaVMmS} mm/s</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">B-Plane Offset:</span><span className="text-cyan-400 font-bold">{calculations.deflectionDistanceKm.toLocaleString()} km</span></div>
-            <div className="flex justify-between font-black text-sm border-t border-slate-700 pt-1.5"><span className="text-white">POST-TORINO LEVEL:</span><span className={calculations.isDeflectionSuccessful ? "text-emerald-400" : "text-rose-400"}>LEVEL {calculations.postDeflectionTorino}</span></div>
-          </div>
-
-          {/* DART beta Momentum Principle */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2">
-            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
-              Ejecta Momentum Enhancement Factor
-            </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed">
-              When an impactor strikes a rubble-pile asteroid at hypervelocity, excavated rock fragments are blown backward into space. Under Newton's third law, this high-speed ejecta plume exerts a rocket-like thrust, multiplying the momentum transfer factor beta up to 3.6x beyond the spacecraft's mass alone.
-            </p>
-          </div>
         </div>
       </div>
     </div>
