@@ -56,16 +56,11 @@ export function createAccretionDiskMaterial(): THREE.ShaderMaterial {
         if (r < 0.20 || r > 0.98) discard;
 
         float theta = atan(uvCenter.y, uvCenter.x);
-        
-        // Relativistic Spiral Rotation & Filament Striations
         float swirl = theta + (4.0 / (r + 0.08)) - uTime * 1.4;
         vec2 swirlCoord = vec2(r * 12.0, swirl * 3.0);
         float plasma = fbm(swirlCoord);
 
-        // Dark dust absorption filaments
         float dust = smoothstep(0.35, 0.65, fbm(swirlCoord * 1.8 + vec2(2.1, 4.3)));
-
-        // Relativistic Doppler Beaming Asymmetry (Approaching left side is amplified)
         float doppler = 1.0 + 0.70 * sin(theta + 0.4);
 
         vec3 color;
@@ -133,7 +128,6 @@ export function createPhotorealisticKerrBlackHole(radius = 2.4) {
   vCoreMesh.position.set(0, 0, 0.05)
   group.add(vCoreMesh)
 
-  // Secondary Golden Energy Aura on V Core
   const vGlowMat = new THREE.MeshBasicMaterial({
     color: 0xf59e0b,
     side: THREE.DoubleSide,
@@ -146,11 +140,10 @@ export function createPhotorealisticKerrBlackHole(radius = 2.4) {
   vGlowMesh.position.set(0, 0, 0.02)
   group.add(vGlowMesh)
 
-  // Primary Diagonal Relativistic Accretion Blade
+  // Diagonal Relativistic Accretion Blade
   const diskMat = createAccretionDiskMaterial()
   const diskGeo = new THREE.RingGeometry(radius * 1.15, radius * 5.2, 128)
   const disk = new THREE.Mesh(diskGeo, diskMat)
-  // Tilted at acute diagonal angle matching reference image
   disk.rotation.x = Math.PI / 2.3
   disk.rotation.z = -Math.PI / 7.5
   group.add(disk)
@@ -181,11 +174,12 @@ export function createPhotorealisticKerrBlackHole(radius = 2.4) {
   return { group, horizon, disk, diskMat, vCoreMesh, vGlowMesh, lensingGroup }
 }
 
+export const createKerrBlackHole = createPhotorealisticKerrBlackHole
+
 // 3. DEEP-SPACE AZURE & INDIGO NEBULA SKYBOX
 export function createDeepSpaceNebulaSkybox(): THREE.Group {
   const group = new THREE.Group()
 
-  // Starfield
   const count = 2800
   const starGeo = new THREE.BufferGeometry()
   const starPositions = new Float32Array(count * 3)
@@ -220,9 +214,7 @@ export function createDeepSpaceNebulaSkybox(): THREE.Group {
   }))
   group.add(stars)
 
-  // Cosmic Cyan/Indigo Nebula Gas Clouds
-  const cloudCount = 14
-  for (let i = 0; i < cloudCount; i++) {
+  for (let i = 0; i < 14; i++) {
     const planeGeo = new THREE.PlaneGeometry(160 + i * 20, 90 + i * 15)
     const planeMat = new THREE.MeshBasicMaterial({
       color: i % 2 === 0 ? 0x0284c7 : 0x1e1b4b,
@@ -240,13 +232,39 @@ export function createDeepSpaceNebulaSkybox(): THREE.Group {
   return group
 }
 
-// 4. PHOTOREALISTIC MILITARY RECONNAISSANCE SATELLITE
+// 4. DEEP SPACE STARFIELD (Restored export required by other pages)
+export function createDeepSpaceStarfield(count = 1400, fieldRadius = 600): THREE.Points {
+  const starGeo = new THREE.BufferGeometry()
+  const starPositions = new Float32Array(count * 3)
+  const starColors = new Float32Array(count * 3)
+
+  for (let i = 0; i < count; i++) {
+    const phi = Math.acos(Math.random() * 2 - 1)
+    const theta = Math.random() * Math.PI * 2
+    const r = fieldRadius * (0.6 + Math.random() * 0.4)
+
+    starPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
+    starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
+    starPositions[i * 3 + 2] = r * Math.cos(phi)
+
+    const p = Math.random()
+    if (p > 0.8) { starColors[i * 3 + 0] = 0.55; starColors[i * 3 + 1] = 0.80; starColors[i * 3 + 2] = 1.0; }
+    else if (p > 0.6) { starColors[i * 3 + 0] = 1.0; starColors[i * 3 + 1] = 0.88; starColors[i * 3 + 2] = 0.65; }
+    else { starColors[i * 3 + 0] = 0.95; starColors[i * 3 + 1] = 0.98; starColors[i * 3 + 2] = 1.0; }
+  }
+
+  starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
+  starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
+
+  return new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.4, vertexColors: true, transparent: true, opacity: 0.85 }))
+}
+
+// 5. PHOTOREALISTIC MILITARY RECONNAISSANCE SATELLITE
 export function createMilitarySatellite(options?: { scale?: number }) {
   const scale = options?.scale ?? 1.0
   const group = new THREE.Group()
   group.scale.set(scale, scale, scale)
 
-  // Gold MLI Foil Avionics Bus
   const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.8)
   const busMat = new THREE.MeshStandardMaterial({
     color: 0xd97706,
@@ -256,7 +274,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   const busMesh = new THREE.Mesh(busGeo, busMat)
   group.add(busMesh)
 
-  // Titanium Radiators
   const radGeo = new THREE.BoxGeometry(0.04, 0.9, 1.4)
   const radMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.08 })
   const radL = new THREE.Mesh(radGeo, radMat)
@@ -266,7 +283,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   radR.position.set(-0.61, 0, 0)
   group.add(radR)
 
-  // Rocket Engine Bells
   const nozGeo = new THREE.ConeGeometry(0.18, 0.45, 16, 1, true)
   const nozMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95, roughness: 0.2 })
   const nozPositions = [[0.28, 0.28, -1.02], [-0.28, 0.28, -1.02], [0, -0.32, -1.02]]
@@ -277,7 +293,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
     group.add(noz)
   })
 
-  // Recon Optical Barrel & Glowing Lens
   const scopeGeo = new THREE.CylinderGeometry(0.38, 0.42, 1.2, 24)
   const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.85, roughness: 0.25 })
   const scope = new THREE.Mesh(scopeGeo, scopeMat)
@@ -291,7 +306,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   scopeLens.position.set(0, 0, 1.81)
   group.add(scopeLens)
 
-  // Dual GaAs Photovoltaic Wings
   const solarWings = new THREE.Group()
   const wingGeo = new THREE.BoxGeometry(2.6, 0.05, 1.1)
   const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.85 })
@@ -316,7 +330,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   solarWings.add(boomR)
   group.add(solarWings)
 
-  // Parabolic Communications Dish
   const dishGroup = new THREE.Group()
   dishGroup.position.set(0, 0.85, -0.4)
   const dishGeo = new THREE.CylinderGeometry(0.55, 0.08, 0.22, 24)
@@ -333,7 +346,6 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   dishGroup.add(horn)
   group.add(dishGroup)
 
-  // Ion Thruster Plume
   const plumeGeo = new THREE.ConeGeometry(0.22, 1.4, 16, 1, true)
   const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
   const plume = new THREE.Mesh(plumeGeo, plumeMat)
@@ -344,7 +356,7 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   return { group, plume, solarWings, dishGroup, scopeLens }
 }
 
-// 5. NASA BLUE MARBLE EARTH & MOON
+// 6. NASA BLUE MARBLE EARTH & MOON
 export function createCinematicEarth(radius = 5.5) {
   const earthGroup = new THREE.Group()
   const texLoader = new THREE.TextureLoader()
@@ -386,4 +398,39 @@ export function createCrateredMoon(radius = 1.4) {
   const moonGeo = new THREE.SphereGeometry(radius, 32, 32)
   const moonMat = new THREE.MeshStandardMaterial({ map: moonTex, roughness: 0.92, metalness: 0.05 })
   return new THREE.Mesh(moonGeo, moonMat)
+}
+
+// 7. HALLEY COMET SYSTEM
+export function createHalleyCometSystem() {
+  const group = new THREE.Group()
+  const cometGeo = new THREE.DodecahedronGeometry(0.45, 2)
+  const cometMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.8, emissive: 0x67e8f9, emissiveIntensity: 0.5 })
+  const comet = new THREE.Mesh(cometGeo, cometMat)
+  group.add(comet)
+
+  const ionTailGeo = new THREE.ConeGeometry(0.3, 10.0, 16, 1, true)
+  const ionTailMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
+  const ionTail = new THREE.Mesh(ionTailGeo, ionTailMat)
+  ionTail.rotation.z = Math.PI / 2
+  ionTail.position.set(-5.0, 0, 0)
+  group.add(ionTail)
+
+  const dustTailGeo = new THREE.ConeGeometry(0.7, 8.5, 16, 1, true)
+  const dustTailMat = new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending })
+  const dustTail = new THREE.Mesh(dustTailGeo, dustTailMat)
+  dustTail.rotation.z = Math.PI / 2.15
+  dustTail.position.set(-4.4, 0.4, 0)
+  group.add(dustTail)
+
+  const meteorCount = 18
+  const meteorGroup = new THREE.Group()
+  const streakMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, linewidth: 2 })
+  for (let i = 0; i < meteorCount; i++) {
+    const p1 = new THREE.Vector3((Math.random() - 0.5) * 50, 10 + Math.random() * 15, (Math.random() - 0.5) * 40)
+    const p2 = p1.clone().add(new THREE.Vector3(-4.5, -2.5, -1.5))
+    const mGeo = new THREE.BufferGeometry().setFromPoints([p1, p2])
+    const mLine = new THREE.Line(mGeo, streakMat)
+    meteorGroup.add(mLine)
+  }
+  return { group, comet, ionTail, dustTail, meteorGroup }
 }
