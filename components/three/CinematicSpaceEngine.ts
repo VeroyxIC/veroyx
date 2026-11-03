@@ -35,93 +35,176 @@ export function createHyperspaceTunnel(count = 1200) {
   return { warpLines, geo, positions, velocities, mat }
 }
 
-// 2. 3D GEODESIC PARTICLE SPHERE & ORBITAL NEXUS (Matches video 00:12)
-export function createGeodesicOrbitalNexus(radius = 5.8) {
-  const group = new THREE.Group()
+// 2. HOLLYWOOD FILM-GRADE NASA BLUE MARBLE EARTH (Matches Screenshot 2026-11-01 14.41.34)
+export function createCinematicEarth(radius = 5.8) {
+  const earthGroup = new THREE.Group()
+  const texLoader = new THREE.TextureLoader()
 
-  // Inner Wireframe Icosahedron / Geodesic Sphere
-  const sphereGeo = new THREE.IcosahedronGeometry(radius, 2)
-  const sphereWireMat = new THREE.MeshBasicMaterial({
-    color: 0x0284c7,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.22
+  const dayMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg")
+  const nightMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_lights_2048.png")
+  const specMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_specular_2048.jpg")
+  const cloudMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_clouds_1024.png")
+
+  // High-density sphere geometry
+  const earthGeo = new THREE.SphereGeometry(radius, 80, 80)
+  
+  // Custom Hollywood PBR Earth Material: Intense Amber Night Lights & Specular Oceans
+  const earthMat = new THREE.MeshStandardMaterial({
+    map: dayMap,
+    roughnessMap: specMap,
+    roughness: 0.38,
+    metalness: 0.15,
+    emissiveMap: nightMap,
+    emissive: new THREE.Color(0xff9922), // Warm Golden/Amber incandescent city lights
+    emissiveIntensity: 1.6
   })
-  const sphereWire = new THREE.Mesh(sphereGeo, sphereWireMat)
-  group.add(sphereWire)
+  const earthMesh = new THREE.Mesh(earthGeo, earthMat)
+  earthGroup.add(earthMesh)
 
-  // Surface Nodes / Constellation Vertices
-  const nodePositions = sphereGeo.attributes.position
-  const nodeGeo = new THREE.BufferGeometry()
-  nodeGeo.setAttribute("position", nodePositions)
-  const nodeMat = new THREE.PointsMaterial({
+  // Floating High-Altitude Clouds
+  const cloudGeo = new THREE.SphereGeometry(radius * 1.016, 80, 80)
+  const cloudMat = new THREE.MeshStandardMaterial({
+    map: cloudMap,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending
+  })
+  const cloudsMesh = new THREE.Mesh(cloudGeo, cloudMat)
+  earthGroup.add(cloudsMesh)
+
+  // Rayleigh Atmospheric Rim Shell
+  const atmoGeo = new THREE.SphereGeometry(radius * 1.045, 80, 80)
+  const atmoMat = new THREE.MeshBasicMaterial({
     color: 0x38bdf8,
-    size: 0.18,
     transparent: true,
-    opacity: 0.85
+    opacity: 0.38,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide
   })
-  const nodePoints = new THREE.Points(nodeGeo, nodeMat)
-  group.add(nodePoints)
+  const atmoMesh = new THREE.Mesh(atmoGeo, atmoMat)
+  earthGroup.add(atmoMesh)
 
-  // Floating Orbital Halo Rings (Tilted)
-  const ringsGroup = new THREE.Group()
-  const ringAngles = [
-    { r: radius * 1.25, tiltX: 0.8, tiltY: 0.3, color: 0x38bdf8 },
-    { r: radius * 1.55, tiltX: -0.6, tiltY: 0.8, color: 0x0ea5e9 },
-    { r: radius * 1.85, tiltX: 1.2, tiltY: -0.4, color: 0x0284c7 }
-  ]
+  // Radiant Sun Flare at Top Pole Limb (Matches Screenshot 2026-11-01 14.41.34)
+  const sunFlareGroup = new THREE.Group()
+  sunFlareGroup.position.set(0, radius * 1.02, 0)
 
-  ringAngles.forEach(cfg => {
-    const ringGeo = new THREE.BufferGeometry()
-    const pts = []
-    const segs = 96
-    for (let i = 0; i <= segs; i++) {
-      const theta = (i / segs) * Math.PI * 2
-      pts.push(new THREE.Vector3(Math.cos(theta) * cfg.r, Math.sin(theta) * cfg.r, 0))
-    }
-    ringGeo.setFromPoints(pts)
-    const ringLine = new THREE.Line(
-      ringGeo,
-      new THREE.LineBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.45, linewidth: 1.5 })
-    )
-    ringLine.rotation.set(cfg.tiltX, cfg.tiltY, 0)
-    ringsGroup.add(ringLine)
+  // Core white-hot sun disc
+  const sunDiscGeo = new THREE.CircleGeometry(0.85, 32)
+  const sunDiscMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.98,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide
   })
-  group.add(ringsGroup)
+  const sunDisc = new THREE.Mesh(sunDiscGeo, sunDiscMat)
+  sunFlareGroup.add(sunDisc)
 
-  // Swarm of Outer Telemetry Particle Orbiters
-  const orbiterCount = 180
-  const orbiterGeo = new THREE.BufferGeometry()
-  const orbPositions = new Float32Array(orbiterCount * 3)
-  const orbColors = new Float32Array(orbiterCount * 3)
+  // Warm golden corona halo
+  const coronaGeo = new THREE.CircleGeometry(2.4, 32)
+  const coronaMat = new THREE.MeshBasicMaterial({
+    color: 0xf59e0b,
+    transparent: true,
+    opacity: 0.55,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide
+  })
+  const coronaMesh = new THREE.Mesh(coronaGeo, coronaMat)
+  sunFlareGroup.add(coronaMesh)
 
-  for (let i = 0; i < orbiterCount; i++) {
-    const phi = Math.acos(Math.random() * 2 - 1)
-    const theta = Math.random() * Math.PI * 2
-    const r = radius * (1.1 + Math.random() * 0.9)
-    orbPositions[i * 3 + 0] = r * Math.sin(phi) * Math.cos(theta)
-    orbPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta)
-    orbPositions[i * 3 + 2] = r * Math.cos(phi)
+  // Anamorphic horizontal lens flare streak across the northern horizon
+  const streakGeo = new THREE.PlaneGeometry(16.0, 0.18)
+  const streakMat = new THREE.MeshBasicMaterial({
+    color: 0x67e8f9,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide
+  })
+  const streakMesh = new THREE.Mesh(streakGeo, streakMat)
+  sunFlareGroup.add(streakMesh)
 
-    const isGold = Math.random() > 0.65
-    orbColors[i * 3 + 0] = isGold ? 1.0 : 0.2
-    orbColors[i * 3 + 1] = isGold ? 0.8 : 0.85
-    orbColors[i * 3 + 2] = isGold ? 0.3 : 1.0
-  }
+  earthGroup.add(sunFlareGroup)
 
-  orbiterGeo.setAttribute("position", new THREE.BufferAttribute(orbPositions, 3))
-  orbiterGeo.setAttribute("color", new THREE.BufferAttribute(orbColors, 3))
-  const orbiterPoints = new THREE.Points(
-    orbiterGeo,
-    new THREE.PointsMaterial({ size: 0.14, vertexColors: true, transparent: true, opacity: 0.8 })
-  )
-  group.add(orbiterPoints)
-
-  return { group, sphereWire, ringsGroup, orbiterPoints }
+  return { earthGroup, earthMesh, cloudsMesh, sunFlareGroup }
 }
 
-// 3. DEEP SPACE STARFIELD (Used across /c2, /catalog, /nexus, /visualizer)
-export function createDeepSpaceStarfield(count = 1600, fieldRadius = 600): THREE.Points {
+// 3. PHOTOREALISTIC RECONNAISSANCE SATELLITE (Film Studio Detail)
+export function createMilitarySatellite(options?: { scale?: number }) {
+  const scale = options?.scale ?? 1.0
+  const group = new THREE.Group()
+  group.scale.set(scale, scale, scale)
+
+  // Gold MLI Foil Avionics Bus
+  const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.8)
+  const busMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.95, roughness: 0.18 })
+  const busMesh = new THREE.Mesh(busGeo, busMat)
+  group.add(busMesh)
+
+  // Titanium Radiators
+  const radGeo = new THREE.BoxGeometry(0.04, 0.9, 1.4)
+  const radMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.08 })
+  const radL = new THREE.Mesh(radGeo, radMat)
+  radL.position.set(0.61, 0, 0)
+  group.add(radL)
+  const radR = radL.clone()
+  radR.position.set(-0.61, 0, 0)
+  group.add(radR)
+
+  // Conical Optical Telescope Barrel & Glowing Sensor Aperture
+  const scopeGeo = new THREE.CylinderGeometry(0.38, 0.44, 1.3, 32)
+  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.88, roughness: 0.22 })
+  const scope = new THREE.Mesh(scopeGeo, scopeMat)
+  scope.rotation.x = Math.PI / 2
+  scope.position.set(0, 0, 1.25)
+  group.add(scope)
+
+  const lensGeo = new THREE.CircleGeometry(0.36, 32)
+  const lensMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.88 })
+  const lens = new THREE.Mesh(lensGeo, lensMat)
+  lens.position.set(0, 0, 1.91)
+  group.add(lens)
+
+  // Dual GaAs Photovoltaic Wings
+  const solarWings = new THREE.Group()
+  const wingGeo = new THREE.BoxGeometry(2.8, 0.05, 1.15)
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.22, metalness: 0.88 })
+
+  const wingL = new THREE.Mesh(wingGeo, wingMat)
+  wingL.position.set(2.2, 0, 0)
+  solarWings.add(wingL)
+
+  const boomGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.8, 12)
+  const boomMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.9 })
+  const boomL = new THREE.Mesh(boomGeo, boomMat)
+  boomL.rotation.z = Math.PI / 2
+  boomL.position.set(0.9, 0, 0)
+  solarWings.add(boomL)
+
+  const wingR = new THREE.Mesh(wingGeo, wingMat)
+  wingR.position.set(-2.2, 0, 0)
+  solarWings.add(wingR)
+
+  const boomR = boomL.clone()
+  boomR.position.set(-0.9, 0, 0)
+  solarWings.add(boomR)
+  group.add(solarWings)
+
+  // Parabolic High-Gain Antenna Dish on Dual-Axis Gimbal
+  const dishGroup = new THREE.Group()
+  dishGroup.position.set(0, 0.88, -0.4)
+  const dishGeo = new THREE.CylinderGeometry(0.55, 0.08, 0.22, 24)
+  const dishMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.92, roughness: 0.18 })
+  const dish = new THREE.Mesh(dishGeo, dishMat)
+  dish.rotation.x = -Math.PI / 3
+  dishGroup.add(dish)
+  group.add(dishGroup)
+
+  return { group, solarWings, dishGroup, lens }
+}
+
+// 4. DEEP SPACE STARFIELD
+export function createDeepSpaceStarfield(count = 1800, fieldRadius = 800): THREE.Points {
   const starGeo = new THREE.BufferGeometry()
   const starPositions = new Float32Array(count * 3)
   const starColors = new Float32Array(count * 3)
@@ -143,120 +226,10 @@ export function createDeepSpaceStarfield(count = 1600, fieldRadius = 600): THREE
 
   starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3))
   starGeo.setAttribute("color", new THREE.BufferAttribute(starColors, 3))
-
   return new THREE.Points(starGeo, new THREE.PointsMaterial({ size: 1.4, vertexColors: true, transparent: true, opacity: 0.85 }))
 }
 
-// 4. DEEP SPACE NEBULA SKYBOX
-export function createDeepSpaceNebulaSkybox(): THREE.Group {
-  const group = new THREE.Group()
-  const stars = createDeepSpaceStarfield(2000, 700)
-  group.add(stars)
-  return group
-}
-
-// 5. PHOTOREALISTIC MILITARY RECONNAISSANCE SATELLITE
-export function createMilitarySatellite(options?: { scale?: number }) {
-  const scale = options?.scale ?? 1.0
-  const group = new THREE.Group()
-  group.scale.set(scale, scale, scale)
-
-  const busGeo = new THREE.BoxGeometry(1.2, 1.2, 1.8)
-  const busMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.95, roughness: 0.18 })
-  const busMesh = new THREE.Mesh(busGeo, busMat)
-  group.add(busMesh)
-
-  const radGeo = new THREE.BoxGeometry(0.04, 0.9, 1.4)
-  const radMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.98, roughness: 0.08 })
-  const radL = new THREE.Mesh(radGeo, radMat)
-  radL.position.set(0.61, 0, 0); group.add(radL)
-  const radR = radL.clone()
-  radR.position.set(-0.61, 0, 0); group.add(radR)
-
-  const nozGeo = new THREE.ConeGeometry(0.18, 0.45, 16, 1, true)
-  const nozMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.95, roughness: 0.2 })
-  const noz = new THREE.Mesh(nozGeo, nozMat)
-  noz.rotation.x = -Math.PI / 2
-  noz.position.set(0, 0, -1.02)
-  group.add(noz)
-
-  const scopeGeo = new THREE.CylinderGeometry(0.38, 0.42, 1.2, 24)
-  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.85, roughness: 0.25 })
-  const scope = new THREE.Mesh(scopeGeo, scopeMat)
-  scope.rotation.x = Math.PI / 2
-  scope.position.set(0, 0, 1.2)
-  group.add(scope)
-
-  const lensGeo = new THREE.CircleGeometry(0.35, 24)
-  const lensMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85 })
-  const scopeLens = new THREE.Mesh(lensGeo, lensMat)
-  scopeLens.position.set(0, 0, 1.81)
-  group.add(scopeLens)
-
-  const solarWings = new THREE.Group()
-  const wingGeo = new THREE.BoxGeometry(2.6, 0.05, 1.1)
-  const wingMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.85 })
-  const wingL = new THREE.Mesh(wingGeo, wingMat)
-  wingL.position.set(2.1, 0, 0); solarWings.add(wingL)
-  const wingR = new THREE.Mesh(wingGeo, wingMat)
-  wingR.position.set(-2.1, 0, 0); solarWings.add(wingR)
-  group.add(solarWings)
-
-  const dishGroup = new THREE.Group()
-  dishGroup.position.set(0, 0.85, -0.4)
-  const dishGeo = new THREE.CylinderGeometry(0.55, 0.08, 0.22, 24)
-  const dishMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, metalness: 0.92, roughness: 0.18 })
-  const dish = new THREE.Mesh(dishGeo, dishMat)
-  dish.rotation.x = -Math.PI / 3
-  dishGroup.add(dish)
-  group.add(dishGroup)
-
-  const plumeGeo = new THREE.ConeGeometry(0.22, 1.4, 16, 1, true)
-  const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
-  const plume = new THREE.Mesh(plumeGeo, plumeMat)
-  plume.rotation.x = -Math.PI / 2
-  plume.position.set(0, 0, -1.65)
-  group.add(plume)
-
-  return { group, plume, solarWings, dishGroup, scopeLens }
-}
-
-// 6. NASA BLUE MARBLE EARTH & MOON
-export function createCinematicEarth(radius = 5.5) {
-  const earthGroup = new THREE.Group()
-  const texLoader = new THREE.TextureLoader()
-
-  const dayMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg")
-  const nightMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_lights_2048.png")
-  const specMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_specular_2048.jpg")
-  const cloudMap = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_clouds_1024.png")
-
-  const earthGeo = new THREE.SphereGeometry(radius, 64, 64)
-  const earthMat = new THREE.MeshStandardMaterial({
-    map: dayMap,
-    roughnessMap: specMap,
-    roughness: 0.45,
-    metalness: 0.12,
-    emissiveMap: nightMap,
-    emissive: new THREE.Color(0xffffff),
-    emissiveIntensity: 0.95
-  })
-  const earthMesh = new THREE.Mesh(earthGeo, earthMat)
-  earthGroup.add(earthMesh)
-
-  const cloudGeo = new THREE.SphereGeometry(radius * 1.018, 64, 64)
-  const cloudMat = new THREE.MeshStandardMaterial({ map: cloudMap, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
-  const cloudsMesh = new THREE.Mesh(cloudGeo, cloudMat)
-  earthGroup.add(cloudsMesh)
-
-  const atmoGeo = new THREE.SphereGeometry(radius * 1.055, 64, 64)
-  const atmoMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, side: THREE.BackSide })
-  const atmoMesh = new THREE.Mesh(atmoGeo, atmoMat)
-  earthGroup.add(atmoMesh)
-
-  return { earthGroup, earthMesh, cloudsMesh }
-}
-
+// 5. BACKWARD-COMPATIBILITY EXPORTS FOR OTHER ROUTES
 export function createCrateredMoon(radius = 1.4) {
   const texLoader = new THREE.TextureLoader()
   const moonTex = texLoader.load("https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/moon_1024.jpg")
@@ -265,7 +238,6 @@ export function createCrateredMoon(radius = 1.4) {
   return new THREE.Mesh(moonGeo, moonMat)
 }
 
-// 7. COMPATIBILITY EXPORTS
 export function createAccretionDiskMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
@@ -283,4 +255,17 @@ export const createKerrBlackHole = createPhotorealisticKerrBlackHole
 export function createHalleyCometSystem() {
   const group = new THREE.Group()
   return { group, comet: group, ionTail: group, dustTail: group, meteorGroup: group }
+}
+
+export function createDeepSpaceNebulaSkybox() {
+  return createDeepSpaceStarfield(2000, 700)
+}
+
+export function createGeodesicOrbitalNexus(radius = 5.8) {
+  const group = new THREE.Group()
+  const geo = new THREE.IcosahedronGeometry(radius, 2)
+  const mat = new THREE.MeshBasicMaterial({ color: 0x0284c7, wireframe: true, transparent: true, opacity: 0.25 })
+  const mesh = new THREE.Mesh(geo, mat)
+  group.add(mesh)
+  return { group, sphereWire: mesh, ringsGroup: group, orbiterPoints: mesh }
 }

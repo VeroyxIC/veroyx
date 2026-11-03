@@ -19,9 +19,13 @@ export default function MasterHomePage() {
   const sdaCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const interceptCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const satMiniMountRef = useRef<HTMLDivElement | null>(null)
+  const radarCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
   const [isWarping, setIsWarping] = useState<boolean>(false)
+
+  // Real-time Ephemeris Clock
+  const [simSeconds, setSimSeconds] = useState<number>(13150)
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -62,7 +66,6 @@ export default function MasterHomePage() {
     const scene = new THREE.Scene()
     scene.background = new THREE.Color("#02040a")
 
-    // Cinematic focal length framing Earth in lower-mid view (Matches Video 1 00:08 - 00:09)
     const camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 2000)
     camera.position.set(0, 3.2, 22.5)
     camera.lookAt(0, 0.2, 0)
@@ -77,7 +80,7 @@ export default function MasterHomePage() {
     const starfield = createDeepSpaceStarfield(1800, 800)
     scene.add(starfield)
 
-    // Multi-Directional Film Studio Lighting
+    // Film Studio Directional Lighting
     const sunLight = new THREE.DirectionalLight(0xfffaee, 4.5)
     sunLight.position.set(-24, 15, 18)
     scene.add(sunLight)
@@ -89,28 +92,14 @@ export default function MasterHomePage() {
     const ambientLight = new THREE.AmbientLight(0x0a1128, 1.8)
     scene.add(ambientLight)
 
-    // Photorealistic Earth (Positioned lower-center)
+    // Photorealistic Earth with Top Radiant Sun Flare & Amber Night Lights
     const earthRadius = 5.8
     const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
     earthGroup.position.set(0, -1.8, 0)
     scene.add(earthGroup)
 
-    // Atmospheric Rayleigh Limb Glow Shell
-    const atmoGlowGeo = new THREE.RingGeometry(earthRadius * 1.002, earthRadius * 1.085, 96)
-    const atmoGlowMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.45,
-      blending: THREE.AdditiveBlending
-    })
-    const atmoGlow = new THREE.Mesh(atmoGlowGeo, atmoGlowMat)
-    atmoGlow.position.copy(earthGroup.position)
-    atmoGlow.lookAt(camera.position)
-    scene.add(atmoGlow)
-
     // =========================================================================
-    // 3D CHISELED METALLIC "VEROYX" LOGO OVER EARTH (Video 1 00:08 - 00:09)
+    // 3D CHISELED METALLIC "VEROYX" LOGO OVER PLANET (Video 1 00:08 - 00:09)
     // =========================================================================
     const logoGroup = new THREE.Group()
 
@@ -182,7 +171,6 @@ export default function MasterHomePage() {
     letterX.position.set(4.3, 0, 0)
     logoGroup.add(letterX)
 
-    // Position 3D Logo floating prominently in front of Earth (Video 1 00:08 - 00:09)
     logoGroup.position.set(0, 1.6, 5.2)
     logoGroup.scale.set(0.85, 0.85, 0.85)
     scene.add(logoGroup)
@@ -264,8 +252,8 @@ export default function MasterHomePage() {
       const dy = (e.clientY - prevY) * 0.005
       earthGroup.rotation.y += dx
       earthGroup.rotation.x += dy
-      logoGroup.position.x += dx * 0.4
-      logoGroup.position.y -= dy * 0.4
+      logoGroup.position.x += dx * 0.3
+      logoGroup.position.y -= dy * 0.3
       prevX = e.clientX; prevY = e.clientY
     }
     const onMouseUp = () => { isDragging = false }
@@ -313,9 +301,6 @@ export default function MasterHomePage() {
       // Smooth Earth & Cloud Rotation
       earthMesh.rotation.y += 0.035 * delta
       cloudsMesh.rotation.y += 0.055 * delta
-
-      // Keep atmospheric limb facing camera
-      atmoGlow.lookAt(camera.position)
 
       // Subtle metallic title specular breath
       flare.material.opacity = 0.55 + Math.sin(t * 3.0) * 0.25
@@ -385,24 +370,20 @@ export default function MasterHomePage() {
       ctx.fillStyle = "#020617"
       ctx.fillRect(0, 0, w, h)
 
-      // Earth Center Dot
       ctx.fillStyle = "#38bdf8"
       ctx.beginPath(); ctx.arc(w * 0.42, h * 0.5, 7, 0, Math.PI * 2); ctx.fill()
 
-      // Elliptical Moon Orbit
       ctx.strokeStyle = "rgba(148, 163, 184, 0.35)"
       ctx.lineWidth = 1.2
       ctx.beginPath()
       ctx.ellipse(w * 0.42, h * 0.5, w * 0.36, h * 0.38, -0.2, 0, Math.PI * 2)
       ctx.stroke()
 
-      // Orbiting Moon Marker
       const mx = w * 0.42 + Math.cos(angle) * (w * 0.36)
       const my = h * 0.5 + Math.sin(angle) * (h * 0.38)
       ctx.fillStyle = "#f8fafc"
       ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill()
 
-      // Target Sensor Vector Tag
       ctx.strokeStyle = "#10b981"
       ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(w * 0.42, h * 0.5); ctx.lineTo(mx, my); ctx.stroke()
@@ -431,21 +412,18 @@ export default function MasterHomePage() {
       ctx.fillStyle = "#020617"
       ctx.fillRect(0, 0, w, h)
 
-      // Target Primary Orbit (Blue Arc)
       ctx.strokeStyle = "rgba(56, 189, 248, 0.5)"
       ctx.lineWidth = 1.5
       ctx.beginPath()
       ctx.arc(w * 0.5, h * 0.85, w * 0.42, -Math.PI * 0.85, -Math.PI * 0.15)
       ctx.stroke()
 
-      // Intercept Transfer Trajectory (Red Elliptical Arc)
       ctx.strokeStyle = "#ef4444"
       ctx.lineWidth = 2.0
       ctx.beginPath()
       ctx.ellipse(w * 0.5, h * 0.55, w * 0.32, h * 0.32, 0.4, -Math.PI * 0.9, -Math.PI * 0.05)
       ctx.stroke()
 
-      // Collision Intercept Point (IN-01 Pulsing Node)
       const ix = w * 0.55, iy = h * 0.32
       const radius = 4 + Math.sin(pulse) * 2
       ctx.fillStyle = "#ef4444"
@@ -501,6 +479,84 @@ export default function MasterHomePage() {
       renderer.dispose()
     }
   }, [])
+
+  // =========================================================================
+  // 5. RIGHT HUD PANEL POLAR RADAR CANVAS (Video 1 00:01)
+  // =========================================================================
+  useEffect(() => {
+    const canvas = radarCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    let animId: number
+    let sweepAngle = 0
+
+    const render = () => {
+      animId = requestAnimationFrame(render)
+      sweepAngle += 0.03
+      const w = canvas.width, h = canvas.height
+      const cx = w / 2, cy = h / 2
+      const rMax = Math.min(cx, cy) - 8
+
+      ctx.fillStyle = "#020617"
+      ctx.fillRect(0, 0, w, h)
+
+      ctx.strokeStyle = "rgba(56, 189, 248, 0.22)"
+      ctx.lineWidth = 1
+      for (let r = rMax * 0.33; r <= rMax; r += rMax * 0.33) {
+        ctx.beginPath()
+        ctx.arc(cx, cy, r, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.3)"
+      ctx.beginPath()
+      ctx.moveTo(cx, 4); ctx.lineTo(cx, h - 4)
+      ctx.moveTo(4, cy); ctx.lineTo(w - 4, cy)
+      ctx.stroke()
+
+      const sweepX = cx + Math.cos(sweepAngle) * rMax
+      const sweepY = cy + Math.sin(sweepAngle) * rMax
+      ctx.strokeStyle = "rgba(16, 185, 129, 0.9)"
+      ctx.lineWidth = 1.8
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(sweepX, sweepY)
+      ctx.stroke()
+
+      const blips = [
+        { r: rMax * 0.52, a: 1.15 },
+        { r: rMax * 0.75, a: 2.75 },
+        { r: rMax * 0.38, a: 4.45 }
+      ]
+      blips.forEach(b => {
+        const bx = cx + Math.cos(b.a) * b.r
+        const by = cy + Math.sin(b.a) * b.r
+        ctx.fillStyle = "#00f0ff"
+        ctx.beginPath()
+        ctx.arc(bx, by, 3, 0, Math.PI * 2)
+        ctx.fill()
+      })
+    }
+    render()
+
+    return () => cancelAnimationFrame(animId)
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSimSeconds(s => s + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const formatHMS = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600) % 24
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
+  }
 
   return (
     <div className="relative w-full min-h-screen bg-[#01030a] text-slate-100 font-sans selection:bg-cyan-500/30 overflow-x-hidden">
@@ -587,7 +643,41 @@ export default function MasterHomePage() {
             <div className="w-2 h-2 rounded-full border border-emerald-400 bg-emerald-400/20" />
           </div>
 
-          {/* Spacer for 3D Hero Typography floating in canvas */}
+          {/* LEFT & RIGHT HUD DECKS (Video 1 00:00 - 00:02) */}
+          <div className="relative w-full pt-20 px-6 flex justify-between items-start pointer-events-none">
+            
+            {/* Left HUD Panel */}
+            <div className="w-72 p-4 rounded-2xl bg-[#020617]/85 border border-slate-800/80 shadow-2xl backdrop-blur-md font-mono text-xs space-y-3 pointer-events-auto">
+              <div className="border-b border-slate-800 pb-2">
+                <div className="text-white font-black text-sm uppercase tracking-wider">MISSION PROPAGATION</div>
+                <div className="text-[10px] text-cyan-400 font-bold">NORAD ID: 48219 // LEO 51.6°</div>
+              </div>
+              <div className="space-y-1 text-[10px]">
+                <div className="flex justify-between"><span className="text-slate-500">VELOCITY:</span><span className="text-amber-400 font-bold">7.612 km/s</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">ALTITUDE:</span><span className="text-white font-bold">550.2 km</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">PERIOD:</span><span className="text-slate-300 font-bold">95.3 min</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">OISL LINK:</span><span className="text-emerald-400 font-bold">100 Gbps</span></div>
+              </div>
+            </div>
+
+            {/* Right HUD Panel: SGP4 Radar Reticle */}
+            <div className="w-72 p-4 rounded-2xl bg-[#020617]/85 border border-slate-800/80 shadow-2xl backdrop-blur-md font-mono text-xs space-y-3 pointer-events-auto">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div>
+                  <div className="text-[9px] text-slate-400 font-bold uppercase">PROPAGATION</div>
+                  <div className="text-base font-black text-white">SGP4</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[9px] text-slate-400 font-bold uppercase">EPOCH</div>
+                  <div className="text-xs font-bold text-cyan-400">{formatHMS(simSeconds)}</div>
+                </div>
+              </div>
+              <canvas ref={radarCanvasRef} width={260} height={130} className="w-full h-32 rounded-xl border border-slate-800 bg-black" />
+            </div>
+
+          </div>
+
+          {/* Spacer */}
           <div className="flex-1 w-full" />
 
           {/* THE THREE LOWER TELEMETRY HUD CARDS (Matches Video 1 00:09 Bottom Center) */}
