@@ -1,1 +1,1 @@
-export * from "./CinematicSpaceEngine"\n
+export * from "./CinematicSpaceEngine"

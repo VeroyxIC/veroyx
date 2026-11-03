@@ -200,7 +200,15 @@ export function createMilitarySatellite(options?: { scale?: number }) {
   dishGroup.add(dish)
   group.add(dishGroup)
 
-  return { group, solarWings, dishGroup, lens }
+    // Ion Thruster Plume
+  const plumeGeo = new THREE.ConeGeometry(0.22, 1.4, 16, 1, true)
+  const plumeMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending })
+  const plume = new THREE.Mesh(plumeGeo, plumeMat)
+  plume.rotation.x = -Math.PI / 2
+  plume.position.set(0, 0, -1.65)
+  group.add(plume)
+
+  return { group, plume, solarWings, dishGroup, scopeLens: lens, lens }
 }
 
 // 4. DEEP SPACE STARFIELD
