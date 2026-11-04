@@ -1,55 +1,13 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useRef } from "react"
 import Link from "next/link"
-import { 
-  ArrowRight, ShieldAlert, Fingerprint, Zap, Unlock, Lock,
-  ChevronRight, Radio, Activity, Orbit, Sparkles
-} from "lucide-react"
+import { ArrowRight } from "lucide-react"
 
 export default function SpaceXMasterHomePage() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
-  const [isWarping, setIsWarping] = useState<boolean>(false)
-  const [mouseOffset, setMouseOffset] = useState({ x: 0, y: 0 })
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (sessionStorage.getItem("veroyx_clearance_active") === "true") {
-        setIsAuthenticated(true)
-      }
-    }
-  }, [])
-
-  const handleInitiateWarp = () => {
-    setIsWarping(true)
-    setTimeout(() => {
-      setIsWarping(false)
-      setIsAuthenticated(true)
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("veroyx_clearance_active", "true")
-      }
-    }, 1200)
-  }
-
-  const handleLockTerminal = () => {
-    setIsAuthenticated(false)
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("veroyx_clearance_active")
-    }
-  }
-
-  // Parallax tracking
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const { clientX, clientY } = e
-    const { innerWidth, innerHeight } = window
-    setMouseOffset({
-      x: ((clientX / innerWidth) - 0.5) * 16,
-      y: ((clientY / innerHeight) - 0.5) * 16
-    })
-  }
-
-  // Relativistic Accretion Embers Canvas Particle System
+  // Fluid Relativistic Spacetime Warping & Photon Ring Breathing (Smooth 60 FPS, No Jitter)
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -57,252 +15,206 @@ export default function SpaceXMasterHomePage() {
     if (!ctx) return
 
     let animId: number
-    const w = (canvas.width = canvas.parentElement?.clientWidth || 700)
-    const h = (canvas.height = canvas.parentElement?.clientHeight || 700)
-
-    // Center of black hole in the image (roughly 56% X, 48% Y)
-    const centerX = w * 0.56
-    const centerY = h * 0.48
-
-    const particleCount = 75
-    const particles = Array.from({ length: particleCount }).map(() => ({
-      angle: Math.random() * Math.PI * 2,
-      radius: 140 + Math.random() * (w * 0.42),
-      speed: 0.008 + Math.random() * 0.014,
-      size: 0.8 + Math.random() * 2.2,
-      opacity: 0.2 + Math.random() * 0.7,
-      color: Math.random() > 0.4 ? "#ff9922" : "#ffffff"
-    }))
+    let time = 0
 
     const render = () => {
       animId = requestAnimationFrame(render)
+      time += 0.015
+
+      const w = canvas.width
+      const h = canvas.height
       ctx.clearRect(0, 0, w, h)
 
-      particles.forEach(p => {
-        p.angle += p.speed
-        p.radius -= 0.18 // Slowly spiral inwards into singularity
-        if (p.radius < 45) {
-          p.radius = 160 + Math.random() * (w * 0.38)
-        }
+      // Center coordinates corresponding to the V singularity / photon ring core
+      const cx = w * 0.54
+      const cy = h * 0.49
 
-        // Elliptical accretion distortion (flatter on Y)
-        const x = centerX + Math.cos(p.angle) * p.radius * 1.25
-        const y = centerY + Math.sin(p.angle) * (p.radius * 0.65)
+      // 1. Concentric Relativistic Spacetime Distortion Waves (Gravitational Lensing)
+      for (let i = 0; i < 4; i++) {
+        const wavePhase = (time * 0.4 + i * (Math.PI / 2)) % (Math.PI * 2)
+        const radius = 125 + Math.sin(wavePhase) * 22 + i * 28
+        const alpha = Math.max(0, 0.22 - (radius / 300) * 0.18)
 
-        ctx.fillStyle = p.color
-        ctx.globalAlpha = p.opacity
+        ctx.save()
         ctx.beginPath()
-        ctx.arc(x, y, p.size, 0, Math.PI * 2)
-        ctx.fill()
-      })
-    }
-    render()
+        // Elliptical Kerr accretion tilt
+        ctx.ellipse(cx, cy, radius * 1.35, radius * 0.75, -0.08, 0, Math.PI * 2)
+        ctx.strokeStyle = i % 2 === 0 ? "rgba(251, 191, 36, " + alpha + ")" : "rgba(255, 255, 255, " + (alpha * 0.7) + ")"
+        ctx.lineWidth = 1.8
+        ctx.setLineDash([12, 18])
+        ctx.lineDashOffset = -time * 24
+        ctx.stroke()
+        ctx.restore()
+      }
 
-    const onResize = () => {
+      // 2. Continuous Curved Geodesic Light Filaments (Light bending along the outer boundary)
+      for (let j = 0; j < 3; j++) {
+        const arcPhase = time * 0.35 + j * 2.1
+        const rArc = 175 + j * 32
+        
+        ctx.save()
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, rArc * 1.4, rArc * 0.68, -0.12, arcPhase, arcPhase + Math.PI * 0.8)
+        const grad = ctx.createLinearGradient(cx - rArc, cy, cx + rArc, cy)
+        grad.addColorStop(0, "rgba(255, 255, 255, 0)")
+        grad.addColorStop(0.5, "rgba(245, 158, 11, 0.45)")
+        grad.addColorStop(1, "rgba(234, 88, 12, 0)")
+        ctx.strokeStyle = grad
+        ctx.lineWidth = 2.4
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // 3. Glowing "V" Singularity Breathing Energy (Heat shimmer)
+      const pulse = Math.sin(time * 2.2) * 0.5 + 0.5
+      const radialGlow = ctx.createRadialGradient(cx, cy, 10, cx, cy, 110)
+      radialGlow.addColorStop(0, "rgba(255, 255, 255, " + (0.15 + pulse * 0.08) + ")")
+      radialGlow.addColorStop(0.35, "rgba(245, 158, 11, " + (0.18 + pulse * 0.08) + ")")
+      radialGlow.addColorStop(0.7, "rgba(234, 88, 12, " + (0.06 + pulse * 0.04) + ")")
+      radialGlow.addColorStop(1, "rgba(0, 0, 0, 0)")
+
+      ctx.fillStyle = radialGlow
+      ctx.beginPath()
+      ctx.arc(cx, cy, 110, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    const resize = () => {
       if (!canvas || !canvas.parentElement) return
       canvas.width = canvas.parentElement.clientWidth
       canvas.height = canvas.parentElement.clientHeight
     }
-    window.addEventListener("resize", onResize)
+    resize()
+    window.addEventListener("resize", resize)
+    render()
 
     return () => {
       cancelAnimationFrame(animId)
-      window.removeEventListener("resize", onResize)
+      window.removeEventListener("resize", resize)
     }
-  }, [isAuthenticated])
+  }, [])
 
   return (
-    <div 
-      onMouseMove={handleMouseMove}
-      className="relative w-full min-h-screen bg-[#000000] text-white font-sans selection:bg-amber-500/30 overflow-x-hidden flex flex-col justify-between"
-    >
+    <div className="relative w-full min-h-screen bg-[#000000] text-white font-sans selection:bg-amber-500/30 overflow-x-hidden flex flex-col justify-between">
       
-      {/* STATE 1: ZERO-TRUST WARP GATEWAY */}
-      {!isAuthenticated ? (
-        <div className="min-h-screen flex items-center justify-center pt-16 px-4 pb-12 z-30 select-none">
-          <div className="w-full max-w-xl p-8 rounded-3xl bg-[#030712]/95 backdrop-blur-2xl border border-white/10 shadow-[0_0_80px_rgba(245,158,11,0.2)] space-y-6 font-mono text-xs pointer-events-auto">
-            
-            <div className="text-center space-y-2 border-b border-white/10 pb-4">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-950/60 border border-amber-500/50 text-amber-300 text-[10px] font-bold">
-                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
-                <span>RESTRICTED ACCESS // ALLIED SPACE COMMAND</span>
-              </div>
-              <h1 className="text-2xl font-black text-white tracking-widest uppercase">Zero-Trust Security Gate</h1>
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                TOP SECRET ENCLAVE. RELATIVISTIC KERR ASTRODYNAMICS &amp; JADC2 PROPAGATION INITIALIZED.
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-black/60 border border-white/10 space-y-3">
-              <div className="flex items-center justify-between text-[11px]">
-                <div className="flex items-center gap-2 text-slate-300 font-bold">
-                  <Fingerprint className="w-4 h-4 text-amber-400" />
-                  <span>CLEARANCE: TOP SECRET SI-TK</span>
-                </div>
-                <span className="text-emerald-400 font-bold text-[10px]">STATUS: VERIFIED</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-[10px] text-amber-300 font-bold">
-                [ CRYPTOGRAPHIC FIPS 140-3 TOKEN VALIDATED ]
-              </div>
-            </div>
-
-            <button
-              onClick={handleInitiateWarp}
-              disabled={isWarping}
-              className="w-full py-4 rounded-xl font-bold uppercase tracking-widest bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 hover:from-amber-500 hover:to-rose-500 text-white transition-all shadow-[0_0_30px_rgba(245,158,11,0.4)] flex items-center justify-center gap-2"
-            >
-              {isWarping ? <Zap className="w-4 h-4 animate-spin text-amber-200" /> : <Unlock className="w-4 h-4" />}
-              <span>{isWarping ? "ENGAGING SECURE TERMINAL..." : "ENTER OPERATIONAL PROPAGATOR"}</span>
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* STATE 2: SPACEX EDITORIAL HERO THEATER (Clean Left Typography + Living Black Hole on Right) */
-        <div className="relative w-full min-h-screen flex flex-col justify-between z-10 select-none">
+      {/* MAIN HERO SPLIT: EXACT SPACEX EDITORIAL ALIGNMENT */}
+      <main className="relative w-full max-w-7xl mx-auto px-6 sm:px-12 pt-36 lg:pt-44 pb-16 flex-1 flex flex-col lg:flex-row items-center justify-between">
+        
+        {/* LEFT 45%: SPACEX EDITORIAL TYPOGRAPHY */}
+        <section className="w-full lg:w-[45%] space-y-7 z-20">
           
-          {/* Top Session Security Banner */}
-          <div className="fixed top-14 left-0 right-0 z-40 bg-black/85 backdrop-blur-md border-b border-white/10 px-8 py-2.5 flex items-center justify-between font-mono text-[11px]">
-            <div className="flex items-center gap-3 text-amber-300">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-              <span className="font-bold text-white tracking-wider">VEROYX // RELATIVISTIC SPACE DOMAIN AWARENESS</span>
-              <span className="text-slate-600">|</span>
-              <span className="text-slate-400">CLEARANCE: TS-SCI</span>
-            </div>
-            <button 
-              onClick={handleLockTerminal} 
-              className="px-3 py-1 rounded bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 font-bold transition-all flex items-center gap-1.5 text-[10px]"
-            >
-              <Lock className="w-3 h-3" />
-              <span>LOCK TERMINAL</span>
-            </button>
+          {/* Subtle Sector Eyebrow */}
+          <div className="inline-flex items-center gap-2.5 px-3 py-1 rounded-none border border-white/10 bg-white/[0.03] text-amber-300 text-[10px] font-mono tracking-[0.25em] uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span>ALLIED JADC2 &amp; SPACE DEFENSE</span>
           </div>
 
-          {/* MAIN HERO SPLIT: UNCLUTTERED LEFT EDITORIAL + RIGHT ANIMATED BLACK HOLE */}
-          <div className="relative w-full max-w-7xl mx-auto px-6 sm:px-10 pt-32 pb-16 flex-1 flex flex-col lg:flex-row items-center justify-between">
+          {/* Heavyweight Editorial Headline (SpaceX Standard) */}
+          <h1 className="text-5xl sm:text-7xl lg:text-8xl font-black uppercase tracking-tight text-white leading-[0.94]">
+            SECURING<br />
+            THE HIGH<br />
+            GROUND
+          </h1>
+
+          {/* Minimalist Sub-Copy */}
+          <p className="text-sm sm:text-base text-neutral-400 font-sans leading-relaxed max-w-lg">
+            Veroyx deploys institutional-grade orbital mechanics, relativistic gravitational tracking, and multi-domain JADC2 command systems for allied space superiority.
+          </p>
+
+          {/* SpaceX Outline CTA Button */}
+          <div className="pt-2 flex flex-wrap items-center gap-4">
+            <Link
+              href="/c2"
+              className="px-8 py-3.5 border border-white text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center gap-3 hover:scale-105"
+            >
+              <span>EXPLORE PLATFORM</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+
+            <Link
+              href="/planetary-defense"
+              className="px-6 py-3.5 border border-white/20 text-neutral-300 font-mono text-xs font-bold uppercase tracking-widest hover:border-amber-400 hover:text-amber-300 transition-all"
+            >
+              <span>KINETIC INTERCEPT</span>
+            </Link>
+
+            <Link
+              href="/hypersonic"
+              className="px-6 py-3.5 border border-white/20 text-neutral-300 font-mono text-xs font-bold uppercase tracking-widest hover:border-white/60 hover:text-white transition-all"
+            >
+              <span>AERO-ORBITAL CFD</span>
+            </Link>
+          </div>
+
+          {/* Operational Telemetry Ticker */}
+          <div className="pt-8 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-6 font-mono text-[10px] text-neutral-500">
+            <div>
+              <span className="text-neutral-400 block font-bold">RSO TRACKED</span>
+              <span className="text-white text-sm font-bold">48,219</span>
+            </div>
+            <div>
+              <span className="text-neutral-400 block font-bold">PROPAGATION</span>
+              <span className="text-amber-400 text-sm font-bold">SGP4 / J2</span>
+            </div>
+            <div>
+              <span className="text-neutral-400 block font-bold">KERR SPIN (a*)</span>
+              <span className="text-white text-sm font-bold">0.998</span>
+            </div>
+            <div>
+              <span className="text-neutral-400 block font-bold">OISL CROSSLINK</span>
+              <span className="text-emerald-400 text-sm font-bold">100 Gbps</span>
+            </div>
+          </div>
+
+        </section>
+
+        {/* RIGHT 55%: ROCK-SOLID, LIVING BLACK HOLE "V" THEATER (ZERO JITTER) */}
+        <section className="relative w-full lg:w-[55%] h-[55vh] lg:h-[75vh] flex items-center justify-center mt-8 lg:mt-0 select-none pointer-events-none">
+          
+          {/* Seamless Radial Mask into Pure #000000 Black */}
+          <div className="relative w-full h-full flex items-center justify-center [mask-image:radial-gradient(circle_at_center,black_65%,transparent_98%)]">
             
-            {/* LEFT 45%: SPACEX EDITORIAL COLUMN */}
-            <div className="w-full lg:w-[45%] space-y-6 z-20 pointer-events-auto">
-              
-              {/* Clearance Badge */}
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-amber-300 text-[10px] font-mono tracking-widest uppercase">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                <span>ALLIED JADC2 &amp; SPACE DEFENSE</span>
-              </div>
-
-              {/* Bold SpaceX-Grade Headline */}
-              <div className="space-y-1">
-                <h1 className="text-5xl sm:text-7xl font-black uppercase tracking-tight text-white leading-[1.04]">
-                  SECURING<br />
-                  THE HIGH<br />
-                  GROUND
-                </h1>
-              </div>
-
-              {/* Minimalist Sub-Copy */}
-              <p className="text-sm sm:text-base text-slate-400 font-sans leading-relaxed max-w-md">
-                Veroyx deploys institutional-grade orbital mechanics, relativistic gravitational tracking, and multi-domain JADC2 command systems for allied space dominance.
-              </p>
-
-              {/* Minimalist SpaceX Outline CTA Buttons */}
-              <div className="pt-4 flex flex-wrap items-center gap-4">
-                <Link
-                  href="/c2"
-                  className="px-8 py-3.5 border border-white text-white font-mono text-xs font-bold uppercase tracking-widest hover:bg-white hover:text-black transition-all flex items-center gap-3 hover:scale-105"
-                >
-                  <span>EXPLORE PLATFORM</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-
-                <Link
-                  href="/planetary-defense"
-                  className="px-6 py-3.5 border border-white/20 text-slate-300 font-mono text-xs font-bold uppercase tracking-widest hover:border-amber-400 hover:text-amber-300 transition-all"
-                >
-                  <span>KINETIC INTERCEPT</span>
-                </Link>
-
-                <Link
-                  href="/hypersonic"
-                  className="px-6 py-3.5 border border-white/20 text-slate-300 font-mono text-xs font-bold uppercase tracking-widest hover:border-cyan-400 hover:text-cyan-300 transition-all"
-                >
-                  <span>AERO-ORBITAL CFD</span>
-                </Link>
-              </div>
-
-              {/* Bottom Telemetry Ticker (Left Edge Only) */}
-              <div className="pt-8 border-t border-white/10 flex flex-wrap items-center gap-6 font-mono text-[10px] text-slate-500">
-                <div>
-                  <span className="text-slate-400 block font-bold">RSO TRACKED</span>
-                  <span className="text-white text-sm font-bold">48,219</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-bold">PROPAGATION</span>
-                  <span className="text-cyan-400 text-sm font-bold">SGP4 / J2</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-bold">KERR SPIN (a*)</span>
-                  <span className="text-amber-400 text-sm font-bold">0.998</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block font-bold">OISL CROSSLINK</span>
-                  <span className="text-emerald-400 text-sm font-bold">100 Gbps</span>
-                </div>
-              </div>
-
-            </div>
-
-            {/* RIGHT 55%: CLEAN, LIVING BLACK HOLE "V" THEATER (COMPLETELY UNOBSTRUCTED) */}
-            <div 
-              className="relative w-full lg:w-[55%] h-[55vh] lg:h-[78vh] flex items-center justify-center pointer-events-none mt-8 lg:mt-0"
-              style={{
-                transform: `translate3d(${mouseOffset.x}px, ${mouseOffset.y}px, 0)`
+            {/* High-Fidelity Black Hole V Asset (Anchored, No Jitter) */}
+            <img
+              src="/assets/hero/blackhole-v.jpg"
+              alt="Relativistic Kerr Black Hole with V Singularity"
+              className="w-full h-full object-contain filter contrast-[1.06] brightness-[1.01]"
+              onError={(e) => {
+                // If not found in /assets/hero, check root public fallback
+                const target = e.target as HTMLImageElement
+                if (!target.src.includes("VBH")) {
+                  target.src = "/VBH.jpg"
+                }
               }}
-            >
-              {/* Outer radial fade so the asset dissolves seamlessly into pure #000000 void */}
-              <div className="relative w-full h-full flex items-center justify-center [mask-image:radial-gradient(circle_at_center,black_64%,transparent_98%)]">
-                
-                {/* The Real Render Image (Clean, No Overlapping Cards) */}
-                <img
-                  src="/assets/hero/blackhole-v.jpg"
-                  alt="Relativistic Kerr Black Hole with V Singularity"
-                  className="w-full h-full object-contain filter contrast-[1.08] brightness-[1.02] animate-pulse duration-[6000ms]"
-                  onError={(e) => {
-                    // Fallback to placeholder if not yet copied to public folder
-                    (e.target as HTMLElement).style.display = "none"
-                  }}
-                />
+            />
 
-                {/* Animated Glowing V Singularity Hotspot */}
-                <div className="absolute top-[48%] left-[56%] -translate-x-1/2 -translate-y-1/2 w-32 h-32 rounded-full bg-gradient-to-r from-amber-500/25 via-orange-500/20 to-transparent blur-2xl animate-ping duration-[3500ms] pointer-events-none" />
-
-                {/* Relativistic Accretion Sparks & Dust Stream Canvas */}
-                <canvas 
-                  ref={canvasRef} 
-                  className="absolute inset-0 w-full h-full pointer-events-none" 
-                />
-
-              </div>
-            </div>
+            {/* In-Depth Spacetime Gravitational Lensing Canvas */}
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 w-full h-full pointer-events-none"
+            />
 
           </div>
 
-          {/* Simple Bottom SpaceX Footer Bar */}
-          <div className="relative w-full px-8 py-4 border-t border-white/10 bg-black/60 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] font-mono text-slate-500 z-20">
-            <div className="flex items-center gap-4">
-              <span className="text-white font-bold tracking-wider">VEROYX AEROSPACE © 2026</span>
-              <span className="text-slate-700">|</span>
-              <span>MIL-STD-188 COMPLIANT</span>
-              <span className="text-slate-700">|</span>
-              <span>FIPS 140-3 ZERO-TRUST</span>
-            </div>
-            <div className="flex items-center gap-6">
-              <Link href="/c2" className="hover:text-white transition-all">C2 BATTLE GLASS</Link>
-              <Link href="/catalog" className="hover:text-white transition-all">48K SATELLITE CATALOG</Link>
-              <Link href="/visualizer" className="hover:text-white transition-all">ORBIT VISUALIZER</Link>
-            </div>
-          </div>
+        </section>
 
+      </main>
+
+      {/* Minimalist SpaceX Footer */}
+      <footer className="relative w-full px-6 sm:px-12 py-5 border-t border-white/10 bg-black/80 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] font-mono text-neutral-500 z-20">
+        <div className="flex items-center gap-4">
+          <span className="text-white font-bold tracking-wider">VEROYX AEROSPACE © 2026</span>
+          <span className="text-neutral-800">|</span>
+          <span>ITAR RESTRICTED</span>
+          <span className="text-neutral-800">|</span>
+          <span>FIPS 140-3 ZERO-TRUST</span>
         </div>
-      )}
+        <div className="flex items-center gap-6">
+          <Link href="/c2" className="hover:text-white transition-colors">C2 BATTLE GLASS</Link>
+          <Link href="/catalog" className="hover:text-white transition-colors">48K SATELLITE CATALOG</Link>
+          <Link href="/visualizer" className="hover:text-white transition-colors">ORBIT VISUALIZER</Link>
+        </div>
+      </footer>
 
     </div>
   )

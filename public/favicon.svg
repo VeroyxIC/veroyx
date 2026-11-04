@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <circle cx="64" cy="64" r="64" fill="#000000"/>
+  <!-- Relativistic Lensing Rings -->
+  <circle cx="64" cy="64" r="54" stroke="#f59e0b" stroke-width="2.5" stroke-opacity="0.35" stroke-dasharray="4 4"/>
+  <circle cx="64" cy="64" r="48" stroke="url(#lensGradient)" stroke-width="4.5"/>
+  <circle cx="64" cy="64" r="38" fill="#000000"/>
+  
+  <!-- Glowing V Singularity -->
+  <path d="M 38 40 L 54 40 L 64 74 L 74 40 L 90 40 L 71 88 L 57 88 Z" fill="url(#vCoreGradient)"/>
+  <path d="M 43 42 L 52 42 L 64 69 L 76 42 L 85 42 L 70 85 L 58 85 Z" fill="#ffffff" opacity="0.9"/>
+
+  <defs>
+    <linearGradient id="lensGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="35%" stop-color="#fbbf24"/>
+      <stop offset="75%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#451a03"/>
+    </linearGradient>
+    <linearGradient id="vCoreGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="45%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+  </defs>
+</svg>

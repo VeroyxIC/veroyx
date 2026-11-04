@@ -7,6 +7,7 @@ import CommandPalette from "@/components/CommandPalette"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg", apple: "/favicon.svg" },
   title: "Veroyx // Space Domain Awareness & JADC2 Battle Management",
   description: "Next-generation Space Domain Awareness (SDA), real-time SGP4 orbital propagation, counter-space kinetic intercept modeling, and multi-tier JADC2 battle management.",
 }
