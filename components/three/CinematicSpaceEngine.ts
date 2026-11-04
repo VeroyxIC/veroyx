@@ -89,42 +89,7 @@ export function createCinematicEarth(radius = 5.8) {
   sunFlareGroup.position.set(0, radius * 1.02, 0)
 
   // Core white-hot sun disc
-  const sunDiscGeo = new THREE.CircleGeometry(0.85, 32)
-  const sunDiscMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 0.98,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide
-  })
-  const sunDisc = new THREE.Mesh(sunDiscGeo, sunDiscMat)
-  sunFlareGroup.add(sunDisc)
-
-  // Warm golden corona halo
-  const coronaGeo = new THREE.CircleGeometry(2.4, 32)
-  const coronaMat = new THREE.MeshBasicMaterial({
-    color: 0xf59e0b,
-    transparent: true,
-    opacity: 0.55,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide
-  })
-  const coronaMesh = new THREE.Mesh(coronaGeo, coronaMat)
-  sunFlareGroup.add(coronaMesh)
-
-  // Anamorphic horizontal lens flare streak across the northern horizon
-  const streakGeo = new THREE.PlaneGeometry(16.0, 0.18)
-  const streakMat = new THREE.MeshBasicMaterial({
-    color: 0x67e8f9,
-    transparent: true,
-    opacity: 0.85,
-    blending: THREE.AdditiveBlending,
-    side: THREE.DoubleSide
-  })
-  const streakMesh = new THREE.Mesh(streakGeo, streakMat)
-  sunFlareGroup.add(streakMesh)
-
-  earthGroup.add(sunFlareGroup)
+  
 
   return { earthGroup, earthMesh, cloudsMesh, sunFlareGroup }
 }

@@ -59,9 +59,7 @@ export default function VisualizerPage() {
 
     const sunGeo = new THREE.SphereGeometry(1.6, 32, 32)
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    const sunMesh = new THREE.Mesh(sunGeo, sunMat)
-    sunMesh.position.set(-32, 26, 14)
-    scene.add(sunMesh)
+    
 
     const flareLineGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-48, 26, 14),
