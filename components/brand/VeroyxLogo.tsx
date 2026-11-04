@@ -12,15 +12,21 @@ interface VeroyxLogoProps {
 export default function VeroyxLogo({ className = "", showText = true, size = 26 }: VeroyxLogoProps) {
   return (
     <Link href="/" className={`inline-flex items-center gap-3.5 group select-none ${className}`}>
+      {/* 4-degree upward tilt towards the right corner */}
       <div 
-        className="relative flex items-center justify-center shrink-0 transition-transform duration-500 group-hover:scale-105"
-        style={{ width: size, height: size }}
+        className="relative flex items-center justify-center shrink-0 transition-transform duration-500 group-hover:scale-110"
+        style={{ 
+          width: size, 
+          height: size,
+          transform: "rotate(4deg)",
+          transformOrigin: "center center"
+        }}
       >
-        <svg viewBox="0 0 100 100" fill="none" className="w-full h-full drop-shadow-[0_0_12px_rgba(245,158,11,0.5)]">
+        <svg viewBox="0 0 100 100" fill="none" className="w-full h-full drop-shadow-[0_0_12px_rgba(245,158,11,0.55)]">
           {/* Lensing Accretion Ring */}
-          <circle cx="50" cy="50" r="44" stroke="#f59e0b" strokeWidth="2" strokeOpacity="0.3" strokeDasharray="3 3"/>
-          <circle cx="50" cy="50" r="39" stroke="url(#logoLensGrad)" strokeWidth="3.2"/>
-          <circle cx="50" cy="50" r="31" fill="#000000"/>
+          <circle cx="50" cy="50" r="44" stroke="#f59e0b" strokeWidth="2.2" strokeOpacity="0.35" strokeDasharray="3 3"/>
+          <circle cx="50" cy="50" r="38" stroke="url(#logoLensGrad)" strokeWidth="3.2"/>
+          <circle cx="50" cy="50" r="30" fill="#000000"/>
 
           {/* Luminous V Singularity */}
           <path
@@ -30,7 +36,7 @@ export default function VeroyxLogo({ className = "", showText = true, size = 26 
           <path
             d="M 33 34 L 41 34 L 50 60 L 59 34 L 67 34 L 54 74 L 46 74 Z"
             fill="#ffffff"
-            opacity="0.85"
+            opacity="0.9"
           />
 
           <defs>
@@ -50,7 +56,7 @@ export default function VeroyxLogo({ className = "", showText = true, size = 26 
       </div>
 
       {showText && (
-        <span className="font-mono text-sm tracking-[0.32em] font-black text-white group-hover:text-amber-200 transition-colors uppercase">
+        <span className="font-mono text-sm tracking-[0.32em] font-black text-white group-hover:text-amber-300 transition-colors uppercase">
           VEROYX
         </span>
       )}
