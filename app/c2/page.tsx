@@ -1,218 +1,405 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import * as THREE from "three"
 import Link from "next/link"
+import Navbar from "@/components/nav/Navbar"
+import InteractiveTurntable from "@/components/ui/InteractiveTurntable"
 import { 
-  Orbit, Crosshair, Radio, ShieldAlert, ShieldCheck, 
-  Activity, Layers, Gauge, Compass, Play, Square, 
-  RotateCcw, Globe, Terminal, ArrowRight, Zap, Eye, Satellite 
+  ShieldAlert, Radio, Activity, Compass, Eye, Satellite, 
+  Crosshair, Zap, ArrowRight, ShieldCheck, Terminal, 
+  Maximize2, AlertTriangle, Layers, Disc, Anchor, Flame, Lock
 } from "lucide-react"
-import { createCinematicEarth, createMilitarySatellite, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
 
-export default function C2TacticalPage() {
-  const mountRef = useRef<HTMLDivElement | null>(null)
-  const [selectedTrack, setSelectedTrack] = useState<string>("VXO-01")
+type AssetDomain = "AST-01" | "AST-11" | "AST-07"
 
-  const tracks = [
-    { id: "VXO-01", name: "Tactical Optical Recon", orbit: "LEO 510 km", status: "NOMINAL", lat: 48.2, lon: 35.4, inc: 97.4, color: "#38bdf8" },
-    { id: "SAR-02", name: "Aegis High-Res Radar", orbit: "LEO 620 km", status: "ENGAGED", lat: 51.5, lon: 30.2, inc: 98.1, color: "#f59e0b" },
-    { id: "INSP-03", name: "COSMOS-2558 Co-Orbital", orbit: "LEO 512 km", status: "HOSTILE DRIFT", lat: 48.1, lon: 35.1, inc: 97.4, color: "#ef4444" },
-    { id: "MIL-04", name: "Milstar Feeder-4", orbit: "GEO 35,786 km", status: "NOMINAL", lat: 0.1, lon: -45.0, inc: 0.1, color: "#d946ef" }
-  ]
+export default function JADC2BattleGlassPage() {
+  const [activeAsset, setActiveAsset] = useState<AssetDomain>("AST-01")
+  const [fireControlActive, setFireControlActive] = useState<boolean>(false)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const active = tracks.find(t => t.id === selectedTrack) || tracks[0]
-
+  // Real-time Tactical Radar Canvas Engine
   useEffect(() => {
-    const container = mountRef.current
-    if (!container) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
 
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#01030a")
-
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 2000)
-    camera.position.set(0, 16, 28)
-    camera.lookAt(0, 0, 0)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
-    const sun = new THREE.DirectionalLight(0xfffaed, 3.4)
-    sun.position.set(30, 25, 20)
-    scene.add(sun)
-
-    const starfield = createDeepSpaceStarfield(1200, 700)
-    scene.add(starfield)
-
-    const earthRadius = 5.5
-    const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
-    scene.add(earthGroup)
-
-    const { group: satGroup } = createMilitarySatellite({ scale: 0.55 })
-    scene.add(satGroup)
-
-    const clock = new THREE.Clock()
     let animId: number
+    let sweepAngle = 0
 
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
+    const tracks = [
+      { id: "TRK-901", x: 0.35, y: 0.28, type: "HOSTILE_HGV", alt: "42km", vel: "Mach 8.4" },
+      { id: "TRK-442", x: 0.72, y: 0.65, type: "UNCOOP_SAT", alt: "540km", vel: "7.6 km/s" },
+      { id: "AST-01",  x: 0.48, y: 0.52, type: "FRIENDLY_SDA", alt: "510km", vel: "7.62 km/s" },
+      { id: "AST-11",  x: 0.22, y: 0.78, type: "FRIENDLY_AEGIS", alt: "0m", vel: "28 kts" },
+    ]
 
-      const delta = clock.getDelta()
-      const elapsed = clock.getElapsedTime()
+    const render = () => {
+      animId = requestAnimationFrame(render)
+      sweepAngle += 0.025
 
-      earthMesh.rotation.y += 0.05 * delta
-      cloudsMesh.rotation.y += 0.075 * delta
+      const w = (canvas.width = canvas.parentElement?.clientWidth || 800)
+      const h = (canvas.height = canvas.parentElement?.clientHeight || 600)
+      const cx = w * 0.5
+      const cy = h * 0.5
+      const maxR = Math.min(w, h) * 0.45
 
-      const r = earthRadius + 2.2
-      satGroup.position.set(r * Math.cos(elapsed * 0.4), r * Math.sin(elapsed * 0.4) * 0.45, r * Math.sin(elapsed * 0.4) * 0.85)
-      satGroup.lookAt(0, 0, 0)
+      ctx.fillStyle = "#020408"
+      ctx.fillRect(0, 0, w, h)
 
-      renderer.render(scene, camera)
+      // Range Rings (125km per ring)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.07)"
+      ctx.lineWidth = 1
+      for (let r = 1; r <= 4; r++) {
+        ctx.beginPath()
+        ctx.arc(cx, cy, (maxR / 4) * r, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+
+      // Compass Crosshairs
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.12)"
+      ctx.beginPath()
+      ctx.moveTo(cx - maxR, cy)
+      ctx.lineTo(cx + maxR, cy)
+      ctx.moveTo(cx, cy - maxR)
+      ctx.lineTo(cx, cy + maxR)
+      ctx.stroke()
+
+      // Radar Sweep Fan
+      const sweepX = cx + Math.cos(sweepAngle) * maxR
+      const sweepY = cy + Math.sin(sweepAngle) * maxR
+
+      const sweepGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR)
+      sweepGrad.addColorStop(0, "rgba(245, 158, 11, 0.22)")
+      sweepGrad.addColorStop(1, "rgba(245, 158, 11, 0.0)")
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.arc(cx, cy, maxR, sweepAngle - 0.45, sweepAngle)
+      ctx.closePath()
+      ctx.fillStyle = sweepGrad
+      ctx.fill()
+
+      // Sweep Leading Edge
+      ctx.strokeStyle = "rgba(251, 191, 36, 0.85)"
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(sweepX, sweepY)
+      ctx.stroke()
+      ctx.restore()
+
+      // Render Tactical Track Reticles
+      tracks.forEach(trk => {
+        const tx = trk.x * w
+        const ty = trk.y * h
+
+        const isHostile = trk.type.includes("HOSTILE")
+        const isFriendly = trk.type.includes("FRIENDLY")
+
+        ctx.strokeStyle = isHostile ? "#ef4444" : isFriendly ? "#f59e0b" : "#e2e8f0"
+        ctx.fillStyle = ctx.strokeStyle
+        ctx.lineWidth = 1.2
+
+        ctx.strokeRect(tx - 6, ty - 6, 12, 12)
+        ctx.beginPath()
+        ctx.arc(tx, ty, 2, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.font = "9px monospace"
+        ctx.fillText(`${trk.id} [${trk.vel}]`, tx + 9, ty - 2)
+        ctx.fillStyle = "rgba(255, 255, 255, 0.4)"
+        ctx.fillText(`ALT: ${trk.alt}`, tx + 9, ty + 9)
+      })
+
+      // Active Fire-Control Intercept Solution (Space-to-Sea Crosslink)
+      if (fireControlActive) {
+        const sat = tracks[2]
+        const aegis = tracks[3]
+        const hostile = tracks[0]
+
+        // Crosslink Laser: AST-01 to AST-11
+        ctx.strokeStyle = "rgba(245, 158, 11, 0.9)"
+        ctx.setLineDash([4, 4])
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.moveTo(sat.x * w, sat.y * h)
+        ctx.lineTo(aegis.x * w, aegis.y * h)
+        ctx.stroke()
+
+        // Kinetic Intercept Vector: AST-11 to Hostile
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.85)"
+        ctx.setLineDash([2, 2])
+        ctx.beginPath()
+        ctx.moveTo(aegis.x * w, aegis.y * h)
+        ctx.lineTo(hostile.x * w, hostile.y * h)
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
     }
-    animate()
 
-    const onResize = () => {
-      if (!container) return
-      camera.aspect = container.clientWidth / container.clientHeight
-      camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
-    }
-    window.addEventListener("resize", onResize)
-
-    return () => {
-      cancelAnimationFrame(animId)
-      window.removeEventListener("resize", onResize)
-      renderer.dispose()
-    }
-  }, [selectedTrack])
+    render()
+    return () => cancelAnimationFrame(animId)
+  }, [fireControlActive])
 
   return (
-    <div className="w-full h-[calc(100vh-3.5rem)] pt-14 px-6 pb-6 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden select-none">
-      
-      {/* LEFT PANEL */}
-      <div className="w-80 h-full flex flex-col pr-6 border-r border-slate-800/80 overflow-y-auto font-mono text-xs">
-        <div className="mb-4">
-          <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase tracking-widest text-[10px] mb-1">
-            <Orbit className="w-4 h-4" /> Space Operations Command
-          </div>
-          <h1 className="text-lg font-black text-white tracking-wider">C2 BATTLE GLASS</h1>
-          <p className="text-[10px] text-slate-500 uppercase">JSpOC Tactical Theater Operations</p>
-        </div>
+    <div className="relative w-full min-h-screen bg-[#000000] text-white font-mono selection:bg-amber-500/30 overflow-x-hidden flex flex-col justify-between">
+      <Navbar />
 
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-[10px] text-slate-400 uppercase font-bold flex justify-between">
-              <span>Custodial Track Roster</span>
-              <span className="text-emerald-400 font-bold">4 ONLINE</span>
-            </label>
-            <div className="space-y-1.5">
-              {tracks.map(t => {
-                const isSelected = t.id === selectedTrack
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setSelectedTrack(t.id)}
-                    className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-center justify-between ${
-                      isSelected 
-                        ? "bg-cyan-950/60 border-cyan-500 text-cyan-200 shadow-[0_0_15px_rgba(6,182,212,0.25)]" 
-                        : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
-                    }`}
-                  >
-                    <div>
-                      <div className="font-bold text-[11px] text-white flex items-center gap-1.5">
-                        {t.name}
-                      </div>
-                      <div className="text-[9px] text-slate-500 mt-0.5">{t.id} | {t.orbit}</div>
-                    </div>
-                    <span className={`text-[9px] font-bold ${t.status === "HOSTILE DRIFT" ? "text-rose-400 animate-pulse" : "text-emerald-400"}`}>
-                      {t.status}
-                    </span>
-                  </button>
-                )
-              })}
+      <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-8 pt-28 pb-16 flex-1 flex flex-col gap-6">
+        
+        {/* Top Operational Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[10px] font-bold tracking-widest uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>JADC2 BATTLE MANAGEMENT GLASS // MIL-STD-6016 COMPLIANT</span>
             </div>
+            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+              MULTI-DOMAIN COMMAND GLASS (C2)
+            </h1>
           </div>
 
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Telemetry Link Status</span>
-              <span className="text-cyan-400 font-bold">CARRIER LOCKED</span>
-            </div>
-            <div className="flex justify-between"><span className="text-slate-500">Sub-Sat Lat:</span><span className="text-white font-bold">{active.lat}° N</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Sub-Sat Lon:</span><span className="text-white font-bold">{active.lon}° E</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Orbital Speed:</span><span className="text-emerald-400 font-bold">7.61 km/s</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Inclination:</span><span className="text-cyan-400 font-bold">{active.inc}°</span></div>
-          </div>
-        </div>
-      </div>
-
-      {/* CENTER VIEWPORT */}
-      <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-4 left-6 z-10 font-mono pointer-events-none">
-          <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">
-            Global Theater Operations // 60 FPS Optical Recon Tracking
-          </div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-black text-white">{active.name}</span>
-            <span className="text-cyan-400 text-xs font-bold">[{active.id} // {active.orbit}]</span>
-          </div>
-        </div>
-
-        <div ref={mountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
-
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] bg-slate-950/85 backdrop-blur-xl border border-slate-800 p-3.5 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+          {/* Tactical Fire Control Switch */}
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-white font-bold text-xs">{active.name} IN TACTICAL VIEWPORT</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">SDA CUSTODY</span>
-            <span className="text-cyan-400 font-bold text-sm">USSF SPACE COMMAND</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">INTERCEPT READINESS</span>
-            <span className="text-emerald-400 font-bold text-sm">WEAPONS ENGAGED</span>
+            <button
+              onClick={() => setFireControlActive(!fireControlActive)}
+              className={`px-4 py-2 text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2 ${
+                fireControlActive 
+                  ? "bg-red-500/20 border-red-500 text-red-300 shadow-[0_0_20px_rgba(239,68,68,0.4)] animate-pulse" 
+                  : "bg-white/[0.03] border-white/20 text-neutral-300 hover:border-amber-400 hover:text-white"
+              }`}
+            >
+              <Crosshair className="w-3.5 h-3.5" />
+              <span>{fireControlActive ? "FIRE-CONTROL ENGAGED" : "LINK INTERCEPT SOLUTION"}</span>
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* RIGHT PANEL */}
-      <div className="w-80 h-full flex flex-col pl-6 border-l border-slate-800/80 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-4 flex items-center gap-2 text-xs">
-          <Activity className="w-4 h-4 text-cyan-400" /> Tactical Intelligence
-        </h2>
+        {/* Viewports Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+          
+          {/* LEFT 7 COLS: 2D REAL-TIME TACTICAL RADAR SWEEP */}
+          <div className="lg:col-span-7 flex flex-col gap-4">
+            <div className="relative w-full h-[460px] rounded-xl overflow-hidden border border-white/10 bg-[#020408]">
+              <canvas ref={canvasRef} className="w-full h-full" />
+              
+              <div className="absolute top-3 left-3 px-2 py-1 bg-black/80 border border-white/10 text-[10px] space-y-0.5">
+                <div className="text-amber-400 font-bold">RADAR MODE: SPY-6(V)1 TWS</div>
+                <div className="text-neutral-400">RANGE RING: 125 KM / DIV</div>
+              </div>
 
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>Operational Status</span>
-              <span className="text-emerald-400 font-bold">NOMINAL</span>
+              <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/80 border border-white/10 text-[10px] text-right space-y-0.5">
+                <div className="text-emerald-400 font-bold">OISL LINK: 100 Gbps LOCK</div>
+                <div className="text-neutral-400">LATENCY: 1.72 ms (LEO-TO-SEA)</div>
+              </div>
             </div>
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              Real-time space operations center battle glass fusing telemetry downlinks, SSN radar tracking, and autonomous intercept fire-control vectors.
-            </p>
+
+            {/* Engagement Kinematics Panel */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 border border-white/10 bg-white/[0.02]">
+                <span className="text-[9px] text-neutral-500 block uppercase">TRACK CORRELATION</span>
+                <span className="text-sm font-bold text-white">99.84%</span>
+                <span className="text-[9px] text-amber-400 block mt-0.5">EXTENDED KALMAN</span>
+              </div>
+              <div className="p-3 border border-white/10 bg-white/[0.02]">
+                <span className="text-[9px] text-neutral-500 block uppercase">CLOSURE VELOCITY (Vc)</span>
+                <span className="text-sm font-bold text-white">4.82 km/s</span>
+                <span className="text-[9px] text-red-400 block mt-0.5">MACH 14.1 RELATIVE</span>
+              </div>
+              <div className="p-3 border border-white/10 bg-white/[0.02]">
+                <span className="text-[9px] text-neutral-500 block uppercase">TIME-TO-GO (t_go)</span>
+                <span className="text-sm font-bold text-amber-400">38.4 s</span>
+                <span className="text-[9px] text-neutral-400 block mt-0.5">PRO-NAV GUIDANCE</span>
+              </div>
+              <div className="p-3 border border-white/10 bg-white/[0.02]">
+                <span className="text-[9px] text-neutral-500 block uppercase">KILL-CHAIN STATE</span>
+                <span className="text-sm font-bold text-emerald-400">TRACK CLOSED</span>
+                <span className="text-[9px] text-neutral-400 block mt-0.5">F2T2EA CYCLE</span>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <span className="text-[10px] text-slate-500 uppercase font-bold">Related Command Decks</span>
-            <Link href="/kill-chain" className="p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-cyan-500/60 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-              <span>Space Kill-Chain JADC2</span>
-              <ArrowRight className="w-3 h-3 text-cyan-400" />
-            </Link>
-            <Link href="/telecommand" className="p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-cyan-500/60 text-slate-300 hover:text-white transition-all flex items-center justify-between">
-              <span>CCSDS Telecommand Uplink</span>
-              <ArrowRight className="w-3 h-3 text-cyan-400" />
-            </Link>
+          {/* RIGHT 5 COLS: MULTI-DOMAIN ASSET INSPECTOR */}
+          <div className="lg:col-span-5 flex flex-col gap-4">
+            
+            {/* Domain Switcher */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => setActiveAsset("AST-01")}
+                className={`py-2 px-3 text-[10px] font-bold uppercase tracking-wider border transition-all flex items-center justify-center gap-1.5 ${
+                  activeAsset === "AST-01"
+                    ? "bg-amber-500/15 border-amber-500 text-amber-300"
+                    : "bg-white/[0.02] border-white/10 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Satellite className="w-3 h-3" />
+                <span>AST-01 (SPACE)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveAsset("AST-11")}
+                className={`py-2 px-3 text-[10px] font-bold uppercase tracking-wider border transition-all flex items-center justify-center gap-1.5 ${
+                  activeAsset === "AST-11"
+                    ? "bg-amber-500/15 border-amber-500 text-amber-300"
+                    : "bg-white/[0.02] border-white/10 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Anchor className="w-3 h-3" />
+                <span>AST-11 (NAVAL)</span>
+              </button>
+
+              <button
+                onClick={() => setActiveAsset("AST-07")}
+                className={`py-2 px-3 text-[10px] font-bold uppercase tracking-wider border transition-all flex items-center justify-center gap-1.5 ${
+                  activeAsset === "AST-07"
+                    ? "bg-amber-500/15 border-amber-500 text-amber-300"
+                    : "bg-white/[0.02] border-white/10 text-neutral-400 hover:text-white"
+                }`}
+              >
+                <Flame className="w-3 h-3" />
+                <span>AST-07 (GLIDE)</span>
+              </button>
+            </div>
+
+            {/* Asset Inspector Body */}
+            <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-4">
+              
+              {/* ASSET 1: AST-01 (360 TURNTABLE) */}
+              {activeAsset === "AST-01" && (
+                <div className="space-y-3">
+                  <InteractiveTurntable
+                    src="/assets/fleet/ast-01-turntable.webm"
+                    title="AST-01 EO/IR RECONNAISSANCE BUS"
+                    hullCode="AST-01 // NORAD 48219"
+                  />
+                  <div className="space-y-1.5 text-[10px]">
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">PAYLOAD APERTURE</span>
+                      <span className="text-white font-bold">0.85m Ritchey-Chrétien Cassegrain</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">SPECTRAL BANDS</span>
+                      <span className="text-amber-400 font-bold">VNIR (0.4-1.0µm) + MWIR (3-5µm)</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">ATTITUDE DETERMINATION</span>
+                      <span className="text-white font-bold">&lt; 0.002° Autonomous Star Tracker</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">CROSSLINK BANDWIDTH</span>
+                      <span className="text-emerald-400 font-bold">100 Gbps Coherent 1550nm OISL</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ASSET 2: AST-11 (AEGIS DESTROYER) */}
+              {activeAsset === "AST-11" && (
+                <div className="space-y-3">
+                  <div className="relative w-full h-72 rounded-xl overflow-hidden border border-white/10 bg-black flex items-center justify-center">
+                    <img 
+                      src="/assets/fleet/ast-11-destroyer.jpg" 
+                      alt="AST-11 Guided Missile Destroyer"
+                      className="w-full h-full object-cover filter contrast-[1.1]"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none"
+                      }}
+                    />
+                    <div className="absolute top-2 left-3 px-2 py-0.5 rounded bg-black/80 border border-white/10 text-[9px] text-amber-300 font-bold">
+                      ● AST-11 AEGIS FLIGHT III GUIDED MISSILE DESTROYER
+                    </div>
+                    <div className="absolute bottom-2 right-3 px-2 py-0.5 rounded bg-black/80 border border-white/10 text-[9px] text-emerald-400 font-bold">
+                      96-CELL Mk 41 VLS READY
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-[10px]">
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">PRIMARY SENSOR</span>
+                      <span className="text-white font-bold">AN/SPY-6(V)1 AMDR Phased Array</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">INTERCEPT INTERFACE</span>
+                      <span className="text-amber-400 font-bold">SM-3 Block IIA / SM-6 Dual II</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">JADC2 DATALINK</span>
+                      <span className="text-white font-bold">Link 16 / CDL-T Space Uplink</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">TARGET ENGAGEMENT</span>
+                      <span className="text-emerald-400 font-bold">CEC Cooperative Engagement</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ASSET 3: AST-07 (HYPERSONIC CAPSULE) */}
+              {activeAsset === "AST-07" && (
+                <div className="space-y-3">
+                  <div className="relative w-full h-72 rounded-xl overflow-hidden border border-white/10 bg-black flex items-center justify-center">
+                    <img 
+                      src="/assets/fleet/ast-07-capsule.jpg" 
+                      alt="AST-07 Hypersonic Re-entry Capsule"
+                      className="w-full h-full object-cover filter contrast-[1.1]"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = "none"
+                      }}
+                    />
+                    <div className="absolute top-2 left-3 px-2 py-0.5 rounded bg-black/80 border border-white/10 text-[9px] text-amber-300 font-bold">
+                      ● AST-07 HYPERSONIC RE-ENTRY GLIDE VEHICLE
+                    </div>
+                    <div className="absolute bottom-2 right-3 px-2 py-0.5 rounded bg-black/80 border border-white/10 text-[9px] text-red-400 font-bold">
+                      MACH 22 AERO-THERMAL
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 text-[10px]">
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">THERMAL PROTECTION</span>
+                      <span className="text-white font-bold">PICA-X Carbon-Phenolic Ablative</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">STAGNATION TEMP (T0)</span>
+                      <span className="text-red-400 font-bold">2,840 K (Shock Ionization)</span>
+                    </div>
+                    <div className="flex justify-between border-b border-white/5 pb-1">
+                      <span className="text-neutral-500">AERODYNAMIC RATIO</span>
+                      <span className="text-white font-bold">L/D = 0.38 (Lifting Body Entry)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">COMMUNICATION CORRIDOR</span>
+                      <span className="text-amber-400 font-bold">Magnetic Window Plasma Pen.</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+
           </div>
+
         </div>
-      </div>
 
+      </main>
+
+      {/* SpaceX Minimalist Footer */}
+      <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/10 bg-black/80 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] text-neutral-500 z-20">
+        <div className="flex items-center gap-4">
+          <span className="text-white font-bold tracking-wider">VEROYX JADC2 NODE 01</span>
+          <span className="text-neutral-800">|</span>
+          <span>SECRET//NOFORN</span>
+          <span className="text-neutral-800">|</span>
+          <span>COPERNICUS BATTLE NETWORK</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <Link href="/planetary-defense" className="hover:text-white transition-colors">PLANETARY DEFENSE</Link>
+          <Link href="/hypersonic" className="hover:text-white transition-colors">HYPERSONIC CFD</Link>
+          <Link href="/catalog" className="hover:text-white transition-colors">48K CATALOG</Link>
+        </div>
+      </footer>
     </div>
   )
 }
