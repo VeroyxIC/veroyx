@@ -1,429 +1,475 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import * as THREE from "three"
 import Link from "next/link"
+import Navbar from "@/components/nav/Navbar"
 import { 
-  ShieldAlert, Crosshair, Orbit, Radio, Globe, 
-  Terminal, Activity, Sparkles, ArrowRight, Check, AlertTriangle
+  ShieldAlert, Target, Crosshair, Orbit, Compass, 
+  Flame, Zap, Activity, ArrowRight, ShieldCheck, 
+  AlertTriangle, RotateCcw, Sliders, Globe, Radio, Sparkles
 } from "lucide-react"
-import { createCinematicEarth, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
-
-interface TrackingStation {
-  name: string
-  status: "LOCKED" | "TRACKING" | "STANDBY"
-  signal: number
-}
 
 export default function PlanetaryDefensePage() {
-  const globeMountRef = useRef<HTMLDivElement | null>(null)
-  const asteroidMountRef = useRef<HTMLDivElement | null>(null)
+  const [deltaV, setDeltaV] = useState<number>(3.8) // cm/s
+  const [betaFactor, setBetaFactor] = useState<number>(2.4) // Momentum enhancement beta
+  const [interceptEngaged, setInterceptEngaged] = useState<boolean>(true)
+  const [leadTimeYears, setLeadTimeYears] = useState<number>(3.5)
+  const orbitCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const [betaCoupling, setBetaCoupling] = useState<number>(2.4)
-  const [impactorVelocity, setImpactorVelocity] = useState<number>(122.6)
-  const [deflectionDistanceKm, setDeflectionDistanceKm] = useState<number>(34.73)
+  // Physical calculations:
+  // Deflection distance = beta * deltaV * lead_time (in seconds)
+  const effectiveDeltaV_mps = (deltaV * 0.01) * betaFactor // m/s
+  const leadTimeSec = leadTimeYears * 365.25 * 86400
+  const totalDeflectionKm = Math.round((effectiveDeltaV_mps * leadTimeSec) / 1000)
+  
+  // Nominal perigee: 31,600 km (Earth GEO belt is ~35,786 km)
+  const nominalPerigeeKm = 31600
+  const actualPerigeeKm = interceptEngaged ? nominalPerigeeKm + totalDeflectionKm : nominalPerigeeKm
 
-  const stations: TrackingStation[] = [
-    { name: "Goldstone DSN-14", status: "LOCKED", signal: 100 },
-    { name: "Goldstone DSN-24", status: "LOCKED", signal: 100 },
-    { name: "DART-2 Kinetic Probe", status: "TRACKING", signal: 94 },
-    { name: "JWST Near-IR Task", status: "TRACKING", signal: 90 },
-    { name: "Palomar Planetary Radar", status: "LOCKED", signal: 100 }
-  ]
-
-  // Main 3D Earth & Asteroid Orbital Plane Viewport (Image 4 Center)
+  // Interactive Heliocentric Orbital Deflection Canvas
   useEffect(() => {
-    const container = globeMountRef.current
-    if (!container) return
-
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#020617")
-
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 2000)
-    camera.position.set(0, 10, 24)
-    camera.lookAt(0, 0, 0)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    // Deep-Space Background
-    const starfield = createDeepSpaceStarfield(1400, 600)
-    scene.add(starfield)
-
-    const sun = new THREE.DirectionalLight(0xffffff, 3.5)
-    sun.position.set(-20, 15, 10)
-    scene.add(sun)
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.4))
-
-    // NASA Blue Marble Earth
-    const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(4.8)
-    scene.add(earthGroup)
-
-    // Keplerian Asteroid Orbit Path (Red Elliptical Arc)
-    const orbitPts: THREE.Vector3[] = []
-    const a = 9.8, b = 6.2
-    for (let i = 0; i <= 128; i++) {
-      const theta = (i / 128) * Math.PI * 2
-      orbitPts.push(new THREE.Vector3(Math.cos(theta) * a - 2.5, Math.sin(theta) * 1.5, Math.sin(theta) * b))
-    }
-    const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPts)
-    const orbitMat = new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2, transparent: true, opacity: 0.85 })
-    const orbitLine = new THREE.Line(orbitGeo, orbitMat)
-    scene.add(orbitLine)
-
-    // Deflected Trajectory Arc (Cyan Dashed Line)
-    const defPts: THREE.Vector3[] = []
-    for (let i = 0; i <= 128; i++) {
-      const theta = (i / 128) * Math.PI * 2
-      defPts.push(new THREE.Vector3(Math.cos(theta) * (a + 1.2) - 1.8, Math.sin(theta) * 2.1, Math.sin(theta) * (b + 0.8)))
-    }
-    const defGeo = new THREE.BufferGeometry().setFromPoints(defPts)
-    const defMat = new THREE.LineDashedMaterial({ color: 0x38bdf8, dashSize: 0.4, gapSize: 0.2, linewidth: 2 })
-    const defLine = new THREE.Line(defGeo, defMat)
-    defLine.computeLineDistances()
-    scene.add(defLine)
-
-    // Orbit Nodes
-    const nodeGeo = new THREE.SphereGeometry(0.18, 16, 16)
-    const nodeMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
-    const nodePositions = [
-      new THREE.Vector3(5.8, 1.2, 4.2),
-      new THREE.Vector3(-4.8, -0.6, 5.1),
-      new THREE.Vector3(-7.5, 0.4, -2.1),
-      new THREE.Vector3(3.2, -1.1, -5.4)
-    ]
-    nodePositions.forEach(pos => {
-      const node = new THREE.Mesh(nodeGeo, nodeMat)
-      node.position.copy(pos)
-      scene.add(node)
-    })
-
-    // Asteroid Particle Position Marker
-    const astMarkerGeo = new THREE.SphereGeometry(0.25, 16, 16)
-    const astMarkerMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b })
-    const astMarker = new THREE.Mesh(astMarkerGeo, astMarkerMat)
-    scene.add(astMarker)
-
-    // Drag Orbit Controls
-    let isDragging = false
-    let prevX = 0, prevY = 0
-    const onMouseDown = (e: MouseEvent) => { isDragging = true; prevX = e.clientX; prevY = e.clientY }
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return
-      scene.rotation.y += (e.clientX - prevX) * 0.005
-      scene.rotation.x += (e.clientY - prevY) * 0.005
-      prevX = e.clientX; prevY = e.clientY
-    }
-    const onMouseUp = () => { isDragging = false }
-    const onWheel = (e: WheelEvent) => {
-      camera.position.z = Math.max(12, Math.min(38, camera.position.z + e.deltaY * 0.02))
-    }
-
-    container.addEventListener("mousedown", onMouseDown)
-    window.addEventListener("mousemove", onMouseMove)
-    window.addEventListener("mouseup", onMouseUp)
-    container.addEventListener("wheel", onWheel, { passive: true })
-
-    const clock = new THREE.Clock()
-    let animId: number
-    let theta = 0
-
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
-      const delta = clock.getDelta()
-      theta += delta * 0.35
-
-      earthMesh.rotation.y += 0.05 * delta
-      cloudsMesh.rotation.y += 0.07 * delta
-
-      astMarker.position.set(Math.cos(theta) * a - 2.5, Math.sin(theta) * 1.5, Math.sin(theta) * b)
-      renderer.render(scene, camera)
-    }
-    animate()
-
-    const onResize = () => {
-      if (!container) return
-      camera.aspect = container.clientWidth / container.clientHeight
-      camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
-    }
-    window.addEventListener("resize", onResize)
-
-    return () => {
-      cancelAnimationFrame(animId)
-      container.removeEventListener("mousedown", onMouseDown)
-      window.removeEventListener("mousemove", onMouseMove)
-      window.removeEventListener("mouseup", onMouseUp)
-      container.removeEventListener("wheel", onWheel)
-      window.removeEventListener("resize", onResize)
-      renderer.dispose()
-    }
-  }, [])
-
-  // 3D Asteroid Model Viewport (Image 4 Bottom-Left Box)
-  useEffect(() => {
-    const container = asteroidMountRef.current
-    if (!container) return
-
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#020617")
-
-    const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100)
-    camera.position.set(0, 0, 4.5)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    const light = new THREE.DirectionalLight(0xffffff, 3.0)
-    light.position.set(5, 5, 5)
-    scene.add(light)
-    scene.add(new THREE.AmbientLight(0x1e293b, 1.2))
-
-    // Irregular Asteroid Topography Geometry
-    const astGeo = new THREE.DodecahedronGeometry(1.3, 3)
-    const pos = astGeo.attributes.position
-    for (let i = 0; i < pos.count; i++) {
-      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i))
-      const noise = (Math.sin(v.x * 4.0) + Math.cos(v.y * 4.0) + Math.sin(v.z * 4.0)) * 0.12
-      v.multiplyScalar(1.0 + noise)
-      pos.setXYZ(i, v.x, v.y, v.z)
-    }
-    astGeo.computeVertexNormals()
-
-    const astMat = new THREE.MeshStandardMaterial({
-      color: 0x94a3b8,
-      roughness: 0.88,
-      metalness: 0.15,
-      flatShading: true
-    })
-    const asteroidMesh = new THREE.Mesh(astGeo, astMat)
-    scene.add(asteroidMesh)
+    const canvas = orbitCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
 
     let animId: number
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
-      asteroidMesh.rotation.y += 0.012
-      asteroidMesh.rotation.x += 0.007
-      renderer.render(scene, camera)
-    }
-    animate()
+    let time = 0
 
-    return () => {
-      cancelAnimationFrame(animId)
-      renderer.dispose()
+    const render = () => {
+      animId = requestAnimationFrame(render)
+      time += 0.015
+
+      const w = (canvas.width = canvas.parentElement?.clientWidth || 740)
+      const h = (canvas.height = canvas.parentElement?.clientHeight || 480)
+      const cx = w * 0.44
+      const cy = h * 0.52
+      const auScale = Math.min(w, h) * 0.38
+
+      ctx.fillStyle = "#020408"
+      ctx.fillRect(0, 0, w, h)
+
+      // Background grid
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.04)"
+      ctx.lineWidth = 1
+      for (let x = 0; x < w; x += 45) {
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, h)
+        ctx.stroke()
+      }
+      for (let y = 0; y < h; y += 45) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(w, y)
+        ctx.stroke()
+      }
+
+      // 1. Sun at Origin
+      const sunPulse = Math.sin(time * 2.0) * 2 + 10
+      const sunGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 28)
+      sunGrad.addColorStop(0, "#ffffff")
+      sunGrad.addColorStop(0.3, "#f59e0b")
+      sunGrad.addColorStop(0.8, "rgba(234, 88, 12, 0.2)")
+      sunGrad.addColorStop(1, "rgba(0, 0, 0, 0)")
+      ctx.fillStyle = sunGrad
+      ctx.beginPath()
+      ctx.arc(cx, cy, 28, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillStyle = "#fbbf24"
+      ctx.beginPath()
+      ctx.arc(cx, cy, sunPulse * 0.6, 0, Math.PI * 2)
+      ctx.fill()
+
+      // 2. Earth's Orbit (1.0 AU Circle)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"
+      ctx.lineWidth = 1.2
+      ctx.setLineDash([4, 6])
+      ctx.beginPath()
+      ctx.arc(cx, cy, auScale, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // Earth Position at Close Approach Epoch
+      const earthAngle = 0.22
+      const earthX = cx + Math.cos(earthAngle) * auScale
+      const earthY = cy + Math.sin(earthAngle) * auScale
+
+      // Earth GEO keep-out envelope
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.25)"
+      ctx.beginPath()
+      ctx.arc(earthX, earthY, 14, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.fillStyle = "#ffffff"
+      ctx.beginPath()
+      ctx.arc(earthX, earthY, 4.5, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.font = "9px monospace"
+      ctx.fillStyle = "#ffffff"
+      ctx.fillText("EARTH (1.00 AU)", earthX + 16, earthY + 3)
+
+      // 3. Apophis Nominal Orbit (a = 0.92 AU, e = 0.19)
+      const apophisA = auScale * 0.922
+      const apophisB = auScale * 0.885
+      const focusOffsetX = auScale * 0.176
+
+      // Nominal Hazardous Path
+      ctx.save()
+      ctx.translate(cx - focusOffsetX, cy)
+      ctx.rotate(-0.18)
+
+      ctx.strokeStyle = interceptEngaged ? "rgba(239, 68, 68, 0.3)" : "rgba(239, 68, 68, 0.85)"
+      ctx.lineWidth = interceptEngaged ? 1.0 : 1.8
+      if (interceptEngaged) ctx.setLineDash([3, 4])
+      ctx.beginPath()
+      ctx.ellipse(0, 0, apophisA, apophisB, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.restore()
+
+      // 4. Deflected Trajectory (Green / Safe)
+      if (interceptEngaged) {
+        ctx.save()
+        ctx.translate(cx - focusOffsetX * 1.08, cy)
+        ctx.rotate(-0.25)
+        ctx.strokeStyle = "#10b981"
+        ctx.lineWidth = 2.0
+        ctx.beginPath()
+        const deflA = apophisA * (1.0 + (totalDeflectionKm / 350000) * 0.09)
+        const deflB = apophisB * (1.0 + (totalDeflectionKm / 350000) * 0.08)
+        ctx.ellipse(0, 0, deflA, deflB, 0, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // 5. Kinetic Intercept Impact Point
+      const impactAngle = -1.15
+      const impactX = cx + Math.cos(impactAngle) * (auScale * 0.84)
+      const impactY = cy + Math.sin(impactAngle) * (auScale * 0.84)
+
+      ctx.strokeStyle = "#f59e0b"
+      ctx.lineWidth = 1.4
+      ctx.strokeRect(impactX - 9, impactY - 9, 18, 18)
+
+      ctx.fillStyle = "#f59e0b"
+      ctx.beginPath()
+      ctx.arc(impactX, impactY, 3, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Impact Flash Animation
+      const impactPulse = (Math.sin(time * 4) * 0.5 + 0.5) * 16
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.6)"
+      ctx.beginPath()
+      ctx.arc(impactX, impactY, 10 + impactPulse, 0, Math.PI * 2)
+      ctx.stroke()
+
+      ctx.fillStyle = "#f59e0b"
+      ctx.fillText("KINETIC IMPACT POINT (DART-II)", impactX + 14, impactY - 2)
+      ctx.fillStyle = "rgba(255, 255, 255, 0.5)"
+      ctx.fillText(`Δv IMPULSE: +${deltaV.toFixed(1)} cm/s (β=${betaFactor.toFixed(1)})`, impactX + 14, impactY + 10)
+
+      // 6. Closest Approach Keyhole B-Plane Vector
+      const missVectorScale = Math.min(110, 18 + (totalDeflectionKm / 1000) * 0.65)
+      const approachX = earthX - (interceptEngaged ? missVectorScale : 14)
+      const approachY = earthY + 8
+
+      ctx.strokeStyle = interceptEngaged ? "#10b981" : "#ef4444"
+      ctx.lineWidth = 2.2
+      ctx.beginPath()
+      ctx.moveTo(earthX, earthY)
+      ctx.lineTo(approachX, approachY)
+      ctx.stroke()
+
+      ctx.fillStyle = interceptEngaged ? "#10b981" : "#ef4444"
+      ctx.beginPath()
+      ctx.arc(approachX, approachY, 3.5, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.fillText(
+        `PERIGEE: ${actualPerigeeKm.toLocaleString()} km [${interceptEngaged ? "KEYHOLE MISSED" : "GRAZING GEO"}]`,
+        earthX - 110,
+        earthY + 36
+      )
     }
-  }, [])
+
+    render()
+    return () => cancelAnimationFrame(animId)
+  }, [deltaV, betaFactor, interceptEngaged, totalDeflectionKm, actualPerigeeKm])
 
   return (
-    <div className="w-full h-[calc(100vh-3.5rem)] pt-14 flex flex-col bg-[#01030a] font-mono text-xs text-slate-100 select-none overflow-hidden">
-      
-      {/* TOP INDUSTRIAL HEADER BAR (Image 4 Top) */}
-      <div className="h-11 px-4 border-b border-slate-800 bg-[#020617] flex items-center justify-between text-[11px] shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="font-black tracking-widest text-white uppercase text-sm">AERO-ORBITAL SYSTEM SIMULATOR</span>
-          <span className="text-slate-600">|</span>
-          <span className="text-cyan-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
-            ASTEROID TRACKING <span className="text-slate-600">&gt;</span> DEFENSE MONITORING
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-slate-400 text-[10px]">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span className="text-emerald-400 font-bold">DSN MULTI-UPLINK: ACTIVE</span>
-          </span>
-          <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono">
-            TORINO: 0 (SAFE)
-          </span>
-        </div>
-      </div>
+    <div className="relative w-full min-h-screen bg-[#000000] text-white font-mono selection:bg-amber-500/30 overflow-x-hidden flex flex-col justify-between">
+      <Navbar />
 
-      {/* MAIN 3-COLUMN WORKSTATION VIEWPORT */}
-      <div className="flex-1 flex overflow-hidden">
+      <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-8 pt-28 pb-16 flex-1 flex flex-col gap-6">
         
-        {/* CENTER VIEWPORT (The Earth, Asteroid Orbit, and 3D Crater Box) */}
-        <div className="flex-1 h-full relative flex flex-col border-r border-slate-800">
-          
-          {/* Subheader Overlay */}
-          <div className="absolute top-3 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
-            <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-slate-300 backdrop-blur-md">
-              <span className="text-rose-400 font-bold">ASTEROID 9942 APOS TRACK</span>
-              <span className="mx-2 text-slate-600">|</span>
-              <span>INCLINATION: 3.33° // ECCENTRICITY: 0.191</span>
+        {/* Header Banner */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[10px] font-bold tracking-widest uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>NASA CNEOS SENTRY STANDARD // PLANETARY DEFENSE COORDINATION OFFICE (PDCO)</span>
             </div>
-            <div className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-slate-800 text-[10px] text-emerald-400 font-bold backdrop-blur-md">
-              PERIHELION: 0.746 AU // APHELION: 1.098 AU
-            </div>
+            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+              PLANETARY DEFENSE &amp; KINETIC INTERCEPT THEATER
+            </h1>
           </div>
 
-          {/* 3D Earth Orbit Scene Canvas */}
-          <div ref={globeMountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
-
-          {/* Floating Live HUD Badges on Orbit Plane */}
-          <div className="absolute top-24 right-1/4 z-10 font-mono text-[9px] bg-slate-950/80 border border-rose-500/60 text-rose-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(244,63,94,0.4)]">
-            ● ASTEROID 9942 APOS // 31.42 km/s
-          </div>
-          <div className="absolute top-44 left-1/4 z-10 font-mono text-[9px] bg-slate-950/80 border border-cyan-500/60 text-cyan-300 px-2 py-0.5 rounded pointer-events-none shadow-[0_0_10px_rgba(6,182,212,0.4)]">
-            ● DART-2 IMPACT NODE // Δv: 34.73 km/s
-          </div>
-
-          {/* 3D Cratered Asteroid Box in Lower Left (Image 4 Bottom-Left) */}
-          <div className="absolute bottom-4 left-4 w-72 h-56 rounded-xl bg-slate-950/90 border border-slate-800 p-3 shadow-2xl backdrop-blur-xl z-10 flex flex-col">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex justify-between">
-              <span>ASTEROID 9942 APOS TRACK</span>
-              <span className="text-amber-400">PBR SURFACE</span>
-            </div>
-            <div ref={asteroidMountRef} className="flex-1 w-full my-1 rounded-lg overflow-hidden bg-black/60 border border-slate-900" />
-            <div className="grid grid-cols-2 gap-1 text-[9px] text-slate-400 font-mono">
-              <div>VELOCITY: <span className="text-white font-bold">31.42 km/s</span></div>
-              <div>DISTANCE: <span className="text-white font-bold">0.14 AU</span></div>
-              <div>DIAMETER: <span className="text-white font-bold">~340m</span></div>
-              <div>EST. MASS: <span className="text-white font-bold">2.52e10 kg</span></div>
-            </div>
+          {/* Intercept Engagement Action Button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setInterceptEngaged(!interceptEngaged)}
+              className={`px-5 py-2.5 text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2.5 shadow-lg ${
+                interceptEngaged
+                  ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.3)]"
+                  : "bg-red-500/20 border-red-500 text-red-300 hover:bg-red-500/30 shadow-[0_0_25px_rgba(239,68,68,0.35)] animate-pulse"
+              }`}
+            >
+              <Target className="w-4 h-4" />
+              <span>{interceptEngaged ? "DEFLECTION TRAJECTORY ENGAGED" : "NOMINAL UNMITIGATED THREAT [CLICK TO DEFLECT]"}</span>
+            </button>
           </div>
         </div>
 
-        {/* RIGHT CONTROL DECK (Image 4 Right Columns) */}
-        <div className="w-[480px] h-full flex flex-col bg-[#020617] overflow-y-auto">
-          
-          {/* Top Panel: Target Info & Impact Risk Evaluation */}
-          <div className="p-4 border-b border-slate-800 grid grid-cols-2 gap-4">
-            
-            {/* Target Info */}
-            <div className="space-y-2">
-              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
-                Target Info: APOS (9942)
-              </div>
-              <div className="space-y-1 text-[10px]">
-                <div className="flex justify-between"><span className="text-slate-500">TARGET:</span><span className="text-white font-bold">APOS (9942)</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">VELOCITY:</span><span className="text-amber-400 font-bold">31.42 km/s</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">DISTANCE:</span><span className="text-white">0.14 AU</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">DIAMETER:</span><span className="text-white">~340 m</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">EST. MASS:</span><span className="text-white">2.520 kg·e10</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">CONNECTION:</span><span className="text-emerald-400 font-bold">0.05 s</span></div>
-              </div>
+        {/* Top 4 PDCO Threat Assessment KPI Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">PRIMARY TARGET</span>
+            <div className="text-lg font-bold text-white flex items-center gap-2">
+              <span>9942 APOPHIS</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                POTENTIALLY HAZARDOUS
+              </span>
             </div>
-
-            {/* Impact Risk Evaluation (Color Spectrum Curve) */}
-            <div className="space-y-2">
-              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex justify-between">
-                <span>Impact Risk Evaluation</span>
-                <span className="text-emerald-400 font-bold">0.00%</span>
-              </div>
-              <div className="h-16 w-full rounded-lg bg-gradient-to-r from-emerald-500 via-yellow-400 to-rose-600 p-0.5 relative flex items-center justify-center">
-                <div className="absolute inset-0 bg-[#020617]/70 rounded-lg" />
-                <div className="relative text-[9px] text-slate-300 font-bold text-center">
-                  <div>PALERMO: -2.88</div>
-                  <div className="text-emerald-400">NO TERRESTRIAL IMPACT</div>
-                </div>
-              </div>
-              <div className="flex justify-between text-[9px] text-slate-500">
-                <span>PROBABILITY: 0%</span>
-                <span>RISK: MINIMAL</span>
-              </div>
-            </div>
+            <span className="text-[9px] text-neutral-400 block">DIAMETER: ~340m // MASS: 6.1e10 kg</span>
           </div>
 
-          {/* Middle Panel: Deep Space Tracking Stations & Kinetic Impactor Modeling */}
-          <div className="p-4 border-b border-slate-800 grid grid-cols-2 gap-4">
-            
-            {/* Tracking Stations Matrix */}
-            <div className="space-y-2">
-              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1">
-                Tracking Stations
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">EARTH PERIGEE MISS DISTANCE</span>
+            <div className={`text-lg font-bold ${interceptEngaged ? "text-emerald-400" : "text-red-400"}`}>
+              {actualPerigeeKm.toLocaleString()} km
+            </div>
+            <span className="text-[9px] text-neutral-400 block">
+              {interceptEngaged ? `DEFLECTION MARGIN: +${totalDeflectionKm.toLocaleString()} km` : "GEO BELT: 35,786 km (BREACH RISK)"}
+            </span>
+          </div>
+
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">PALERMO TECHNICAL SCALE</span>
+            <div className={`text-lg font-bold ${interceptEngaged ? "text-emerald-400" : "text-red-400"}`}>
+              {interceptEngaged ? "< -4.00 (ZERO IMPACT RISK)" : "-0.84 (EXTENDED MONITORING)"}
+            </div>
+            <span className="text-[9px] text-neutral-400 block">TORINO SCALE: LEVEL {interceptEngaged ? "0 (WHITE)" : "1 (GREEN)"}</span>
+          </div>
+
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">GRAVITATIONAL KEYHOLE 7b</span>
+            <div className={`text-lg font-bold ${interceptEngaged ? "text-emerald-400" : "text-red-400"}`}>
+              {interceptEngaged ? "CLEARED (> 120km OFFSET)" : "KEYHOLE BREACH: 3.2%"}
+            </div>
+            <span className="text-[9px] text-neutral-400 block">2029 CLOSE APPROACH RESONANCE</span>
+          </div>
+        </div>
+
+        {/* Main Grid: Heliocentric Simulator + Physics Sliders & Threat Profile */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+          
+          {/* LEFT 7 COLS: HELIOCENTRIC ORBITAL DEFLECTION SIMULATOR */}
+          <div className="lg:col-span-7 flex flex-col gap-4">
+            <div className="relative w-full h-[470px] rounded-xl overflow-hidden border border-white/10 bg-[#020408]">
+              <canvas ref={orbitCanvasRef} className="w-full h-full" />
+
+              <div className="absolute top-3 left-3 px-2 py-1 bg-black/85 border border-white/10 text-[10px] space-y-0.5">
+                <div className="text-amber-400 font-bold">HELIOCENTRIC DEFLECTION KINEMATICS</div>
+                <div className="text-neutral-400">1.0 AU REFERENCE PLANE (J2000 ECLIPTIC)</div>
               </div>
-              <div className="space-y-1.5">
-                {stations.map(st => (
-                  <div key={st.name} className="flex items-center justify-between text-[10px] p-1.5 rounded bg-slate-900/60 border border-slate-800/80">
-                    <div>
-                      <div className="text-white font-bold">{st.name}</div>
-                      <div className="text-[8px] text-emerald-400">{st.status}</div>
-                    </div>
-                    <span className="text-cyan-400 font-bold text-[9px]">{st.signal}%</span>
+
+              <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/85 border border-white/10 text-[10px] space-y-0.5">
+                <div className="text-white font-bold">INTERCEPTOR: DART-II HYPERVELOCITY STAGE</div>
+                <div className="text-neutral-400">RELATIVE IMPACT VELOCITY: 6.84 km/s</div>
+              </div>
+
+              <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/85 border border-white/10 text-[10px] text-right space-y-0.5">
+                <div className={`font-bold ${interceptEngaged ? "text-emerald-400" : "text-red-400"}`}>
+                  STATUS: {interceptEngaged ? "EARTH SAFE // ORBIT ALTERED" : "NOMINAL CLOSE PASS"}
+                </div>
+                <div className="text-neutral-400">COWELL NUMERICAL INTEGRATION</div>
+              </div>
+            </div>
+
+            {/* Kinetic Deflection Physics Sliders Panel */}
+            <div className="p-4 rounded-xl border border-white/10 bg-[#080808] space-y-3">
+              <div className="flex items-center justify-between text-xs border-b border-white/5 pb-2">
+                <div className="flex items-center gap-2 text-white font-bold">
+                  <Sliders className="w-4 h-4 text-amber-400" />
+                  <span>KINETIC IMPULSE PARAMETER CONTROLS</span>
+                </div>
+                <button
+                  onClick={() => { setDeltaV(3.8); setBetaFactor(2.4); setLeadTimeYears(3.5); }}
+                  className="text-[10px] text-neutral-400 hover:text-white flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>RESET NASA DART BASELINE</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 text-[11px]">
+                {/* Slider 1: Delta-v Impulse */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-400">Δv IMPULSE:</span>
+                    <span className="text-amber-400 font-bold">{deltaV.toFixed(1)} cm/s</span>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Defensive Action: DART Kinetic Impactor Modeling */}
-            <div className="space-y-2.5">
-              <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex justify-between">
-                <span>Defensive Action (DART)</span>
-                <span className="text-rose-400 font-bold">KINETIC</span>
-              </div>
-              
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-slate-400">BETA COUPLING (β):</span>
-                  <span className="text-cyan-400 font-bold">{betaCoupling.toFixed(1)}</span>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="10.0"
+                    step="0.1"
+                    value={deltaV}
+                    onChange={(e) => setDeltaV(parseFloat(e.target.value))}
+                    className="w-full accent-amber-500 bg-neutral-800 cursor-pointer"
+                  />
+                  <span className="text-[9px] text-neutral-500 block">Linear velocity change applied at intercept</span>
                 </div>
-                <input
-                  type="range"
-                  min="1.0"
-                  max="4.0"
-                  step="0.1"
-                  value={betaCoupling}
-                  onChange={e => setBetaCoupling(Number(e.target.value))}
-                  className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-                />
-              </div>
 
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px]">
-                  <span className="text-slate-400">IMPACTOR SPEED:</span>
-                  <span className="text-white font-bold">{impactorVelocity.toFixed(1)} km/s</span>
+                {/* Slider 2: Beta Factor */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-400">BETA FACTOR (β):</span>
+                    <span className="text-white font-bold">{betaFactor.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="4.0"
+                    step="0.1"
+                    value={betaFactor}
+                    onChange={(e) => setBetaFactor(parseFloat(e.target.value))}
+                    className="w-full accent-amber-500 bg-neutral-800 cursor-pointer"
+                  />
+                  <span className="text-[9px] text-neutral-500 block">Ejecta crater momentum enhancement factor</span>
                 </div>
-                <input
-                  type="range"
-                  min="50"
-                  max="200"
-                  step="1"
-                  value={impactorVelocity}
-                  onChange={e => setImpactorVelocity(Number(e.target.value))}
-                  className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-                />
-              </div>
 
-              <div className="p-2 rounded bg-cyan-950/60 border border-cyan-800/80 text-[10px] space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-slate-400">DEFLECTION Δv:</span>
-                  <span className="text-cyan-300 font-bold">{(betaCoupling * (580 / 2.52e10) * impactorVelocity * 1000).toFixed(4)} mm/s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">MISS DISTANCE:</span>
-                  <span className="text-emerald-400 font-bold">&gt;{deflectionDistanceKm.toFixed(2)} km</span>
+                {/* Slider 3: Lead Time */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-400">LEAD TIME:</span>
+                    <span className="text-emerald-400 font-bold">{leadTimeYears.toFixed(1)} YEARS</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1.0"
+                    max="10.0"
+                    step="0.5"
+                    value={leadTimeYears}
+                    onChange={(e) => setLeadTimeYears(parseFloat(e.target.value))}
+                    className="w-full accent-amber-500 bg-neutral-800 cursor-pointer"
+                  />
+                  <span className="text-[9px] text-neutral-500 block">Duration between impact and Earth perigee</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Bottom Panel: System Console (Image 4 Bottom-Right) */}
-          <div className="p-4 flex-1 flex flex-col space-y-2">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1 flex items-center gap-2">
-              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-              <span>System Console // Trajectory Stream</span>
+          {/* RIGHT 5 COLS: ASTEROID PROFILE & INTERCEPTOR VEHICLE */}
+          <div className="lg:col-span-5 flex flex-col gap-4">
+            
+            {/* Target Asteroid Profile Card */}
+            <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs font-bold text-white uppercase">ASTEROID 9942 APOPHIS PROFILE</span>
+                </div>
+                <span className="text-[10px] text-amber-300 font-bold">CHONDRITE (Sq-TYPE)</span>
+              </div>
+
+              {/* Asteroid Threat Render Asset */}
+              <div className="relative w-full h-52 rounded-lg overflow-hidden border border-white/10 bg-black flex items-center justify-center">
+                <img
+                  src="/assets/threats/asteroid-apophis.jpg"
+                  alt="Asteroid 9942 Apophis"
+                  className="w-full h-full object-cover filter contrast-[1.1]"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    target.style.display = "none"
+                  }}
+                />
+                <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/85 border border-white/10 text-[9px] text-white">
+                  SEMI-MAJOR AXIS (a): 0.922 AU // ECCENTRICITY: 0.191
+                </div>
+                <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/85 border border-white/10 text-[9px] text-amber-400 font-bold">
+                  ROTATION PERIOD: 30.56 HOURS
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-[10px] pt-1">
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">ESTIMATED BULK DENSITY</span>
+                  <span className="text-white font-bold">2.60 g/cm³ (Porosity ~25-30%)</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">KINETIC ENERGY AT IMPACT</span>
+                  <span className="text-white font-bold">1,200 Megatons TNT (Unmitigated)</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">MIN. ORBIT INTERSECTION (MOID)</span>
+                  <span className="text-amber-400 font-bold">0.00021 AU (31,400 km)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">YARKOVSKY ACCELERATION (da/dt)</span>
+                  <span className="text-white font-bold">-2.7 × 10⁻⁴ AU / Myr</span>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 p-3 rounded-xl bg-black border border-slate-800 text-[10px] font-mono text-emerald-400 space-y-1 overflow-y-auto">
-              <div>[SYSTEM] Terminal initialization sequence OK...</div>
-              <div>[EPHEMERIS] Asteroid 9942 Apophis state vector updated J2000.</div>
-              <div>[RADAR] Goldstone 70m metric range: 21,563,892 km.</div>
-              <div className="text-amber-400">[ALERT] Predicted close approach within 0.14 AU.</div>
-              <div className="text-cyan-400">[DART-2] Kinetic impactor deflection solution locked: Beta={betaCoupling.toFixed(1)}.</div>
-              <div className="text-slate-500">[STATUS] Trajectory offset active. Earth impact probability: 0.00%.</div>
+
+            {/* Kinetic Impactor Vehicle Specifications */}
+            <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-3">
+              <span className="text-[10px] text-neutral-400 font-bold tracking-wider uppercase block">
+                DART-II KINETIC INTERCEPTOR FLIGHT VEHICLE
+              </span>
+
+              <div className="space-y-2 text-[10px]">
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">DRY MASS (IMPACT MASS)</span>
+                  <span className="text-white font-bold">1,250 kg (Titanium/Carbon Composite)</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">AUTONOMOUS GUIDANCE</span>
+                  <span className="text-white font-bold">SMART Nav Optical Terminal Targeting</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">OPTICAL SENSOR</span>
+                  <span className="text-amber-400 font-bold">DRACO High-Resolution Narrow-Angle Imager</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">PROPULSION STAGE</span>
+                  <span className="text-emerald-400 font-bold">NEXT-C Gridded Ion Thruster + Monoprop RCS</span>
+                </div>
+              </div>
             </div>
+
           </div>
 
         </div>
-      </div>
+
+      </main>
+
+      {/* SpaceX Minimalist Footer */}
+      <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/10 bg-black/80 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] text-neutral-500 z-20">
+        <div className="flex items-center gap-4">
+          <span className="text-white font-bold tracking-wider">VEROYX PLANETARY DEFENSE NODE</span>
+          <span className="text-neutral-800">|</span>
+          <span>IAWN / PDCO PROTOCOL COMPLIANT</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <Link href="/c2" className="hover:text-white transition-colors">JADC2 C2</Link>
+          <Link href="/conjunction" className="hover:text-white transition-colors">CONJUNCTION</Link>
+          <Link href="/hypersonic" className="hover:text-white transition-colors">HYPERSONIC CFD</Link>
+        </div>
+      </footer>
     </div>
   )
 }
