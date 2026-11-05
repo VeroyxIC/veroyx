@@ -6,19 +6,10 @@ import Navbar from "@/components/nav/Navbar"
 import { ArrowRight, Sparkles } from "lucide-react"
 
 export default function SpaceXMasterHomePage() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(true)
   const [isCollapsing, setIsCollapsing] = useState<boolean>(false)
   const [collapseProgress, setCollapseProgress] = useState<number>(0)
   const vortexCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const heroCanvasRef = useRef<HTMLCanvasElement | null>(null)
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (sessionStorage.getItem("veroyx_auth_v") === "true") {
-        setIsAuthenticated(true)
-      }
-    }
-  }, [])
 
   const triggerSingularitySuction = () => {
     setIsCollapsing(true)
@@ -34,10 +25,6 @@ export default function SpaceXMasterHomePage() {
       if (p >= 1.0) {
         clearInterval(interval)
         setIsCollapsing(false)
-        setIsAuthenticated(true)
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("veroyx_auth_v", "true")
-        }
       }
     }, 16)
   }
@@ -63,11 +50,10 @@ export default function SpaceXMasterHomePage() {
       const cx = w * 0.54
       const cy = h * 0.49
 
-      // Relativistic Lensing Arcs
       for (let i = 0; i < 3; i++) {
         const wave = (time * 0.4 + i * (Math.PI / 1.5)) % (Math.PI * 2)
-        const radius = 160 + Math.sin(wave) * 24 + i * 40
-        const alpha = Math.max(0, 0.22 - (radius / 420) * 0.16)
+        const radius = 170 + Math.sin(wave) * 24 + i * 40
+        const alpha = Math.max(0, 0.22 - (radius / 450) * 0.16)
 
         ctx.save()
         ctx.beginPath()
@@ -80,9 +66,8 @@ export default function SpaceXMasterHomePage() {
         ctx.restore()
       }
 
-      // Singularity Ambient Core Glow
       const pulse = Math.sin(time * 2.4) * 0.5 + 0.5
-      const radialGlow = ctx.createRadialGradient(cx, cy, 10, cx, cy, 140)
+      const radialGlow = ctx.createRadialGradient(cx, cy, 10, cx, cy, 150)
       radialGlow.addColorStop(0, `rgba(255, 255, 255, ${0.16 + pulse * 0.08})`)
       radialGlow.addColorStop(0.35, `rgba(245, 158, 11, ${0.18 + pulse * 0.08})`)
       radialGlow.addColorStop(0.75, `rgba(234, 88, 12, ${0.05 + pulse * 0.03})`)
@@ -90,7 +75,7 @@ export default function SpaceXMasterHomePage() {
 
       ctx.fillStyle = radialGlow
       ctx.beginPath()
-      ctx.arc(cx, cy, 140, 0, Math.PI * 2)
+      ctx.arc(cx, cy, 150, 0, Math.PI * 2)
       ctx.fill()
     }
 
@@ -107,12 +92,10 @@ export default function SpaceXMasterHomePage() {
       cancelAnimationFrame(animId)
       window.removeEventListener("resize", resize)
     }
-  }, [isAuthenticated])
+  }, [])
 
   return (
     <div className="relative w-full min-h-screen bg-[#000000] text-white font-sans selection:bg-white/20 overflow-x-hidden flex flex-col justify-between">
-      
-      {/* 4-SECOND BLACK HOLE SUCTION OVERLAY */}
       {isCollapsing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black">
           <canvas ref={vortexCanvasRef} className="absolute inset-0 w-full h-full" />
@@ -126,13 +109,9 @@ export default function SpaceXMasterHomePage() {
         </div>
       )}
 
-      {/* Clean Single-Tier Navbar (No Double Stack, No Clipping) */}
       <Navbar onTriggerSuction={triggerSingularitySuction} />
 
-      {/* Main Split Layout */}
       <main className="relative w-full max-w-7xl mx-auto px-6 sm:px-12 pt-28 lg:pt-36 pb-12 flex-1 flex flex-col lg:flex-row items-center justify-between">
-        
-        {/* Left Column: SpaceX Editorial Typography */}
         <section className="w-full lg:w-[42%] space-y-7 z-20">
           <div className="inline-flex items-center gap-2.5 px-3 py-1 bg-white/[0.03] border border-white/10 text-slate-300 text-[10px] font-mono tracking-[0.25em] uppercase">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
@@ -193,7 +172,7 @@ export default function SpaceXMasterHomePage() {
           </div>
         </section>
 
-        {/* Right Column: MUCH BIGGER BLACK HOLE HERO WITH ZERO RECTANGLE CUTOFF */}
+        {/* DOMINANT HERO BLACK HOLE WITH 150% SCALE & ZERO RECTANGLE CUTOFF */}
         <section className="relative w-full lg:w-[58%] h-[65vh] lg:h-[88vh] flex items-center justify-center mt-4 lg:mt-0 select-none pointer-events-none">
           <div 
             className="relative w-full h-full flex items-center justify-center overflow-visible"
@@ -202,7 +181,6 @@ export default function SpaceXMasterHomePage() {
               WebkitMaskImage: "radial-gradient(ellipse 72% 72% at 55% 50%, black 45%, transparent 85%)"
             }}
           >
-            {/* Screen blend mode dissolves JPEG border into pure #000000 */}
             <img
               src="/assets/hero/blackhole-v.jpg"
               alt="Relativistic Kerr Black Hole with V Singularity"
@@ -222,10 +200,8 @@ export default function SpaceXMasterHomePage() {
             />
           </div>
         </section>
-
       </main>
 
-      {/* SpaceX Minimalist Footer */}
       <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/[0.08] bg-black/90 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] font-mono text-neutral-500 z-20">
         <div className="flex items-center gap-4">
           <span className="text-white font-bold tracking-wider">VEROYX AEROSPACE © 2026</span>

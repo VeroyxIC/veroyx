@@ -32,12 +32,11 @@ export default function HypersonicCFDPage() {
     let animId: number
     let time = 0
 
-    // 160 Dense Streamline particles
-    const streamlines = Array.from({ length: 160 }).map(() => ({
-      x: Math.random() * -400,
-      y: (Math.random() - 0.5) * 400,
-      speed: 16 + Math.random() * 12,
-      length: 30 + Math.random() * 50
+    const streamlines = Array.from({ length: 220 }).map(() => ({
+      x: Math.random() * -450,
+      y: (Math.random() - 0.5) * 440,
+      speed: 18 + Math.random() * 14,
+      length: 32 + Math.random() * 55
     }))
 
     const render = () => {
@@ -89,7 +88,7 @@ export default function HypersonicCFDPage() {
         s.x += s.speed * (machNumber / 14)
         if (s.x > w + 60) {
           s.x = -60
-          s.y = (Math.random() - 0.5) * 400
+          s.y = (Math.random() - 0.5) * 440
         }
 
         const dx = s.x - noseX
@@ -128,14 +127,12 @@ export default function HypersonicCFDPage() {
       ctx.fill()
       ctx.stroke()
 
-      // Glowing PICA-X Thermal Shield
       ctx.strokeStyle = "#ff4500"
       ctx.lineWidth = 4.0
       ctx.beginPath()
       ctx.arc(28, 0, 37, Math.PI * 0.6, Math.PI * 1.4)
       ctx.stroke()
 
-      // Stagnation Spark
       const stagPulse = Math.sin(time * 6) * 3 + 5
       ctx.fillStyle = "#ffffff"
       ctx.beginPath()
@@ -163,8 +160,6 @@ export default function HypersonicCFDPage() {
       <Navbar />
 
       <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-8 pt-28 pb-16 flex-1 flex flex-col gap-6">
-        
-        {/* Top Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 px-2.5 py-0.5 bg-white/[0.03] border border-white/10 text-slate-300 text-[10px] font-bold tracking-[0.25em] uppercase">
@@ -191,7 +186,6 @@ export default function HypersonicCFDPage() {
           </div>
         </div>
 
-        {/* 4 Aero-Thermal KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-1">
             <span className="text-[9px] text-slate-500 block uppercase tracking-wider">STAGNATION TEMP (T0)</span>
@@ -232,10 +226,7 @@ export default function HypersonicCFDPage() {
           </div>
         </div>
 
-        {/* Viewports Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
-          
-          {/* LEFT 7 COLS: SHOCKWAVE CFD COMPRESSION CANVAS */}
           <div className="lg:col-span-7 flex flex-col gap-3">
             <div className="relative w-full h-[470px] border border-white/[0.08] bg-[#020408]">
               <canvas ref={cfdCanvasRef} className="w-full h-full" />
@@ -258,7 +249,6 @@ export default function HypersonicCFDPage() {
               </div>
             </div>
 
-            {/* CFD Sliders Controls */}
             <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-3">
               <div className="flex items-center justify-between text-xs border-b border-white/[0.08] pb-2">
                 <div className="flex items-center gap-2 text-white font-bold tracking-wider text-[11px]">
@@ -329,9 +319,7 @@ export default function HypersonicCFDPage() {
             </div>
           </div>
 
-          {/* RIGHT 5 COLS: AST-07 ASSET & FOOTPRINT CORRIDOR */}
           <div className="lg:col-span-5 flex flex-col gap-3">
-            
             <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -361,7 +349,6 @@ export default function HypersonicCFDPage() {
               </div>
             </div>
 
-            {/* Landing Dispersal Ellipse Spec */}
             <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-2 text-[10px]">
               <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block border-b border-white/[0.08] pb-1.5">
                 3-SIGMA RE-ENTRY LANDING DISPERSAL ELLIPSE
@@ -382,11 +369,8 @@ export default function HypersonicCFDPage() {
                 </div>
               </div>
             </div>
-
           </div>
-
         </div>
-
       </main>
 
       <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/[0.08] bg-black/90 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] text-slate-500 z-20">

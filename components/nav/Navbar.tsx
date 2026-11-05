@@ -38,10 +38,10 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
 
   const navLinks = [
     { label: "JADC2 C2", href: "/c2" },
+    { label: "CONJUNCTION", href: "/conjunction" },
     { label: "PLANETARY DEFENSE", href: "/planetary-defense" },
     { label: "HYPERSONIC CFD", href: "/hypersonic" },
     { label: "48K CATALOG", href: "/catalog" },
-    { label: "ORBIT VISUALIZER", href: "/visualizer" },
   ]
 
   return (
@@ -54,13 +54,10 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
         }`}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          
-          {/* Left: Clean Borderless V Logo */}
           <div className="shrink-0 flex items-center">
             <VeroyxLogo size={24} />
           </div>
 
-          {/* Center: SpaceX Minimalist Navigation (Strict No-Wrap, Clean Spacing) */}
           <nav className="hidden xl:flex items-center gap-6 text-[11px] font-bold tracking-[0.2em] text-neutral-400 whitespace-nowrap">
             {navLinks.map((link) => {
               const isActive = pathname === link.href
@@ -78,9 +75,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
             })}
           </nav>
 
-          {/* Right: Actions */}
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* Command Search */}
             <button
               onClick={() => setIsSearchOpen(true)}
               className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-white/15 bg-white/[0.03] hover:border-white/40 hover:text-white text-neutral-400 transition-all text-[10px]"
@@ -90,7 +85,6 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
               <kbd className="px-1.5 py-0.2 rounded bg-white/10 text-neutral-300 text-[9px]">⌘K</kbd>
             </button>
 
-            {/* Suction Re-engagement Trigger */}
             {onTriggerSuction && (
               <button
                 onClick={onTriggerSuction}
@@ -102,7 +96,6 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
               </button>
             )}
 
-            {/* VIP Access Button */}
             <button
               onClick={() => setIsVipOpen(true)}
               className="px-4 py-1.5 border border-white/30 bg-white/5 hover:bg-white hover:text-black text-white font-bold tracking-widest text-[10px] transition-all flex items-center gap-1.5"
@@ -110,7 +103,6 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
               <span>VIP PORTAL</span>
             </button>
           </div>
-
         </div>
       </header>
 
@@ -131,10 +123,10 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
             <div className="space-y-1">
               {[
                 { label: "JADC2 Battle Systems Glass", path: "/c2", tag: "REAL-TIME C2" },
+                { label: "NASA CARA Conjunction Safety", path: "/conjunction", tag: "HVA-01" },
                 { label: "Planetary Defense & Kinetic Intercept", path: "/planetary-defense", tag: "APOPHIS 9942" },
                 { label: "Hypersonic Aero-Orbital CFD Footprint", path: "/hypersonic", tag: "MACH 25" },
                 { label: "Space-Track 48K Satellite Catalog", path: "/catalog", tag: "48K RSO" },
-                { label: "Orbital Mechanics & SGP4 Visualizer", path: "/visualizer", tag: "PROPAGATOR" },
               ].map((item) => (
                 <Link
                   key={item.path}

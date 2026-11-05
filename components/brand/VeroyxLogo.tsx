@@ -12,7 +12,6 @@ interface VeroyxLogoProps {
 export default function VeroyxLogo({ className = "", showText = true, size = 26 }: VeroyxLogoProps) {
   return (
     <Link href="/" className={`inline-flex items-center gap-2.5 group select-none ${className}`}>
-      {/* Pure Razor-Sharp Glowing Singularity V (Zero borders, zero circles) */}
       <div 
         className="relative flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-105"
         style={{ width: size, height: size }}
@@ -20,14 +19,12 @@ export default function VeroyxLogo({ className = "", showText = true, size = 26 
         <svg 
           viewBox="0 0 100 100" 
           fill="none" 
-          className="w-full h-full drop-shadow-[0_0_14px_rgba(251,191,36,0.65)]"
+          className="w-full h-full drop-shadow-[0_0_14px_rgba(251,191,36,0.7)]"
         >
-          {/* Outer Radiant Flare */}
           <path
             d="M 14 18 L 36 18 L 50 70 L 64 18 L 86 18 L 58 88 L 42 88 Z"
             fill="url(#vAmberFlare)"
           />
-          {/* Inner Hyper-Luminous Plasma Core */}
           <path
             d="M 26 20 L 37 20 L 50 64 L 63 20 L 74 20 L 55 83 L 45 83 Z"
             fill="url(#vWhiteCore)"
