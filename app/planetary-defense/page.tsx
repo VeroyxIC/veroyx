@@ -47,7 +47,7 @@ export default function PlanetaryDefensePage() {
       ctx.fillStyle = "#020408"
       ctx.fillRect(0, 0, w, h)
 
-      // Technical coordinate grid (SpaceX Hairline Titanium)
+      // Technical hairline astronomical grid
       ctx.strokeStyle = "rgba(255, 255, 255, 0.05)"
       ctx.lineWidth = 1
       for (let x = 0; x < w; x += 48) {
@@ -63,16 +63,26 @@ export default function PlanetaryDefensePage() {
         ctx.stroke()
       }
 
-      // 1. Sol (Sun) at Origin - White-hot star with subtle corona
+      // Range Rings (0.25 AU, 0.50 AU, 0.75 AU)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.06)"
+      ctx.setLineDash([2, 4])
+      for (let r = 1; r <= 3; r++) {
+        ctx.beginPath()
+        ctx.arc(cx, cy, (auScale / 4) * r, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      ctx.setLineDash([])
+
+      // 1. Sol (Sun) - High-intensity white-hot star with subtle corona
       const sunPulse = Math.sin(time * 2.0) * 1.5 + 8
-      const sunGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 26)
+      const sunGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 28)
       sunGrad.addColorStop(0, "#ffffff")
-      sunGrad.addColorStop(0.35, "rgba(255, 255, 255, 0.8)")
+      sunGrad.addColorStop(0.35, "rgba(255, 255, 255, 0.85)")
       sunGrad.addColorStop(0.7, "rgba(226, 232, 240, 0.15)")
       sunGrad.addColorStop(1, "rgba(0, 0, 0, 0)")
       ctx.fillStyle = sunGrad
       ctx.beginPath()
-      ctx.arc(cx, cy, 26, 0, Math.PI * 2)
+      ctx.arc(cx, cy, 28, 0, Math.PI * 2)
       ctx.fill()
 
       ctx.fillStyle = "#ffffff"
@@ -81,7 +91,7 @@ export default function PlanetaryDefensePage() {
       ctx.fill()
 
       // 2. Earth Orbit (1.00 AU Circular Track)
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)"
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.18)"
       ctx.lineWidth = 1.2
       ctx.setLineDash([4, 6])
       ctx.beginPath()
@@ -126,7 +136,7 @@ export default function PlanetaryDefensePage() {
       ctx.setLineDash([])
       ctx.restore()
 
-      // 4. Deflected Trajectory (Clean Platinum Ice)
+      // 4. Deflected Trajectory (Clean Platinum Ice Ribbon)
       if (interceptEngaged) {
         ctx.save()
         ctx.translate(cx - focusOffsetX * 1.08, cy)
@@ -293,7 +303,7 @@ export default function PlanetaryDefensePage() {
               </div>
             </div>
 
-            {/* Kinetic Deflection Physics Sliders Panel - Clean Monochrome */}
+            {/* Kinetic Deflection Physics Sliders Panel */}
             <div className="p-4 border border-white/10 bg-[#080808] space-y-3">
               <div className="flex items-center justify-between text-xs border-b border-white/10 pb-2">
                 <div className="flex items-center gap-2 text-white font-bold tracking-wider">
