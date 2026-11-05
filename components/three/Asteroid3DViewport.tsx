@@ -35,7 +35,7 @@ export default function Asteroid3DViewport() {
       bCtx.fillStyle = "#808080"
       bCtx.fillRect(0, 0, 1024, 1024)
 
-      for (let i = 0; i < 60000; i++) {
+      for (let i = 0; i < 50000; i++) {
         const x = Math.random() * 1024
         const y = Math.random() * 1024
         const g = Math.floor(Math.random() * 255)
@@ -43,10 +43,10 @@ export default function Asteroid3DViewport() {
         bCtx.fillRect(x, y, 1.5, 1.5)
       }
 
-      for (let c = 0; c < 80; c++) {
+      for (let c = 0; c < 70; c++) {
         const cx = Math.random() * 1024
         const cy = Math.random() * 1024
-        const rad = 6 + Math.random() * 38
+        const rad = 6 + Math.random() * 34
         const grad = bCtx.createRadialGradient(cx, cy, 1, cx, cy, rad)
         grad.addColorStop(0, "#111111")
         grad.addColorStop(0.6, "#555555")
@@ -62,8 +62,8 @@ export default function Asteroid3DViewport() {
     bumpTexture.wrapS = THREE.RepeatWrapping
     bumpTexture.wrapT = THREE.RepeatWrapping
 
-    // Realistic Cratered Apophis Chondrite Mesh
-    const geometry = new THREE.IcosahedronGeometry(1.15, 36)
+    // Solid Non-Tearing Apophis Chondrite Mesh
+    const geometry = new THREE.IcosahedronGeometry(1.15, 32)
     const pos = geometry.attributes.position
     const v = new THREE.Vector3()
 
@@ -134,6 +134,7 @@ export default function Asteroid3DViewport() {
     }
   }, [])
 
+  // Dynamic Sensor Modes - Single Property Declarations (No TS1117)
   const handleSensorChange = (mode: SensorMode) => {
     setSensorMode(mode)
     const mesh = meshRef.current
@@ -171,6 +172,7 @@ export default function Asteroid3DViewport() {
     <div className="relative w-full h-full bg-[#020408]">
       <div ref={containerRef} className="w-full h-full" />
 
+      {/* Sensor Mode Switcher */}
       <div className="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-auto z-10 text-[9px] font-mono">
         <div className="flex items-center gap-1 bg-black/85 backdrop-blur-md border border-white/10 p-1">
           <button
