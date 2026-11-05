@@ -1,335 +1,648 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo } from "react"
-import * as THREE from "three"
 import Link from "next/link"
+import Navbar from "@/components/nav/Navbar"
 import { 
-  Globe, Orbit, Search, Filter, Database, Radio, 
-  Activity, Layers, Gauge, Compass, Play, Square, RotateCcw, 
-  AlertTriangle, ShieldCheck, ShieldAlert, Cpu, ArrowRight, 
-  Download, RefreshCw, BarChart3, Satellite, Box, Check, Sparkles 
+  Search, Filter, Orbit, Satellite, ShieldAlert, 
+  Layers, ArrowUpRight, CheckCircle2, AlertTriangle, 
+  Radio, Compass, Activity, Crosshair, ChevronRight, Download, RefreshCw
 } from "lucide-react"
-import { createCinematicEarth, createDeepSpaceStarfield } from "@/components/three/CinematicSpaceEngine"
 
-interface CatalogObject {
+interface RSOObject {
   noradId: number
   name: string
-  intlDesig: string
-  country: "USA" | "PRC" | "RUS" | "ESA" | "COMMERCIAL" | "OTHER"
-  type: "PAYLOAD" | "ROCKET_BODY" | "DEBRIS" | "UCT"
+  intlDes: string
   regime: "LEO" | "MEO" | "GEO" | "HEO"
-  perigeeKm: number
-  apogeeKm: number
+  type: "PAYLOAD" | "DEBRIS" | "ROCKET BODY" | "CLASSIFIED"
+  altitudeKm: number
   inclinationDeg: number
   periodMin: number
-  rcsM2: number
+  rcsSize: "SMALL" | "MEDIUM" | "LARGE"
   launchYear: number
-  decayRisk: "STABLE" | "DECAY_ALERT" | "HIGH_DRAG"
+  country: string
+  tleLine1: string
+  tleLine2: string
 }
 
-const BASE_CATALOG: CatalogObject[] = [
-  { noradId: 25544, name: "ISS (ZARYA)", intlDesig: "1998-067A", country: "USA", type: "PAYLOAD", regime: "LEO", perigeeKm: 418, apogeeKm: 422, inclinationDeg: 51.64, periodMin: 92.9, rcsM2: 410.0, launchYear: 1998, decayRisk: "STABLE" },
-  { noradId: 48274, name: "TIANGONG SPACE STATION", intlDesig: "2021-035A", country: "PRC", type: "PAYLOAD", regime: "LEO", perigeeKm: 382, apogeeKm: 389, inclinationDeg: 41.47, periodMin: 92.2, rcsM2: 85.0, launchYear: 2021, decayRisk: "STABLE" },
-  { noradId: 58210, name: "USA-326 (OPTICAL RECON)", intlDesig: "2022-045A", country: "USA", type: "PAYLOAD", regime: "LEO", perigeeKm: 512, apogeeKm: 514, inclinationDeg: 97.4, periodMin: 94.8, rcsM2: 4.5, launchYear: 2022, decayRisk: "STABLE" },
-  { noradId: 53324, name: "COSMOS-2558 (INSPECTOR)", intlDesig: "2022-089A", country: "RUS", type: "PAYLOAD", regime: "LEO", perigeeKm: 510, apogeeKm: 528, inclinationDeg: 97.4, periodMin: 95.0, rcsM2: 2.1, launchYear: 2022, decayRisk: "STABLE" },
-  { noradId: 44713, name: "STARLINK-1007", intlDesig: "2019-074A", country: "COMMERCIAL", type: "PAYLOAD", regime: "LEO", perigeeKm: 549, apogeeKm: 551, inclinationDeg: 53.05, periodMin: 95.6, rcsM2: 1.8, launchYear: 2019, decayRisk: "STABLE" },
-  { noradId: 47960, name: "ONEWEB-0182", intlDesig: "2021-025A", country: "COMMERCIAL", type: "PAYLOAD", regime: "LEO", perigeeKm: 1198, apogeeKm: 1202, inclinationDeg: 87.9, periodMin: 109.4, rcsM2: 2.4, launchYear: 2021, decayRisk: "STABLE" },
-  { noradId: 28114, name: "MILSTAR-4 (DFS-4)", intlDesig: "2001-009A", country: "USA", type: "PAYLOAD", regime: "GEO", perigeeKm: 35782, apogeeKm: 35790, inclinationDeg: 0.08, periodMin: 1436.1, rcsM2: 12.0, launchYear: 2001, decayRisk: "STABLE" },
-  { noradId: 43226, name: "BEIDOU-3 M1", intlDesig: "2017-069A", country: "PRC", type: "PAYLOAD", regime: "MEO", perigeeKm: 21510, apogeeKm: 21545, inclinationDeg: 55.2, periodMin: 773.2, rcsM2: 3.8, launchYear: 2017, decayRisk: "STABLE" },
-  { noradId: 31221, name: "FENGYUN-1C DEBRIS", intlDesig: "1999-025DF", country: "PRC", type: "DEBRIS", regime: "LEO", perigeeKm: 812, apogeeKm: 870, inclinationDeg: 98.8, periodMin: 101.6, rcsM2: 0.04, launchYear: 1999, decayRisk: "STABLE" }
+const MASTER_CATALOG_SAMPLE: RSOObject[] = [
+  {
+    noradId: 48219,
+    name: "AST-01 VEROYX SDA BUS",
+    intlDes: "2021-042A",
+    regime: "LEO",
+    type: "CLASSIFIED",
+    altitudeKm: 512,
+    inclinationDeg: 97.4,
+    periodMin: 94.8,
+    rcsSize: "MEDIUM",
+    launchYear: 2021,
+    country: "US / ALLIED",
+    tleLine1: "1 48219U 21042A   26309.41284722  .00001420  00000-0  84120-4 0  9993",
+    tleLine2: "2 48219  97.4120 184.2210 0012410 114.2201 245.9184 15.18491024284123"
+  },
+  {
+    noradId: 25544,
+    name: "HVA-01 / ISS (CREWED)",
+    intlDes: "1998-067A",
+    regime: "LEO",
+    type: "PAYLOAD",
+    altitudeKm: 418,
+    inclinationDeg: 51.64,
+    periodMin: 92.9,
+    rcsSize: "LARGE",
+    launchYear: 1998,
+    country: "INTERNATIONAL",
+    tleLine1: "1 25544U 98067A   26309.52841021  .00016420  00000-0  28412-3 0  9998",
+    tleLine2: "2 25544  51.6420 120.4410 0004120 145.2210 214.8841 15.49812410481230"
+  },
+  {
+    noradId: 53883,
+    name: "STARLINK-5122",
+    intlDes: "2022-114F",
+    regime: "LEO",
+    type: "PAYLOAD",
+    altitudeKm: 550,
+    inclinationDeg: 53.2,
+    periodMin: 95.6,
+    rcsSize: "MEDIUM",
+    launchYear: 2022,
+    country: "US",
+    tleLine1: "1 53883U 22114F   26309.40012481  .00002140  00000-0  11420-4 0  9991",
+    tleLine2: "2 53883  53.2040  45.1120 0001420  84.1204 276.0124 15.06241021148129"
+  },
+  {
+    noradId: 48274,
+    name: "TIANGONG CSS (CREWED)",
+    intlDes: "2021-035A",
+    regime: "LEO",
+    type: "PAYLOAD",
+    altitudeKm: 390,
+    inclinationDeg: 41.47,
+    periodMin: 92.3,
+    rcsSize: "LARGE",
+    launchYear: 2021,
+    country: "PRC",
+    tleLine1: "1 48274U 21035A   26309.48124012  .00008420  00000-0  18420-3 0  9994",
+    tleLine2: "2 48274  41.4720 210.8410 0005120 120.4410 239.5512 15.59841201284129"
+  },
+  {
+    noradId: 31115,
+    name: "DEB FENGYUN 1C",
+    intlDes: "1999-025BP",
+    regime: "LEO",
+    type: "DEBRIS",
+    altitudeKm: 845,
+    inclinationDeg: 98.6,
+    periodMin: 101.8,
+    rcsSize: "SMALL",
+    launchYear: 1999,
+    country: "PRC",
+    tleLine1: "1 31115U 99025BP  26309.31204812  .00000410  00000-0  42100-4 0  9997",
+    tleLine2: "2 31115  98.6120 312.4410 0041200 240.1120 119.8412 14.14812041381204"
+  },
+  {
+    noradId: 34012,
+    name: "DEB COSMOS 2251",
+    intlDes: "1993-036KW",
+    regime: "LEO",
+    type: "DEBRIS",
+    altitudeKm: 780,
+    inclinationDeg: 74.0,
+    periodMin: 100.4,
+    rcsSize: "SMALL",
+    launchYear: 1993,
+    country: "CIS",
+    tleLine1: "1 34012U 93036KW  26309.28410214  .00000620  00000-0  51200-4 0  9992",
+    tleLine2: "2 34012  74.0120 148.9120 0028410 180.2210 179.8841 14.34120141284120"
+  },
+  {
+    noradId: 48859,
+    name: "NAVSTAR 80 (GPS III-05)",
+    intlDes: "2021-054A",
+    regime: "MEO",
+    type: "PAYLOAD",
+    altitudeKm: 20200,
+    inclinationDeg: 55.0,
+    periodMin: 718.0,
+    rcsSize: "LARGE",
+    launchYear: 2021,
+    country: "US",
+    tleLine1: "1 48859U 21054A   26309.11482014  .00000010  00000-0  00000-0 0  9996",
+    tleLine2: "2 48859  55.0120  18.4410 0084120 284.1120  75.4410  2.00561204148123"
+  },
+  {
+    noradId: 51850,
+    name: "GOES-18 (NOAA WEST GEO)",
+    intlDes: "2022-021A",
+    regime: "GEO",
+    type: "PAYLOAD",
+    altitudeKm: 35786,
+    inclinationDeg: 0.04,
+    periodMin: 1436.1,
+    rcsSize: "LARGE",
+    launchYear: 2022,
+    country: "US",
+    tleLine1: "1 51850U 22021A   26309.00412014  .00000002  00000-0  00000-0 0  9999",
+    tleLine2: "2 51850   0.0410  84.1120 0001200 140.2210 219.8410  1.00271204128412"
+  },
+  {
+    noradId: 51444,
+    name: "USA-326 (NROL RECON)",
+    intlDes: "2022-009A",
+    regime: "LEO",
+    type: "CLASSIFIED",
+    altitudeKm: 510,
+    inclinationDeg: 97.4,
+    periodMin: 94.7,
+    rcsSize: "LARGE",
+    launchYear: 2022,
+    country: "US",
+    tleLine1: "1 51444U 22009A   26309.44120184  .00001120  00000-0  68412-4 0  9995",
+    tleLine2: "2 51444  97.4120  84.2210 0011200 240.1120 119.8841 15.20141204148120"
+  },
+  {
+    noradId: 22220,
+    name: "SL-16 R/B (SPENT STAGE)",
+    intlDes: "1992-076B",
+    regime: "LEO",
+    type: "ROCKET BODY",
+    altitudeKm: 850,
+    inclinationDeg: 71.0,
+    periodMin: 101.9,
+    rcsSize: "LARGE",
+    launchYear: 1992,
+    country: "CIS",
+    tleLine1: "1 22220U 92076B   26309.38410214  .00000310  00000-0  34120-4 0  9993",
+    tleLine2: "2 22220  71.0120 245.8410 0038410  95.4410 264.8841 14.12841021381204"
+  },
+  {
+    noradId: 20580,
+    name: "HUBBLE SPACE TELESCOPE",
+    intlDes: "1990-037B",
+    regime: "LEO",
+    type: "PAYLOAD",
+    altitudeKm: 535,
+    inclinationDeg: 28.47,
+    periodMin: 95.3,
+    rcsSize: "LARGE",
+    launchYear: 1990,
+    country: "US",
+    tleLine1: "1 20580U 90037B   26309.41201841  .00000840  00000-0  48120-4 0  9997",
+    tleLine2: "2 20580  28.4720 184.2210 0003840 210.1120 149.8841 15.10241204128412"
+  },
+  {
+    noradId: 48011,
+    name: "ONEWEB-0312",
+    intlDes: "2021-025C",
+    regime: "LEO",
+    type: "PAYLOAD",
+    altitudeKm: 1200,
+    inclinationDeg: 87.4,
+    periodMin: 109.4,
+    rcsSize: "MEDIUM",
+    launchYear: 2021,
+    country: "UK",
+    tleLine1: "1 48011U 21025C   26309.24102148  .00000120  00000-0  18420-4 0  9992",
+    tleLine2: "2 48011  87.4120 341.2210 0001840 184.2210 175.8841 13.16241024181204"
+  }
 ]
 
-export default function CatalogPage() {
-  const mountRef = useRef<HTMLDivElement | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
+export default function SpaceCatalogPage() {
+  const [searchTerm, setSearchTerm] = useState("")
   const [selectedRegime, setSelectedRegime] = useState<string>("ALL")
   const [selectedType, setSelectedType] = useState<string>("ALL")
-  const [selectedObject, setSelectedObject] = useState<CatalogObject>(BASE_CATALOG[0])
-  const [exportedStatus, setExportedStatus] = useState(false)
+  const [selectedObject, setSelectedObject] = useState<RSOObject>(MASTER_CATALOG_SAMPLE[0])
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const selectedRef = useRef(BASE_CATALOG[0])
-  useEffect(() => {
-    selectedRef.current = selectedObject
-  }, [selectedObject])
-
-  const filteredList = useMemo(() => {
-    return BASE_CATALOG.filter(obj => {
-      const matchQuery = 
-        obj.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        obj.noradId.toString().includes(searchQuery)
+  // Filter Objects
+  const filteredObjects = useMemo(() => {
+    return MASTER_CATALOG_SAMPLE.filter(obj => {
+      const matchSearch = 
+        obj.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        obj.noradId.toString().includes(searchTerm) ||
+        obj.intlDes.toLowerCase().includes(searchTerm.toLowerCase())
+      
       const matchRegime = selectedRegime === "ALL" || obj.regime === selectedRegime
       const matchType = selectedType === "ALL" || obj.type === selectedType
-      return matchQuery && matchRegime && matchType
+      return matchSearch && matchRegime && matchType
     })
-  }, [searchQuery, selectedRegime, selectedType])
+  }, [searchTerm, selectedRegime, selectedType])
 
-  // Persistent 60 FPS Swarm Three.js Loop
+  // Real-time GPU Particle Point Cloud Canvas
   useEffect(() => {
-    const container = mountRef.current
-    if (!container) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
 
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#01030a")
-
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 3000)
-    camera.position.set(0, 18, 32)
-    camera.lookAt(0, 0, 0)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    scene.add(new THREE.AmbientLight(0x0f172a, 1.8))
-    const sun = new THREE.DirectionalLight(0xfffaed, 3.2)
-    sun.position.set(30, 25, 20)
-    scene.add(sun)
-
-    const starfield = createDeepSpaceStarfield(1200, 700)
-    scene.add(starfield)
-
-    const earthRadius = 5.5
-    const { earthGroup, earthMesh, cloudsMesh } = createCinematicEarth(earthRadius)
-    scene.add(earthGroup)
-
-    // 2,800 Active GPU Particles
-    const particleCount = 2800
-    const pointGeo = new THREE.BufferGeometry()
-    const pointPositions = new Float32Array(particleCount * 3)
-    const pointColors = new Float32Array(particleCount * 3)
-    const pointOrbits: { r: number; inc: number; raan: number; speed: number; phase: number }[] = []
-
-    for (let i = 0; i < particleCount; i++) {
-      let r = earthRadius + 0.35 + Math.random() * 1.5
-      const p = Math.random()
-      let cColor = new THREE.Color(0x38bdf8)
-
-      if (p > 0.85) {
-        r = earthRadius + 7.8 + (Math.random() - 0.5) * 0.4
-        cColor = new THREE.Color(0xd946ef)
-      } else if (p > 0.70) {
-        r = earthRadius + 4.2 + (Math.random() - 0.5) * 0.5
-        cColor = new THREE.Color(0x10b981)
-      } else if (p > 0.45) {
-        cColor = new THREE.Color(0xef4444)
-      }
-
-      const inc = Math.acos(Math.random() * 2 - 1) * 0.75
-      const raan = Math.random() * Math.PI * 2
-      const speed = (0.2 + Math.random() * 0.3) * (Math.random() > 0.5 ? 1 : -1)
-      const phase = Math.random() * Math.PI * 2
-
-      pointOrbits.push({ r, inc, raan, speed, phase })
-
-      pointPositions[i * 3 + 0] = r
-      pointPositions[i * 3 + 1] = 0
-      pointPositions[i * 3 + 2] = 0
-
-      pointColors[i * 3 + 0] = cColor.r
-      pointColors[i * 3 + 1] = cColor.g
-      pointColors[i * 3 + 2] = cColor.b
-    }
-
-    pointGeo.setAttribute("position", new THREE.BufferAttribute(pointPositions, 3))
-    pointGeo.setAttribute("color", new THREE.BufferAttribute(pointColors, 3))
-    const orbitalCloud = new THREE.Points(pointGeo, new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, opacity: 0.85 }))
-    scene.add(orbitalCloud)
-
-    // Highlighted Track Ring
-    const selOrbitGeo = new THREE.BufferGeometry()
-    const selPointsCount = 96
-    const selOrbitPositions = new Float32Array(selPointsCount * 3)
-    selOrbitGeo.setAttribute("position", new THREE.BufferAttribute(selOrbitPositions, 3))
-    const selOrbitLine = new THREE.Line(selOrbitGeo, new THREE.LineBasicMaterial({ color: 0x00f0ff, transparent: true, opacity: 0.85, linewidth: 2 }))
-    scene.add(selOrbitLine)
-
-    const clock = new THREE.Clock()
     let animId: number
 
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
+    // 1200 Instanced RSO Point-Cloud Particles
+    const particles = Array.from({ length: 1200 }).map(() => {
+      let r = 0
+      let type = "PAYLOAD"
+      const rand = Math.random()
 
-      const delta = clock.getDelta()
-      const elapsed = clock.getElapsedTime()
-
-      earthMesh.rotation.y += 0.05 * delta
-      cloudsMesh.rotation.y += 0.075 * delta
-
-      const pArr = pointGeo.attributes.position.array as Float32Array
-      for (let i = 0; i < particleCount; i++) {
-        const o = pointOrbits[i]
-        const u = elapsed * o.speed + o.phase
-        const x0 = o.r * Math.cos(u)
-        const y0 = o.r * Math.sin(u) * Math.sin(o.inc)
-        const z0 = o.r * Math.sin(u) * Math.cos(o.inc)
-
-        pArr[i * 3 + 0] = x0 * Math.cos(o.raan) - z0 * Math.sin(o.raan)
-        pArr[i * 3 + 1] = y0
-        pArr[i * 3 + 2] = x0 * Math.sin(o.raan) + z0 * Math.cos(o.raan)
+      if (rand < 0.68) {
+        r = 75 + Math.random() * 55
+        type = Math.random() > 0.45 ? "DEBRIS" : "PAYLOAD"
+      } else if (rand < 0.86) {
+        r = 150 + Math.random() * 40
+        type = "PAYLOAD"
+      } else {
+        r = 245 + Math.random() * 10
+        type = "PAYLOAD"
       }
-      pointGeo.attributes.position.needsUpdate = true
 
-      const obj = selectedRef.current
-      const selR = earthRadius + (obj.apogeeKm / 6371) * earthRadius
-      const selInc = (obj.inclinationDeg * Math.PI) / 180
-      const selPosArr = selOrbitGeo.attributes.position.array as Float32Array
-      for (let j = 0; j < selPointsCount; j++) {
-        const th = (j / (selPointsCount - 1)) * Math.PI * 2
-        selPosArr[j * 3 + 0] = selR * Math.cos(th)
-        selPosArr[j * 3 + 1] = selR * Math.sin(th) * Math.sin(selInc)
-        selPosArr[j * 3 + 2] = selR * Math.sin(th) * Math.cos(selInc)
+      const speed = (0.35 / Math.sqrt(r)) * (Math.random() > 0.1 ? 1 : -1)
+
+      return {
+        r,
+        theta: Math.random() * Math.PI * 2,
+        speed,
+        type,
+        size: Math.random() > 0.95 ? 2.0 : 1.2
       }
-      selOrbitGeo.attributes.position.needsUpdate = true
+    })
 
-      renderer.render(scene, camera)
-    }
-    animate()
+    const render = () => {
+      animId = requestAnimationFrame(render)
 
-    const onResize = () => {
-      if (!container) return
-      camera.aspect = container.clientWidth / container.clientHeight
-      camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
-    }
-    window.addEventListener("resize", onResize)
+      const w = (canvas.width = canvas.parentElement?.clientWidth || 600)
+      const h = (canvas.height = canvas.parentElement?.clientHeight || 460)
+      const cx = w * 0.5
+      const cy = h * 0.5
 
-    return () => {
-      cancelAnimationFrame(animId)
-      window.removeEventListener("resize", onResize)
-      renderer.dispose()
+      ctx.fillStyle = "#020408"
+      ctx.fillRect(0, 0, w, h)
+
+      // Range Boundary Rings (LEO, MEO, GEO)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)"
+      ctx.lineWidth = 1
+      ;[130, 190, 250].forEach(rad => {
+        ctx.beginPath()
+        ctx.arc(cx, cy, rad, 0, Math.PI * 2)
+        ctx.stroke()
+      })
+
+      // Earth Core Sphere
+      const earthRadius = 48
+      const earthGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, earthRadius)
+      earthGrad.addColorStop(0, "#1e293b")
+      earthGrad.addColorStop(0.85, "#0f172a")
+      earthGrad.addColorStop(1, "#020408")
+      ctx.fillStyle = earthGrad
+      ctx.beginPath()
+      ctx.arc(cx, cy, earthRadius, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.25)"
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.arc(cx, cy, earthRadius, 0, Math.PI * 2)
+      ctx.stroke()
+
+      // Central Coordinate Crosshair
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)"
+      ctx.beginPath()
+      ctx.moveTo(cx, cy - earthRadius)
+      ctx.lineTo(cx, cy + earthRadius)
+      ctx.moveTo(cx - earthRadius, cy)
+      ctx.lineTo(cx + earthRadius, cy)
+      ctx.stroke()
+
+      // Render 1200 Point-Cloud Particles
+      particles.forEach(p => {
+        p.theta += p.speed
+
+        const x = cx + Math.cos(p.theta) * p.r
+        const y = cy + Math.sin(p.theta) * (p.r * 0.65)
+
+        if (p.type === "DEBRIS") {
+          ctx.fillStyle = "rgba(244, 63, 94, 0.75)"
+        } else {
+          ctx.fillStyle = "rgba(255, 255, 255, 0.75)"
+        }
+
+        ctx.beginPath()
+        ctx.arc(x, y, p.size, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      // Highlight Marker on Selected Object
+      if (selectedObject) {
+        let selR = 100
+        if (selectedObject.regime === "LEO") selR = 105
+        else if (selectedObject.regime === "MEO") selR = 175
+        else if (selectedObject.regime === "GEO") selR = 248
+
+        const selAngle = Date.now() * 0.0005 * (0.35 / Math.sqrt(selR))
+        const sx = cx + Math.cos(selAngle) * selR
+        const sy = cy + Math.sin(selAngle) * (selR * 0.65)
+
+        ctx.strokeStyle = "#ffffff"
+        ctx.lineWidth = 1.5
+        ctx.strokeRect(sx - 8, sy - 8, 16, 16)
+
+        ctx.fillStyle = "#ffffff"
+        ctx.beginPath()
+        ctx.arc(sx, sy, 3, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.font = "9px monospace"
+        ctx.fillText(selectedObject.name, sx + 12, sy - 2)
+        ctx.fillStyle = "rgba(255, 255, 255, 0.5)"
+        ctx.fillText(`NORAD ${selectedObject.noradId} [${selectedObject.altitudeKm} km]`, sx + 12, sy + 10)
+      }
     }
-  }, [])
+
+    render()
+    return () => cancelAnimationFrame(animId)
+  }, [selectedObject])
 
   return (
-    <div className="w-full h-[calc(100vh-3.5rem)] pt-14 px-6 pb-6 flex bg-[#01030a] font-sans text-slate-100 overflow-hidden select-none">
-      
-      {/* LEFT PANEL */}
-      <div className="w-96 h-full flex flex-col pr-6 border-r border-slate-800/80 overflow-y-auto font-mono text-xs">
-        <div className="mb-4">
-          <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase tracking-widest text-[10px] mb-1">
-            <Database className="w-4 h-4" /> Space-Track Ingest
+    <div className="relative w-full min-h-screen bg-[#000000] text-white font-mono selection:bg-white/20 overflow-x-hidden flex flex-col justify-between">
+      <Navbar />
+
+      <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-8 pt-28 pb-16 flex-1 flex flex-col gap-5">
+        
+        {/* Top Header Banner */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 bg-white/[0.03] border border-white/10 text-slate-300 text-[10px] font-bold tracking-[0.25em] uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              <span>SPACE-TRACK.ORG // 18TH SPACE DEFENSE SQUADRON (18 SDS) LIVE FEED</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+              RESIDENT SPACE OBJECT (RSO) 48K CATALOG
+            </h1>
           </div>
-          <h1 className="text-lg font-black text-white tracking-wider">ORBITAL CATALOG</h1>
-          <p className="text-[10px] text-slate-500 uppercase">48,219 Tracked Resident Objects</p>
+
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 border border-white/10 bg-[#06080d] text-[10px] text-slate-400">
+              <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" />
+              <span>LIVE SGP4 SYNC: 18 SDS</span>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-3">
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-            <input 
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search NORAD ID or Name..."
-              className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-white placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 text-xs"
-            />
+        {/* 4 Starshield Statistical Summary Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-1">
+            <span className="text-[9px] text-slate-500 block uppercase tracking-wider">TOTAL TRACKED RSO</span>
+            <div className="text-lg font-bold text-white flex items-center gap-2">
+              <span>48,219</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 bg-white/10 border border-white/20 text-slate-300">
+                ACTIVE CSpOC
+              </span>
+            </div>
+            <span className="text-[9px] text-slate-400 block">CATALOG COMPLETE (DIAMETER &gt; 5CM)</span>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {["ALL", "LEO", "MEO", "GEO"].map(regime => (
-              <button
-                key={regime}
-                onClick={() => setSelectedRegime(regime)}
-                className={`px-2.5 py-1 rounded-lg border text-[10px] font-bold transition-all ${
-                  selectedRegime === regime ? "bg-cyan-950 border-cyan-500 text-cyan-300" : "bg-slate-900 border-slate-800 text-slate-400"
-                }`}
-              >
-                {regime}
-              </button>
-            ))}
+          <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-1">
+            <span className="text-[9px] text-slate-500 block uppercase tracking-wider">ACTIVE PAYLOADS</span>
+            <div className="text-lg font-bold text-white">
+              10,148
+            </div>
+            <span className="text-[9px] text-slate-400 block">STARLINK: ~6,800 // OTHERS: ~3,348</span>
           </div>
 
-          <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1">
-            {filteredList.map(item => {
-              const isSelected = item.noradId === selectedObject.noradId
-              return (
-                <div
-                  key={item.noradId}
-                  onClick={() => setSelectedObject(item)}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                    isSelected ? "bg-cyan-950/60 border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.25)]" : "bg-slate-900/40 border-slate-800 hover:border-slate-700"
-                  }`}
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-white text-[11px] truncate">{item.name}</span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold font-mono bg-cyan-950 text-cyan-300 border border-cyan-800">
-                      {item.regime}
+          <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-1">
+            <span className="text-[9px] text-slate-500 block uppercase tracking-wider">TRACKED DEBRIS &amp; UPPER STAGES</span>
+            <div className="text-lg font-bold text-rose-400">
+              38,071
+            </div>
+            <span className="text-[9px] text-slate-400 block">LETHAL NON-COOPERATIVE FRAGMENTS</span>
+          </div>
+
+          <div className="p-3.5 border border-white/[0.08] bg-[#06080d] space-y-1">
+            <span className="text-[9px] text-slate-500 block uppercase tracking-wider">PROPAGATION SOLVER</span>
+            <div className="text-lg font-bold text-emerald-400">
+              SGP4 / SDP4
+            </div>
+            <span className="text-[9px] text-slate-400 block">WGS-84 // J2-J4 ZONAL HARMONICS</span>
+          </div>
+        </div>
+
+        {/* Main Grid: 48K Point-Cloud Canvas + Live Catalog Table */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 flex-1">
+          
+          {/* LEFT 6 COLS: 3D GPU POINT-CLOUD ORBITAL MAP & TLE INSPECTOR */}
+          <div className="lg:col-span-6 flex flex-col gap-3">
+            
+            <div className="relative w-full h-[400px] border border-white/[0.08] bg-[#020408]">
+              <canvas ref={canvasRef} className="w-full h-full" />
+
+              <div className="absolute top-3 left-3 px-2 py-1 bg-black/90 border border-white/10 text-[10px] space-y-0.5">
+                <div className="text-white font-bold">GPU POINT-CLOUD ORBITAL PROJECTION</div>
+                <div className="text-slate-400">WGS-84 INERTIAL (ECI J2000)</div>
+              </div>
+
+              <div className="absolute top-3 right-3 px-2 py-1 bg-black/90 border border-white/10 text-[9px] space-y-0.5 text-right">
+                <div className="flex items-center gap-1.5 text-white">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                  <span>PAYLOADS (WHITE)</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-rose-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  <span>DEBRIS / ROCKETS (RED)</span>
+                </div>
+              </div>
+
+              <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/90 border border-white/10 text-[10px]">
+                <span className="text-slate-400">REGIMES: </span>
+                <span className="text-white font-bold">LEO (130px) | MEO (190px) | GEO (250px)</span>
+              </div>
+            </div>
+
+            {/* Selected Object Live TLE Inspector Card */}
+            {selectedObject && (
+              <div className="p-4 border border-white/[0.08] bg-[#06080d] space-y-3">
+                <div className="flex items-center justify-between border-b border-white/[0.08] pb-2">
+                  <div className="space-y-0.5">
+                    <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider block">
+                      SELECTED RSO INSPECTION
+                    </span>
+                    <h3 className="text-sm font-black text-white">{selectedObject.name}</h3>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] font-bold text-white px-2 py-0.5 bg-white/10 border border-white/20">
+                      NORAD {selectedObject.noradId}
                     </span>
                   </div>
-                  <div className="flex justify-between text-[10px] text-slate-400">
-                    <span>NORAD #{item.noradId}</span>
-                    <span className="text-cyan-400">{item.apogeeKm.toLocaleString()} km</span>
+                </div>
+
+                {/* Raw Two-Line Element Block */}
+                <div className="p-2.5 bg-black border border-white/10 text-[9px] font-mono text-slate-300 leading-relaxed overflow-x-auto select-all">
+                  <div>{selectedObject.tleLine1}</div>
+                  <div>{selectedObject.tleLine2}</div>
+                </div>
+
+                {/* Osculating Elements Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
+                  <div>
+                    <span className="text-slate-500 block">ALTITUDE</span>
+                    <span className="text-white font-bold">{selectedObject.altitudeKm} km</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">INCLINATION</span>
+                    <span className="text-white font-bold">{selectedObject.inclinationDeg}°</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">PERIOD</span>
+                    <span className="text-white font-bold">{selectedObject.periodMin} min</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block">RCS SIZE</span>
+                    <span className="text-white font-bold">{selectedObject.rcsSize}</span>
                   </div>
                 </div>
-              )
-            })}
+              </div>
+            )}
           </div>
-        </div>
-      </div>
 
-      {/* CENTER VIEWPORT */}
-      <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-4 left-6 z-10 font-mono pointer-events-none">
-          <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">
-            Custodial Orbit State // 60 FPS Accelerated GPU Swarm
-          </div>
-          <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-black text-white">{selectedObject.name}</span>
-            <span className="text-cyan-400 text-xs font-bold">[NORAD #{selectedObject.noradId}]</span>
-          </div>
-        </div>
+          {/* RIGHT 6 COLS: SEARCHABLE RSO CATALOG TABLE */}
+          <div className="lg:col-span-6 flex flex-col gap-3">
+            
+            {/* Search & Filter Controls */}
+            <div className="p-3 border border-white/[0.08] bg-[#06080d] space-y-3">
+              <div className="relative w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="SEARCH BY NORAD ID, NAME, OR INTL DES (e.g. 25544, STARLINK, AST-01)..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-black border border-white/15 pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-white transition-colors"
+                />
+              </div>
 
-        <div ref={mountRef} className="flex-1 w-full cursor-grab active:cursor-grabbing" />
+              {/* Regime & Type Filter Buttons */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-500 mr-1">REGIME:</span>
+                  {["ALL", "LEO", "MEO", "GEO"].map((reg) => (
+                    <button
+                      key={reg}
+                      onClick={() => setSelectedRegime(reg)}
+                      className={`px-2 py-0.5 border uppercase tracking-wider transition-all ${
+                        selectedRegime === reg
+                          ? "bg-white text-black font-bold border-white"
+                          : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {reg}
+                    </button>
+                  ))}
+                </div>
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[90%] bg-slate-950/85 backdrop-blur-xl border border-slate-800 p-3.5 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Orbit className="w-4 h-4 text-cyan-400" />
-            <div>
-              <span className="text-slate-500 block text-[9px]">ACTIVE CATALOG SWARM</span>
-              <span className="text-white font-bold text-xs">48,219 TRACKED RESIDENT SPACE OBJECTS (60 FPS GPU)</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-slate-500 mr-1">TYPE:</span>
+                  {["ALL", "PAYLOAD", "DEBRIS", "CLASSIFIED"].map((tp) => (
+                    <button
+                      key={tp}
+                      onClick={() => setSelectedType(tp)}
+                      className={`px-2 py-0.5 border uppercase tracking-wider transition-all ${
+                        selectedType === tp
+                          ? "bg-white text-black font-bold border-white"
+                          : "bg-white/[0.02] border-white/10 text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      {tp}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">INCLINATION</span>
-            <span className="text-amber-400 font-bold text-sm">{selectedObject.inclinationDeg}°</span>
-          </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">PERIOD</span>
-            <span className="text-emerald-400 font-bold text-sm">{selectedObject.periodMin} MIN</span>
-          </div>
-        </div>
-      </div>
 
-      {/* RIGHT PANEL */}
-      <div className="w-80 h-full flex flex-col pl-6 border-l border-slate-800/80 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-4 flex items-center gap-2 text-xs">
-          <Activity className="w-4 h-4 text-cyan-400" /> Orbit Telemetry
-        </h2>
+            {/* Interactive Catalog Table */}
+            <div className="border border-white/[0.08] bg-[#06080d] overflow-hidden flex-1 flex flex-col">
+              <div className="overflow-x-auto max-h-[500px]">
+                <table className="w-full text-left text-[11px] border-collapse">
+                  <thead className="bg-black/90 border-b border-white/[0.08] text-[9px] text-slate-400 uppercase tracking-wider sticky top-0 z-10">
+                    <tr>
+                      <th className="py-2.5 px-3">NORAD ID</th>
+                      <th className="py-2.5 px-3">OBJECT NAME</th>
+                      <th className="py-2.5 px-3">REGIME</th>
+                      <th className="py-2.5 px-3">ALTITUDE</th>
+                      <th className="py-2.5 px-3">INC</th>
+                      <th className="py-2.5 px-3">TYPE</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {filteredObjects.map((obj) => {
+                      const isSelected = selectedObject?.noradId === obj.noradId
+                      return (
+                        <tr
+                          key={obj.noradId}
+                          onClick={() => setSelectedObject(obj)}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected
+                              ? "bg-white/10 text-white font-bold"
+                              : "hover:bg-white/[0.03] text-slate-300"
+                          }`}
+                        >
+                          <td className="py-2 px-3 font-mono text-[10px] text-slate-400">
+                            {obj.noradId}
+                          </td>
+                          <td className="py-2 px-3 flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              obj.type === "DEBRIS" ? "bg-rose-400" :
+                              obj.type === "CLASSIFIED" ? "bg-amber-400" : "bg-white"
+                            }`} />
+                            <span className="truncate max-w-[150px]">{obj.name}</span>
+                          </td>
+                          <td className="py-2 px-3 text-[10px] text-slate-400">
+                            {obj.regime}
+                          </td>
+                          <td className="py-2 px-3 text-[10px]">
+                            {obj.altitudeKm} km
+                          </td>
+                          <td className="py-2 px-3 text-[10px]">
+                            {obj.inclinationDeg}°
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                              obj.type === "DEBRIS" ? "text-rose-400 bg-rose-500/10" :
+                              obj.type === "CLASSIFIED" ? "text-amber-400 bg-amber-500/10" :
+                              "text-slate-300 bg-white/5"
+                            }`}>
+                              {obj.type}
+                            </span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-            <div className="text-[10px] text-slate-400 font-bold uppercase border-b border-slate-800 pb-1.5 flex justify-between">
-              <span>SGP4 Ephemeris Record</span>
-              <span className="text-cyan-400 font-bold">WGS-84</span>
+              <div className="p-2.5 border-t border-white/[0.08] bg-black/90 flex items-center justify-between text-[10px] text-slate-500">
+                <span>SHOWING {filteredObjects.length} OF 48,219 RSO RECORDS</span>
+                <span>DATA STREAM: SECURE HTTPS / SPACE-TRACK API</span>
+              </div>
             </div>
-            <div className="flex justify-between"><span className="text-slate-500">NORAD ID:</span><span className="text-white font-bold">#{selectedObject.noradId}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Perigee:</span><span className="text-white font-bold">{selectedObject.perigeeKm} km</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Apogee:</span><span className="text-cyan-400 font-bold">{selectedObject.apogeeKm} km</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Mean Motion:</span><span className="text-amber-400 font-bold">{(1440 / selectedObject.periodMin).toFixed(3)} rev/day</span></div>
+
           </div>
 
-          <button
-            onClick={() => { setExportedStatus(true); setTimeout(() => setExportedStatus(false), 2000); }}
-            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white font-bold tracking-wider uppercase transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] flex items-center justify-center gap-2"
-          >
-            {exportedStatus ? <Check className="w-4 h-4 text-emerald-300" /> : <Download className="w-4 h-4" />}
-            <span>{exportedStatus ? "EXPORTED OEM FILE" : "EXPORT CCSDS OEM / TLE"}</span>
-          </button>
         </div>
-      </div>
+
+      </main>
+
+      {/* SpaceX Minimalist Footer */}
+      <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/[0.08] bg-black/90 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] text-slate-500 z-20">
+        <div className="flex items-center gap-4">
+          <span className="text-white font-bold tracking-wider">VEROYX CATALOG NODE</span>
+          <span className="text-neutral-800">|</span>
+          <span>18TH SPACE DEFENSE SQUADRON FEED</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <Link href="/c2" className="hover:text-white transition-colors">JADC2 C2</Link>
+          <Link href="/conjunction" className="hover:text-white transition-colors">CONJUNCTION</Link>
+          <Link href="/planetary-defense" className="hover:text-white transition-colors">PLANETARY DEFENSE</Link>
+        </div>
+      </footer>
     </div>
   )
 }

@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from "react"
 import * as THREE from "three"
-import { Eye, Radio, Flame, Mountain, RotateCw } from "lucide-react"
+import { Eye, Radio, Flame, Mountain } from "lucide-react"
 
 type SensorMode = "OPTICAL" | "RADAR" | "THERMAL" | "TOPO"
 
 export default function Asteroid3DViewport() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [sensorMode, setSensorMode] = useState<SensorMode>("OPTICAL")
-  const materialRef = useRef<THREE.Material | null>(null)
   const meshRef = useRef<THREE.Mesh | null>(null)
 
   useEffect(() => {
@@ -61,24 +60,7 @@ export default function Asteroid3DViewport() {
     bumpTexture.wrapS = THREE.RepeatWrapping
     bumpTexture.wrapT = THREE.RepeatWrapping
 
-    // Generate Thermal IR Palette Texture
-    const thermalCanvas = document.createElement("canvas")
-    thermalCanvas.width = 256
-    thermalCanvas.height = 1
-    const tCtx = thermalCanvas.getContext("2d")
-    if (tCtx) {
-      const grad = tCtx.createLinearGradient(0, 0, 256, 0)
-      grad.addColorStop(0, "#000033")
-      grad.addColorStop(0.25, "#800080")
-      grad.addColorStop(0.5, "#ff0000")
-      grad.addColorStop(0.75, "#ffaa00")
-      grad.addColorStop(1, "#ffffff")
-      tCtx.fillStyle = grad
-      tCtx.fillRect(0, 0, 256, 1)
-    }
-    const thermalTexture = new THREE.CanvasTexture(thermalCanvas)
-
-    // Accurate Apophis Geometry (Icosahedron base + harmonic boulder harmonics)
+    // Solid Non-Tearing Apophis Geometry
     const geometry = new THREE.IcosahedronGeometry(1.12, 28)
     const pos = geometry.attributes.position
     const v = new THREE.Vector3()
@@ -115,7 +97,6 @@ export default function Asteroid3DViewport() {
     const asteroidMesh = new THREE.Mesh(geometry, opticalMaterial)
     scene.add(asteroidMesh)
     meshRef.current = asteroidMesh
-    materialRef.current = opticalMaterial
 
     // Lights
     const sunLight = new THREE.DirectionalLight(0xffffff, 3.6)
@@ -147,14 +128,13 @@ export default function Asteroid3DViewport() {
       window.removeEventListener("resize", handleResize)
       renderer.dispose()
       bumpTexture.dispose()
-      thermalTexture.dispose()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }
     }
   }, [])
 
-  // Switch Sensor Material Dynamically
+  // Switch Sensor Material Dynamically (Zero duplicate keys)
   const handleSensorChange = (mode: SensorMode) => {
     setSensorMode(mode)
     const mesh = meshRef.current
@@ -175,8 +155,8 @@ export default function Asteroid3DViewport() {
       })
     } else if (mode === "THERMAL") {
       mesh.material = new THREE.MeshStandardMaterial({
-        color: 0xff4500, roughness: 0.2, metalness: 0.1,
-        roughness: 0.3,
+        color: 0xff4500,
+        roughness: 0.25,
         metalness: 0.1,
         wireframe: false,
       })
@@ -241,7 +221,6 @@ export default function Asteroid3DViewport() {
         </div>
       </div>
 
-      {/* Sensor Legend Callout */}
       <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/85 border border-white/10 text-[8px] text-slate-400 font-mono">
         {sensorMode === "OPTICAL" && "DRACO NARROW-ANGLE CAMERA (0.4-0.9µm)"}
         {sensorMode === "RADAR" && "GOLDSTONE DSN 70m DELAY-DOPPLER SCATTER"}
