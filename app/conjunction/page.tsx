@@ -1,502 +1,427 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import * as THREE from "three"
+import Link from "next/link"
+import Navbar from "@/components/nav/Navbar"
 import { 
-  AlertTriangle, ShieldAlert, ShieldCheck, Activity, Orbit, 
-  Crosshair, Compass, Radio, Layers, Gauge, Zap, Target, RotateCcw, Play, Square 
+  ShieldAlert, AlertTriangle, ShieldCheck, Activity, 
+  Orbit, Compass, Play, Pause, RotateCcw, Flame, 
+  ChevronRight, ArrowRight, Zap, Target, Box
 } from "lucide-react"
 
-type ConjunctionPreset = "COSMOS_FRAGMENT" | "FENGYUN_DEBRIS" | "IRIDIUM_HEAD_ON" | "CO_ORBITAL_INSPECTION"
-
-interface ConjunctionSpec {
-  name: string
-  primarySat: string
-  secondaryObj: string
-  noradIdSecondary: number
-  relativeVelocityKms: number
-  nominalMissDistanceM: number
-  radialSigmaM: number
-  inTrackSigmaM: number
-  crossTrackSigmaM: number
-  hbrM: number
-  regime: string
-  colorHex: string
+interface ConjunctionEvent {
+  id: string
+  primary: string
+  secondary: string
+  tca: string
+  missDistance: string
+  radialMiss: string
+  pc: string
+  status: "CRITICAL" | "EVALUATING" | "NOMINAL"
 }
 
-const PRESETS: Record<ConjunctionPreset, ConjunctionSpec> = {
-  "COSMOS_FRAGMENT": {
-    name: "Cosmos-2251 Lethal Fragment Intersect",
-    primarySat: "VXO-1 Tactical Recon (LEO)",
-    secondaryObj: "COSMOS 2251 DEB (#34185)",
-    noradIdSecondary: 34185,
-    relativeVelocityKms: 14.2,
-    nominalMissDistanceM: 85,
-    radialSigmaM: 18,
-    inTrackSigmaM: 180,
-    crossTrackSigmaM: 45,
-    hbrM: 4.5,
-    regime: "780 km Sun-Sync LEO",
-    colorHex: "#ef4444"
-  },
-  "FENGYUN_DEBRIS": {
-    name: "FY-1C ASAT Hypervelocity Shrapnel",
-    primarySat: "Aegis-SAR Operational Bus",
-    secondaryObj: "FENGYUN 1C DEB (#30284)",
-    noradIdSecondary: 30284,
-    relativeVelocityKms: 12.8,
-    nominalMissDistanceM: 240,
-    radialSigmaM: 25,
-    inTrackSigmaM: 320,
-    crossTrackSigmaM: 65,
-    hbrM: 6.0,
-    regime: "845 km Polar LEO",
-    colorHex: "#f59e0b"
-  },
-  "IRIDIUM_HEAD_ON": {
-    name: "Commercial Defunct Cross-Track Mesh",
-    primarySat: "VXO-Comms Gateway Alpha",
-    secondaryObj: "IRIDIUM 33 DEB (#33842)",
-    noradIdSecondary: 33842,
-    relativeVelocityKms: 15.1,
-    nominalMissDistanceM: 45,
-    radialSigmaM: 12,
-    inTrackSigmaM: 95,
-    crossTrackSigmaM: 30,
-    hbrM: 5.2,
-    regime: "770 km LEO 86.4°",
-    colorHex: "#d946ef"
-  },
-  "CO_ORBITAL_INSPECTION": {
-    name: "Foreign Inspector Near-Field Drift",
-    primarySat: "VXO-Defense Core",
-    secondaryObj: "UNREGISTERED OBJECT (#99412)",
-    noradIdSecondary: 99412,
-    relativeVelocityKms: 0.85,
-    nominalMissDistanceM: 380,
-    radialSigmaM: 8,
-    inTrackSigmaM: 40,
-    crossTrackSigmaM: 15,
-    hbrM: 3.5,
-    regime: "550 km Low-Inclination",
-    colorHex: "#38bdf8"
-  }
-}
+export default function ConjunctionAssessmentPage() {
+  const [pdamEngaged, setPdamEngaged] = useState<boolean>(false)
+  const [selectedEventId, setSelectedEventId] = useState<string>("CONJ-8841")
+  const bPlaneCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-export default function ConjunctionPage() {
-  const mountRef = useRef<HTMLDivElement | null>(null)
-
-  const [preset, setPreset] = useState<ConjunctionPreset>("COSMOS_FRAGMENT")
-  const [missDistanceM, setMissDistanceM] = useState(85)
-  const [hardBodyRadiusM, setHardBodyRadiusM] = useState(4.5)
-  const [radialSigmaM, setRadialSigmaM] = useState(18)
-  const [inTrackSigmaM, setInTrackSigmaM] = useState(180)
-  const [crossTrackSigmaM, setCrossTrackSigmaM] = useState(45)
-  const [simTimeSec, setSimTimeSec] = useState(-30)
-  const [isPlaying, setIsPlaying] = useState(true)
-
-  const spec = PRESETS[preset]
-
-  const sigmaX = crossTrackSigmaM
-  const sigmaY = Math.sqrt(Math.pow(radialSigmaM, 2) + Math.pow(inTrackSigmaM * 0.15, 2))
-
-  const effectiveSigma = Math.sqrt(sigmaX * sigmaY)
-  const uParam = Math.pow(missDistanceM / effectiveSigma, 2)
-  const hbrArea = Math.PI * Math.pow(hardBodyRadiusM, 2)
-  
-  const rawPc = (hbrArea / (2 * Math.PI * sigmaX * sigmaY)) * Math.exp(-0.5 * uParam)
-  const collisionProbability = Math.max(1e-12, Math.min(0.999, rawPc))
-
-  const isRedAlert = collisionProbability >= 1e-4
-  const isYellowWatch = collisionProbability >= 1e-5 && collisionProbability < 1e-4
-
-  const requiredColaDeltaVMs = Math.max(0.05, (500 - missDistanceM) * 0.00045)
-
-  useEffect(() => {
-    let timer: NodeJS.Timeout
-    if (isPlaying) {
-      timer = setInterval(() => {
-        setSimTimeSec(t => {
-          if (t >= 30) {
-            return -30
-          }
-          return t + 0.5
-        })
-      }, 50)
+  const events: ConjunctionEvent[] = [
+    {
+      id: "CONJ-8841",
+      primary: "HVA-01 STATION (NORAD 25544)",
+      secondary: "DEB FENGYUN 1C (NORAD 31115)",
+      tca: "T+ 04h 18m 22s",
+      missDistance: pdamEngaged ? "2,410 m" : "385 m",
+      radialMiss: pdamEngaged ? "+1,820 m" : "-140 m",
+      pc: pdamEngaged ? "4.12e-07" : "3.84e-03",
+      status: pdamEngaged ? "NOMINAL" : "CRITICAL"
+    },
+    {
+      id: "CONJ-8842",
+      primary: "AST-01 RECON (NORAD 48219)",
+      secondary: "COSMOS 2251 DEB (NORAD 34012)",
+      tca: "T+ 11h 04m 10s",
+      missDistance: "1,120 m",
+      radialMiss: "+480 m",
+      pc: "6.82e-05",
+      status: "EVALUATING"
+    },
+    {
+      id: "CONJ-8843",
+      primary: "HVA-01 STATION (NORAD 25544)",
+      secondary: "SL-16 R/B (NORAD 22220)",
+      tca: "T+ 28h 45m 00s",
+      missDistance: "8,940 m",
+      radialMiss: "+3,200 m",
+      pc: "< 1.0e-08",
+      status: "NOMINAL"
     }
-    return () => clearInterval(timer)
-  }, [isPlaying])
+  ]
 
+  const activeEvent = events.find(e => e.id === selectedEventId) || events[0]
+
+  // B-Plane Collision Covariance Ellipse Canvas Engine
   useEffect(() => {
-    const container = mountRef.current
-    if (!container) return
-
-    const width = container.clientWidth
-    const height = container.clientHeight
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color("#010308")
-
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000)
-    camera.position.set(0, 16, 32)
-    camera.lookAt(0, 0, 0)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setSize(width, height)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
-    container.innerHTML = ""
-    container.appendChild(renderer.domElement)
-
-    scene.add(new THREE.AmbientLight(0x1e293b, 1.8))
-    const sun = new THREE.DirectionalLight(0xfffaed, 2.5)
-    sun.position.set(20, 25, 20)
-    scene.add(sun)
-
-    const primaryGroup = new THREE.Group()
-    scene.add(primaryGroup)
-
-    const busGeo = new THREE.BoxGeometry(1.6, 1.6, 2.2)
-    const busMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 })
-    const bus = new THREE.Mesh(busGeo, busMat)
-    primaryGroup.add(bus)
-
-    const hbrScale = (hardBodyRadiusM / 10) * 3.5
-    const hbrGeo = new THREE.SphereGeometry(hbrScale, 32, 16)
-    const hbrMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.4
-    })
-    const hbrMesh = new THREE.Mesh(hbrGeo, hbrMat)
-    primaryGroup.add(hbrMesh)
-
-    const bPlaneGeo = new THREE.RingGeometry(0.1, 14, 32)
-    const bPlaneMat = new THREE.MeshBasicMaterial({
-      color: 0x1e293b,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.35
-    })
-    const bPlane = new THREE.Mesh(bPlaneGeo, bPlaneMat)
-    bPlane.rotation.x = Math.PI / 2
-    scene.add(bPlane)
-
-    const covGroup = new THREE.Group()
-    scene.add(covGroup)
-
-    const covGeo = new THREE.SphereGeometry(1, 32, 16)
-    const covMat = new THREE.MeshPhysicalMaterial({
-      color: isRedAlert ? 0xef4444 : isYellowWatch ? 0xf59e0b : 0x10b981,
-      transparent: true,
-      opacity: 0.25,
-      wireframe: true
-    })
-    const covEllipsoid = new THREE.Mesh(covGeo, covMat)
-    covEllipsoid.scale.set(
-      Math.max(1.2, (crossTrackSigmaM / 40) * 3.5),
-      Math.max(1.0, (radialSigmaM / 20) * 2.5),
-      Math.max(2.5, (inTrackSigmaM / 100) * 6.5)
-    )
-    covGroup.add(covEllipsoid)
-
-    const debrisGroup = new THREE.Group()
-    scene.add(debrisGroup)
-
-    const debrisMesh = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(0.5, 0),
-      new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.9, roughness: 0.2 })
-    )
-    debrisGroup.add(debrisMesh)
-
-    const trajLinePoints: THREE.Vector3[] = []
-    const scaleMissX = (missDistanceM / 150) * 8
-    for (let t = -40; t <= 40; t += 2) {
-      const zPos = t * 0.8
-      trajLinePoints.push(new THREE.Vector3(scaleMissX, 0, zPos))
-    }
-    const trajGeo = new THREE.BufferGeometry().setFromPoints(trajLinePoints)
-    const trajMat = new THREE.LineDashedMaterial({ color: 0xef4444, dashSize: 0.6, gapSize: 0.3 })
-    const trajLine = new THREE.Line(trajGeo, trajMat)
-    trajLine.computeLineDistances()
-    scene.add(trajLine)
-
-    const missVecGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(scaleMissX, 0, 0)
-    ])
-    const missVecMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 })
-    const missVec = new THREE.Line(missVecGeo, missVecMat)
-    scene.add(missVec)
+    const canvas = bPlaneCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
 
     let animId: number
-    const animate = () => {
-      animId = requestAnimationFrame(animate)
+    let pulseTime = 0
 
-      const currentZ = simTimeSec * 0.8
-      debrisGroup.position.set(scaleMissX, 0, currentZ)
-      debrisMesh.rotation.x += 0.05
-      debrisMesh.rotation.y += 0.03
+    const render = () => {
+      animId = requestAnimationFrame(render)
+      pulseTime += 0.03
 
-      covGroup.position.set(scaleMissX, 0, 0)
-      primaryGroup.rotation.y = Math.sin(Date.now() * 0.0004) * 0.05
+      const w = (canvas.width = canvas.parentElement?.clientWidth || 700)
+      const h = (canvas.height = canvas.parentElement?.clientHeight || 450)
+      const cx = w * 0.5
+      const cy = h * 0.5
 
-      renderer.render(scene, camera)
+      ctx.fillStyle = "#020408"
+      ctx.fillRect(0, 0, w, h)
+
+      // Coordinate Grid Lines (RIC B-Plane)
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.06)"
+      ctx.lineWidth = 1
+      for (let x = 0; x < w; x += 40) {
+        ctx.beginPath()
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, h)
+        ctx.stroke()
+      }
+      for (let y = 0; y < h; y += 40) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(w, y)
+        ctx.stroke()
+      }
+
+      // Principal Axes
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.2)"
+      ctx.beginPath()
+      ctx.moveTo(0, cy)
+      ctx.lineTo(w, cy)
+      ctx.moveTo(cx, 0)
+      ctx.lineTo(cx, h)
+      ctx.stroke()
+
+      // Primary Hard Body Sphere (HVA-01 ISS, scaled for display)
+      const hbrRadius = 14
+      ctx.fillStyle = "rgba(245, 158, 11, 0.2)"
+      ctx.strokeStyle = "#f59e0b"
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      ctx.arc(cx, cy, hbrRadius, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+
+      // Center Anchor Dot
+      ctx.fillStyle = "#ffffff"
+      ctx.beginPath()
+      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2)
+      ctx.fill()
+
+      // Target positions depending on maneuver state
+      const targetOffset = pdamEngaged ? 170 : 38
+      const targetAngle = pdamEngaged ? -0.85 : 0.65
+      const targetX = cx + Math.cos(targetAngle) * targetOffset
+      const targetY = cy + Math.sin(targetAngle) * targetOffset
+
+      const sigmaA = 45
+      const sigmaB = 22
+      const ellipseAngle = 0.42
+
+      // Draw 3-sigma, 2-sigma, 1-sigma error covariance ellipses
+      for (let s = 3; s >= 1; s--) {
+        ctx.save()
+        ctx.translate(targetX, targetY)
+        ctx.rotate(ellipseAngle)
+        ctx.beginPath()
+        ctx.ellipse(0, 0, sigmaA * s * 0.7, sigmaB * s * 0.7, 0, 0, Math.PI * 2)
+        
+        if (pdamEngaged) {
+          ctx.strokeStyle = `rgba(16, 185, 129, ${0.15 + (4 - s) * 0.15})`
+          ctx.fillStyle = s === 1 ? "rgba(16, 185, 129, 0.08)" : "transparent"
+        } else {
+          ctx.strokeStyle = `rgba(239, 68, 68, ${0.18 + (4 - s) * 0.18})`
+          ctx.fillStyle = s === 1 ? "rgba(239, 68, 68, 0.12)" : "transparent"
+        }
+        ctx.lineWidth = 1.2
+        ctx.stroke()
+        if (s === 1) ctx.fill()
+        ctx.restore()
+      }
+
+      // Debris Track Marker
+      ctx.fillStyle = pdamEngaged ? "#10b981" : "#ef4444"
+      ctx.beginPath()
+      ctx.arc(targetX, targetY, 4, 0, Math.PI * 2)
+      ctx.fill()
+
+      ctx.strokeStyle = pdamEngaged ? "#10b981" : "#ef4444"
+      ctx.strokeRect(targetX - 8, targetY - 8, 16, 16)
+
+      // Miss-Distance Vector Line
+      ctx.strokeStyle = pdamEngaged ? "rgba(16, 185, 129, 0.7)" : "rgba(239, 68, 68, 0.7)"
+      ctx.setLineDash([4, 4])
+      ctx.lineWidth = 1.4
+      ctx.beginPath()
+      ctx.moveTo(cx, cy)
+      ctx.lineTo(targetX, targetY)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // Labels
+      ctx.font = "10px monospace"
+      ctx.fillStyle = "#ffffff"
+      ctx.fillText("HVA-01 (HARD BODY)", cx + 18, cy + 4)
+      ctx.fillStyle = pdamEngaged ? "#10b981" : "#ef4444"
+      ctx.fillText(
+        `DEBRIS TRACK [MISS: ${pdamEngaged ? "2,410m (CLEAR)" : "385m (RED ALERT)"}]`,
+        targetX + 12,
+        targetY - 10
+      )
     }
-    animate()
 
-    const onResize = () => {
-      if (!container) return
-      camera.aspect = container.clientWidth / container.clientHeight
-      camera.updateProjectionMatrix()
-      renderer.setSize(container.clientWidth, container.clientHeight)
-    }
-    window.addEventListener("resize", onResize)
-
-    return () => {
-      cancelAnimationFrame(animId)
-      window.removeEventListener("resize", onResize)
-      renderer.dispose()
-    }
-  }, [missDistanceM, hardBodyRadiusM, radialSigmaM, inTrackSigmaM, crossTrackSigmaM, isRedAlert, isYellowWatch, simTimeSec])
+    render()
+    return () => cancelAnimationFrame(animId)
+  }, [pdamEngaged])
 
   return (
-    <div className="w-full h-full pt-24 px-8 pb-8 flex bg-[#020617] font-sans text-slate-100 overflow-hidden">
-      
-      {/* LEFT PANEL */}
-      <div className="w-1/3 h-full flex flex-col pr-6 border-r border-slate-800 overflow-y-auto font-mono text-xs">
-        <div className="mb-6">
-          <h1 className="text-xl font-black text-white tracking-widest flex items-center gap-3 uppercase">
-            <Orbit className="w-5 h-5 text-rose-500" /> Conjunction Assessment
-          </h1>
-          <p className="text-slate-400 text-xs mt-1 uppercase tracking-wider">
-            Foster / Akella Collision Probability (Pc) Engine
-          </p>
-        </div>
+    <div className="relative w-full min-h-screen bg-[#000000] text-white font-mono selection:bg-amber-500/30 overflow-x-hidden flex flex-col justify-between">
+      <Navbar />
 
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <label className="text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2">
-              <Layers className="w-3.5 h-3.5 text-cyan-400" /> Operational CDM Threat Alert
-            </label>
-            <div className="space-y-2">
-              {(["COSMOS_FRAGMENT", "FENGYUN_DEBRIS", "IRIDIUM_HEAD_ON", "CO_ORBITAL_INSPECTION"] as ConjunctionPreset[]).map(p => {
-                const item = PRESETS[p]
-                return (
-                  <button
-                    key={p}
-                    onClick={() => {
-                      setPreset(p)
-                      setMissDistanceM(item.nominalMissDistanceM)
-                      setHardBodyRadiusM(item.hbrM)
-                      setRadialSigmaM(item.radialSigmaM)
-                      setInTrackSigmaM(item.inTrackSigmaM)
-                      setCrossTrackSigmaM(item.crossTrackSigmaM)
-                    }}
-                    className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
-                      preset === p 
-                        ? "bg-rose-950/40 border-rose-500 text-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.2)]" 
-                        : "bg-slate-900/40 border-slate-800 text-slate-400 hover:border-slate-700"
-                    }`}
-                  >
-                    <div>
-                      <div className="font-bold text-[11px] text-white">{item.name}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">{item.secondaryObj}</div>
-                    </div>
-                    <div className="font-mono text-right text-[10px]">
-                      <span className="text-rose-400 font-bold block">{item.nominalMissDistanceM} m</span>
-                      <span className="text-slate-500">{item.relativeVelocityKms} km/s</span>
-                    </div>
-                  </button>
-                )
-              })}
+      <main className="relative w-full max-w-7xl mx-auto px-4 sm:px-8 pt-28 pb-16 flex-1 flex flex-col gap-6">
+        
+        {/* Header Banner */}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/40 text-amber-300 text-[10px] font-bold tracking-widest uppercase">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span>NASA CARA CONJUNCTION ASSESSMENT // HUMAN SPACEFLIGHT (HSF)</span>
             </div>
+            <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
+              ORBITAL SAFETY &amp; CONJUNCTION ASSESSMENT
+            </h1>
           </div>
 
-          <div className="space-y-4 bg-slate-900/40 p-4 rounded-xl border border-slate-800">
-            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
-              B-Plane Geometry &amp; Covariances
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-slate-400">MISS DISTANCE (TCA):</span>
-                <span className="text-white font-bold">{missDistanceM} meters</span>
-              </div>
-              <input 
-                type="range" min="5" max="600" step="5"
-                value={missDistanceM}
-                onChange={e => setMissDistanceM(Number(e.target.value))}
-                className="w-full accent-rose-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-500">
-                <span>Critical (10 m)</span>
-                <span>Threshold (150 m)</span>
-                <span>Cleared (&gt;500 m)</span>
-              </div>
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">HARD-BODY RADIUS (HBR):</span>
-                <span className="text-cyan-400 font-bold">{hardBodyRadiusM.toFixed(1)} m</span>
-              </div>
-              <input 
-                type="range" min="1.0" max="15.0" step="0.5"
-                value={hardBodyRadiusM}
-                onChange={e => setHardBodyRadiusM(Number(e.target.value))}
-                className="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">RADIAL UNCERTAINTY (1-σ):</span>
-                <span className="text-emerald-400 font-bold">±{radialSigmaM} m</span>
-              </div>
-              <input 
-                type="range" min="5" max="80" step="1"
-                value={radialSigmaM}
-                onChange={e => setRadialSigmaM(Number(e.target.value))}
-                className="w-full accent-emerald-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-
-            <div className="space-y-2 pt-2 border-t border-slate-800/60">
-              <div className="flex justify-between">
-                <span className="text-slate-400">IN-TRACK UNCERTAINTY (1-σ):</span>
-                <span className="text-amber-400 font-bold">±{inTrackSigmaM} m</span>
-              </div>
-              <input 
-                type="range" min="30" max="600" step="10"
-                value={inTrackSigmaM}
-                onChange={e => setInTrackSigmaM(Number(e.target.value))}
-                className="w-full accent-amber-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-          </div>
-
-          <div className="p-4 bg-slate-900/60 border border-slate-700/80 rounded-xl space-y-3">
-            <div className="flex justify-between items-center text-[11px]">
-              <span className="text-slate-400 font-bold uppercase">Time to Closest Approach</span>
-              <span className={`font-mono font-bold text-sm ${Math.abs(simTimeSec) <= 5 ? "text-rose-400 animate-pulse" : "text-cyan-400"}`}>
-                TCA {simTimeSec > 0 ? `+${simTimeSec.toFixed(1)}s` : `${simTimeSec.toFixed(1)}s`}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className={`flex-1 py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
-                  isPlaying 
-                    ? "bg-slate-800 hover:bg-slate-700 text-white" 
-                    : "bg-rose-600 hover:bg-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.4)]"
-                }`}
-              >
-                {isPlaying ? <Square className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
-                {isPlaying ? "FREEZE ENCOUNTER" : "RUN TCA SEQUENCE"}
-              </button>
-
-              <button
-                onClick={() => setSimTimeSec(-30)}
-                className="p-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-                title="Restart Approach"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* CENTER PANEL */}
-      <div className="flex-1 h-full relative flex flex-col">
-        <div className="absolute top-6 left-6 z-10 font-mono">
-          <div className="text-xs font-bold text-slate-400 tracking-widest uppercase mb-1">Collision Probability (Foster / Akella 2D)</div>
-          <div className="flex items-baseline gap-3">
-            <span className={`text-4xl font-black ${isRedAlert ? "text-rose-400" : isYellowWatch ? "text-amber-400" : "text-emerald-400"}`}>
-              {collisionProbability.toExponential(2)}
-            </span>
-            <span className="text-slate-500 text-sm">PROBABILITY (Pc)</span>
-          </div>
-          <div className="flex gap-4 mt-2 text-[11px]">
-            <span className="text-white">MISS: {missDistanceM} m</span>
-            <span className="text-rose-400">V_REL: {spec.relativeVelocityKms} km/s</span>
-            <span className="text-cyan-400">HBR: {hardBodyRadiusM} m</span>
-          </div>
-        </div>
-
-        <div ref={mountRef} className="flex-1 w-full cursor-move" />
-
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-slate-900/80 backdrop-blur-xl border border-slate-700 p-4 rounded-2xl font-mono text-xs shadow-2xl flex items-center justify-between">
+          {/* Emergency PDAM Maneuver Trigger Button */}
           <div className="flex items-center gap-3">
-            <Target className="w-5 h-5 text-rose-500" />
-            <div>
-              <span className="text-slate-500 block text-[9px]">ENCOUNTER CLASSIFICATION</span>
-              <span className={`text-sm font-bold ${isRedAlert ? "text-rose-400 font-black animate-pulse" : isYellowWatch ? "text-amber-400" : "text-emerald-400"}`}>
-                {isRedAlert ? "RED ALERT (Pc ≥ 1e-4) COLA REQ" : isYellowWatch ? "YELLOW WATCH (Pc ≥ 1e-5)" : "GREEN NOMINAL (Pc < 1e-5)"}
+            <button
+              onClick={() => setPdamEngaged(!pdamEngaged)}
+              className={`px-5 py-2.5 text-xs font-bold uppercase tracking-widest border transition-all flex items-center gap-2.5 shadow-lg ${
+                pdamEngaged
+                  ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,0.3)]"
+                  : "bg-red-500/20 border-red-500 text-red-300 hover:bg-red-500/30 shadow-[0_0_25px_rgba(239,68,68,0.35)] animate-pulse"
+              }`}
+            >
+              <Flame className="w-4 h-4" />
+              <span>{pdamEngaged ? "PDAM BURN EXECUTED [CLEARANCE RESTORED]" : "EXECUTE PDAM AVOIDANCE BURN (+0.74 m/s)"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Top 4 CARA KPI Cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">TOTAL MISS DISTANCE</span>
+            <div className="text-lg font-bold text-white flex items-center gap-2">
+              <span>{activeEvent.missDistance}</span>
+              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                pdamEngaged ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"
+              }`}>
+                {pdamEngaged ? "OUTSIDE BOX" : "INSIDE PIZZA BOX"}
               </span>
             </div>
+            <span className="text-[9px] text-neutral-400 block">RADIAL OFFSET: {activeEvent.radialMiss}</span>
           </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">COV ELLIPSOID ENVELOPE</span>
-            <span className="text-cyan-400 font-bold text-sm">±{radialSigmaM}m R x ±{crossTrackSigmaM}m C</span>
+
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">COLLISION PROBABILITY (Pc)</span>
+            <div className={`text-lg font-bold ${pdamEngaged ? "text-emerald-400" : "text-red-400"}`}>
+              {activeEvent.pc}
+            </div>
+            <span className="text-[9px] text-neutral-400 block">NASA CARA RED THRESHOLD: 1.00e-04</span>
           </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">REACTIVE COLA ΔV</span>
-            <span className="text-amber-400 font-bold text-sm">{requiredColaDeltaVMs.toFixed(2)} m/s (RCS THRUST)</span>
+
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">TIME TO CLOSEST APPROACH (TCA)</span>
+            <div className="text-lg font-bold text-amber-400">
+              {activeEvent.tca}
+            </div>
+            <span className="text-[9px] text-neutral-400 block">EPOCH: 2026-11-05 16:36:44 UTC</span>
           </div>
-          <div className="border-l border-slate-800 pl-6">
-            <span className="text-slate-500 block text-[9px]">KINETIC ENERGY THREAT</span>
-            <span className="text-rose-400 font-bold text-sm">{(0.5 * 2.5 * Math.pow(spec.relativeVelocityKms * 1000, 2) / 1e6).toFixed(1)} MJ</span>
+
+          <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
+            <span className="text-[9px] text-neutral-500 block uppercase">CARA KEEP-OUT VOLUME</span>
+            <div className="text-lg font-bold text-white">
+              ±25km × ±25km × ±0.75km
+            </div>
+            <span className="text-[9px] text-neutral-400 block">NASA HSF ELLIPSOID STANDARD</span>
           </div>
         </div>
-      </div>
 
-      {/* RIGHT PANEL */}
-      <div className="w-1/4 h-full pl-6 border-l border-slate-800 overflow-y-auto font-mono text-xs">
-        <h2 className="text-slate-400 font-bold tracking-widest uppercase mb-6 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-cyan-400" /> CDM Telemetry
-        </h2>
+        {/* Main Grid: B-Plane Encounter Canvas + HSF Asset & Conjunction Events */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+          
+          {/* LEFT 7 COLS: B-PLANE COLLISION ENCOUNTER CANVAS */}
+          <div className="lg:col-span-7 flex flex-col gap-4">
+            <div className="relative w-full h-[440px] rounded-xl overflow-hidden border border-white/10 bg-[#020408]">
+              <canvas ref={bPlaneCanvasRef} className="w-full h-full" />
 
-        <div className="space-y-6">
-          <div className={`p-5 rounded-2xl border ${isRedAlert ? "bg-rose-950/20 border-rose-500/40" : isYellowWatch ? "bg-amber-950/20 border-amber-500/40" : "bg-emerald-950/20 border-emerald-500/40"}`}>
-            <div className="text-[10px] font-bold tracking-wider mb-1 text-slate-400">
-              MISSION ASSURANCE PROTOCOL
+              <div className="absolute top-3 left-3 px-2 py-1 bg-black/85 border border-white/10 text-[10px] space-y-0.5">
+                <div className="text-amber-400 font-bold">ENCOUNTER PLANE (B-PLANE PROJECTION)</div>
+                <div className="text-neutral-400">COMBINED 1σ, 2σ, 3σ COVARIANCE ELLIPSE</div>
+              </div>
+
+              <div className="absolute bottom-3 left-3 px-2 py-1 bg-black/85 border border-white/10 text-[10px] space-y-0.5">
+                <div className="text-white font-bold">PRIMARY: HVA-01 (ISS CLASS)</div>
+                <div className="text-neutral-400">HARD-BODY RADIUS (HBR): 50.0 METERS</div>
+              </div>
+
+              <div className="absolute bottom-3 right-3 px-2 py-1 bg-black/85 border border-white/10 text-[10px] text-right space-y-0.5">
+                <div className={`font-bold ${pdamEngaged ? "text-emerald-400" : "text-red-400"}`}>
+                  ACTION: {pdamEngaged ? "CONJUNCTION RESOLVED" : "MANEUVER MANDATORY"}
+                </div>
+                <div className="text-neutral-400">COWELL PROPAGATION + J2-J4</div>
+              </div>
             </div>
-            <div className={`text-2xl font-black flex items-center gap-2 ${isRedAlert ? "text-rose-400" : isYellowWatch ? "text-amber-400" : "text-emerald-400"}`}>
-              {isRedAlert ? <ShieldAlert className="w-6 h-6" /> : isYellowWatch ? <AlertTriangle className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
-              {isRedAlert ? "COLA BURN MANDATORY" : isYellowWatch ? "ELEVATED TRACKING" : "PASS REQUISITE"}
+
+            {/* NASA CARA Pizza Box Geometry Spec Panel */}
+            <div className="p-4 rounded-xl border border-white/10 bg-[#080808] grid grid-cols-1 sm:grid-cols-3 gap-4 text-[10px]">
+              <div className="space-y-1">
+                <span className="text-neutral-500 block uppercase font-bold">RADIAL BOUNDARY (DR)</span>
+                <span className="text-white font-bold text-xs">±0.75 km (750 m)</span>
+                <p className="text-neutral-400">Altitude separation limit. Breached during nominal trajectory.</p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-neutral-500 block uppercase font-bold">IN-TRACK BOUNDARY (DT)</span>
+                <span className="text-white font-bold text-xs">±25.0 km</span>
+                <p className="text-neutral-400">Along-velocity orbital track corridor safety tolerance.</p>
+              </div>
+              <div className="space-y-1">
+                <span className="text-neutral-500 block uppercase font-bold">CROSS-TRACK BOUNDARY (DC)</span>
+                <span className="text-white font-bold text-xs">±25.0 km</span>
+                <p className="text-neutral-400">Out-of-plane orbital inclination separation threshold.</p>
+              </div>
             </div>
-            <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-              {isRedAlert 
-                ? "Collision probability exceeds 1.0e-4 threshold. Execute retrograde Collision Avoidance (COLA) burn at least 1 orbit prior to TCA to expand miss distance beyond 5.0 km." 
-                : isYellowWatch 
-                ? "Probability within elevated risk watch window. Task dedicated radar/optical tracking nodes to shrink state covariance." 
-                : "Conjunction within acceptable institutional risk bounds. No maneuvering required."}
-            </p>
           </div>
 
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-4 space-y-2 text-[11px]">
-            <div className="text-slate-400 font-bold uppercase border-b border-slate-800 pb-2 mb-2">Conjunction Data Message (CDM)</div>
-            <div className="flex justify-between"><span className="text-slate-500">Target Secondary:</span><span className="text-white font-bold">{spec.secondaryObj.split(" ")[0]}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">NORAD Catalog ID:</span><span className="text-amber-400 font-bold">#{spec.noradIdSecondary}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Encounter Regime:</span><span className="text-white">{spec.regime}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Relative Velocity:</span><span className="text-rose-400 font-bold">{spec.relativeVelocityKms} km/s</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Encounter Angle:</span><span className="text-white">128.4° (Cross-Track)</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">Miss Distance:</span><span className="text-cyan-400 font-bold">{missDistanceM} m</span></div>
-            <div className="flex justify-between font-black text-sm border-t border-slate-700 pt-1.5"><span className="text-white">CALCULATED Pc:</span><span className={isRedAlert ? "text-rose-400" : isYellowWatch ? "text-amber-400" : "text-emerald-400"}>{collisionProbability.toExponential(2)}</span></div>
+          {/* RIGHT 5 COLS: HVA-01 ASSET CARD & CONJUNCTION WATCHLIST */}
+          <div className="lg:col-span-5 flex flex-col gap-4">
+            
+            {/* HVA-01 Modular Space Station Asset Card (akmk2.jpg) */}
+            <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-xs font-bold text-white uppercase">HVA-01 MODULAR SPACE COMPLEX</span>
+                </div>
+                <span className="text-[10px] text-amber-300 font-bold">CREWED // 7 ABOARD</span>
+              </div>
+
+              {/* Station Hero Image (akmk2.jpg) */}
+              <div className="relative w-full h-56 rounded-lg overflow-hidden border border-white/10 bg-black flex items-center justify-center">
+                <img
+                  src="/assets/stations/hsf-station-hero.jpg"
+                  alt="HVA-01 Modular Space Station"
+                  className="w-full h-full object-contain filter contrast-[1.08]"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    if (!target.src.includes("akmk2")) {
+                      target.src = "/akmk2.jpg"
+                    }
+                  }}
+                />
+                <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/85 border border-white/10 text-[9px] text-white">
+                  NORAD 25544 // ALT: 418 KM // INC: 51.64°
+                </div>
+                <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/85 border border-white/10 text-[9px] text-emerald-400 font-bold">
+                  ECLSS &amp; THERMAL NOMINAL
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-[10px] pt-1">
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">HABITABLE VOLUME</span>
+                  <span className="text-white font-bold">916 m³ (Pressurized Living Quarters)</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 pb-1">
+                  <span className="text-neutral-500">MICROMETEOROID SHIELD</span>
+                  <span className="text-white font-bold">Multi-layer Whipple Blankets (Stuffed)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-500">AVOIDANCE PROPULSION</span>
+                  <span className="text-amber-400 font-bold">Hypergolic Hydrazine Service Module (Δv: 180 m/s)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* High-Interest Conjunction Event Watchlist */}
+            <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-3">
+              <span className="text-[10px] text-neutral-400 font-bold tracking-wider uppercase block">
+                CONJUNCTION WATCHLIST (TCA &lt; 72 HOURS)
+              </span>
+
+              <div className="space-y-2">
+                {events.map((evt) => {
+                  const isSelected = evt.id === selectedEventId
+                  return (
+                    <div
+                      key={evt.id}
+                      onClick={() => setSelectedEventId(evt.id)}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                        isSelected 
+                          ? "bg-white/[0.06] border-amber-400" 
+                          : "bg-white/[0.02] border-white/5 hover:border-white/20"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="text-white">{evt.id}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                          evt.status === "CRITICAL"
+                            ? "bg-red-500/20 text-red-400 border border-red-500/40"
+                            : evt.status === "EVALUATING"
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                            : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                        }`}>
+                          {evt.status}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-neutral-400 mt-1">
+                        {evt.primary} vs {evt.secondary}
+                      </div>
+                      <div className="flex justify-between text-[9px] text-neutral-500 mt-1">
+                        <span>MISS: {evt.missDistance}</span>
+                        <span>Pc: {evt.pc}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
           </div>
 
-          <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-2">
-            <div className="text-slate-400 font-bold uppercase text-[11px] border-b border-slate-800 pb-2">
-              B-Plane Coordinate Projection
-            </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed">
-              At hypervelocity encounters, relative velocity vector v_rel collapses 3D uncertainty into an instantaneous 2D encounter disk. The Foster method integrates bivariate Gaussian probability density across the hard-body circle R_A.
-            </p>
-          </div>
         </div>
-      </div>
+
+      </main>
+
+      {/* SpaceX Minimalist Footer */}
+      <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/10 bg-black/80 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] text-neutral-500 z-20">
+        <div className="flex items-center gap-4">
+          <span className="text-white font-bold tracking-wider">VEROYX FLIGHT SAFETY // NASA CARA PROTOCOL</span>
+          <span className="text-neutral-800">|</span>
+          <span>18TH SPACE DEFENSE SQUADRON (18 SDS) FEED</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <Link href="/c2" className="hover:text-white transition-colors">JADC2 C2</Link>
+          <Link href="/planetary-defense" className="hover:text-white transition-colors">PLANETARY DEFENSE</Link>
+          <Link href="/catalog" className="hover:text-white transition-colors">48K CATALOG</Link>
+        </div>
+      </footer>
     </div>
   )
 }
