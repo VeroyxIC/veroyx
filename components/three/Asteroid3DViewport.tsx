@@ -175,7 +175,7 @@ export default function Asteroid3DViewport() {
       })
     } else if (mode === "THERMAL") {
       mesh.material = new THREE.MeshStandardMaterial({
-        color: 0xf43f5e,
+        color: 0xff4500, roughness: 0.2, metalness: 0.1,
         roughness: 0.3,
         metalness: 0.1,
         wireframe: false,

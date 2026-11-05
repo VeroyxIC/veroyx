@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import VeroyxLogo from "@/components/brand/VeroyxLogo"
-import { Search, Sparkles, Terminal, X, ShieldAlert } from "lucide-react"
+import { Search, Sparkles, Terminal, X } from "lucide-react"
 
 interface NavbarProps {
   onTriggerSuction?: () => void
@@ -17,7 +17,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20)
+    const handleScroll = () => setIsScrolled(window.scrollY > 15)
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault()
@@ -47,19 +47,21 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 font-mono text-xs select-none ${
+        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 font-mono text-xs select-none ${
           isScrolled
-            ? "bg-black/90 backdrop-blur-md border-b border-white/10 py-3.5 px-6 sm:px-12"
-            : "bg-transparent py-5 px-6 sm:px-12"
+            ? "bg-black/95 backdrop-blur-md border-b border-white/[0.08] py-3 px-4 sm:px-8"
+            : "bg-transparent py-4 px-4 sm:px-8"
         }`}
       >
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
           
-          {/* Left: Tilted Brand Logo */}
-          <VeroyxLogo size={24} />
+          {/* Left: Clean Borderless V Logo */}
+          <div className="shrink-0 flex items-center">
+            <VeroyxLogo size={26} />
+          </div>
 
-          {/* Center: SpaceX Editorial Navigation (Clean White / Amber) */}
-          <nav className="hidden lg:flex items-center gap-8 text-[11px] font-bold tracking-[0.2em] text-neutral-400">
+          {/* Center: SpaceX Minimalist Navigation (Nowrap, Clean Spacing) */}
+          <nav className="hidden xl:flex items-center gap-6 text-[11px] font-bold tracking-[0.2em] text-neutral-400 whitespace-nowrap">
             {navLinks.map((link) => {
               const isActive = pathname === link.href
               return (
@@ -67,7 +69,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
                   key={link.href}
                   href={link.href}
                   className={`transition-colors hover:text-white uppercase ${
-                    isActive ? "text-white border-b-2 border-amber-400 pb-0.5" : ""
+                    isActive ? "text-white border-b-2 border-white pb-0.5" : ""
                   }`}
                 >
                   {link.label}
@@ -76,16 +78,15 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
             })}
           </nav>
 
-          {/* Right: Search, Black Hole Simulation, and VIP */}
-          <div className="flex items-center gap-3">
-            
+          {/* Right: Actions */}
+          <div className="flex items-center gap-2.5 shrink-0">
             {/* Command Search */}
             <button
               onClick={() => setIsSearchOpen(true)}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-none border border-white/15 bg-white/[0.03] hover:border-amber-400/50 hover:text-white text-neutral-400 transition-all text-[10px]"
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-white/15 bg-white/[0.03] hover:border-white/40 hover:text-white text-neutral-400 transition-all text-[10px]"
             >
-              <Search className="w-3 h-3 text-amber-400" />
-              <span>COMMAND SEARCH</span>
+              <Search className="w-3 h-3 text-neutral-400" />
+              <span>COMMAND</span>
               <kbd className="px-1.5 py-0.2 rounded bg-white/10 text-neutral-300 text-[9px]">⌘K</kbd>
             </button>
 
@@ -93,7 +94,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
             {onTriggerSuction && (
               <button
                 onClick={onTriggerSuction}
-                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-none border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold text-[10px] tracking-widest transition-all"
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold text-[10px] tracking-widest transition-all"
                 title="Trigger 4-Second Black Hole Singularity Collapse"
               >
                 <Sparkles className="w-3 h-3 text-amber-400 animate-spin" />
@@ -104,11 +105,10 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
             {/* VIP Access Button */}
             <button
               onClick={() => setIsVipOpen(true)}
-              className="px-4 py-1.5 rounded-none border border-amber-500 bg-amber-500/10 hover:bg-amber-500 hover:text-black text-amber-300 font-bold tracking-widest text-[10px] transition-all flex items-center gap-1.5"
+              className="px-4 py-1.5 border border-white/30 bg-white/5 hover:bg-white hover:text-black text-white font-bold tracking-widest text-[10px] transition-all flex items-center gap-1.5"
             >
               <span>VIP PORTAL</span>
             </button>
-
           </div>
 
         </div>
@@ -157,7 +157,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
           <div className="w-full max-w-4xl rounded-3xl bg-[#080808] border border-white/15 p-8 font-mono text-xs space-y-6">
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div>
-                <span className="text-[10px] text-amber-400 font-bold tracking-widest block">DEFENSE PRIME & SOVEREIGN ACCESS</span>
+                <span className="text-[10px] text-amber-400 font-bold tracking-widest block">DEFENSE PRIME &amp; SOVEREIGN ACCESS</span>
                 <h2 className="text-2xl font-black text-white tracking-widest uppercase">ENTERPRISE VIP ACCESS PORTAL</h2>
               </div>
               <button onClick={() => setIsVipOpen(false)} className="text-neutral-500 hover:text-white">
@@ -176,8 +176,8 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
                 </ul>
               </div>
 
-              <div className="p-5 rounded-2xl bg-amber-500/10 border border-amber-500/60 space-y-3">
-                <span className="text-[10px] text-amber-300 font-bold">TIER 02 // DEFENSE PRIME</span>
+              <div className="p-5 rounded-2xl bg-white/[0.06] border border-white/30 space-y-3">
+                <span className="text-[10px] text-white font-bold">TIER 02 // DEFENSE PRIME</span>
                 <div className="text-xl font-black text-white">$45,000 <span className="text-xs text-neutral-500">/mo</span></div>
                 <ul className="text-[10px] text-neutral-300 space-y-1.5 pt-2 border-t border-white/10">
                   <li>✓ Full JADC2 Multi-Domain Glass</li>
@@ -200,7 +200,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
             <div className="text-center pt-2">
               <button 
                 onClick={() => setIsVipOpen(false)}
-                className="px-8 py-3 rounded-none bg-white text-black font-bold uppercase tracking-widest hover:bg-neutral-200 transition-all text-xs"
+                className="px-8 py-3 bg-white text-black font-bold uppercase tracking-widest hover:bg-neutral-200 transition-all text-xs"
               >
                 CLOSE ACCESS BRIEFING
               </button>
