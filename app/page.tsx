@@ -42,7 +42,7 @@ export default function SpaceXMasterHomePage() {
     }, 16)
   }
 
-  // Steady Accretion Flow & Relativistic Lensing on Homepage Canvas
+  // Steady Accretion Flow & Relativistic Lensing
   useEffect(() => {
     const canvas = heroCanvasRef.current
     if (!canvas) return
@@ -119,14 +119,14 @@ export default function SpaceXMasterHomePage() {
           <div className="relative z-10 text-center font-mono space-y-3 pointer-events-none">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 text-[11px] font-bold">
               <Sparkles className="w-3.5 h-3.5 animate-spin" />
-              <span>SINGULARITY GRAVITATIONAL CAPTURE // T-MINUS {(4 - collapseProgress * 4).toFixed(1)}s</span>
+              <span>SINGULARITY CAPTURE // T-MINUS {(4 - collapseProgress * 4).toFixed(1)}s</span>
             </div>
             <p className="text-xs text-white tracking-widest uppercase font-bold">CROSSING KERR EVENT HORIZON...</p>
           </div>
         </div>
       )}
 
-      {/* Clean Single-Tier Navbar (No Double Stack) */}
+      {/* Clean Single-Tier Navbar (No Double Stack, No Clipping) */}
       <Navbar onTriggerSuction={triggerSingularitySuction} />
 
       {/* Main Split Layout */}
@@ -202,7 +202,7 @@ export default function SpaceXMasterHomePage() {
               WebkitMaskImage: "radial-gradient(ellipse 72% 72% at 55% 50%, black 45%, transparent 85%)"
             }}
           >
-            {/* Massive Scaled Black Hole with screen blend mode (Guarantees zero hard rectangle edge) */}
+            {/* Screen blend mode dissolves JPEG border into pure #000000 */}
             <img
               src="/assets/hero/blackhole-v.jpg"
               alt="Relativistic Kerr Black Hole with V Singularity"
@@ -216,7 +216,6 @@ export default function SpaceXMasterHomePage() {
               }}
             />
 
-            {/* Accretion Lensing Particles Canvas */}
             <canvas
               ref={heroCanvasRef}
               className="absolute inset-0 w-full h-full pointer-events-none"

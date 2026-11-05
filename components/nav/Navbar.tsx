@@ -39,7 +39,7 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
   const navLinks = [
     { label: "JADC2 C2", href: "/c2" },
     { label: "PLANETARY DEFENSE", href: "/planetary-defense" },
-    { label: "HYPERSONIC", href: "/hypersonic" },
+    { label: "HYPERSONIC CFD", href: "/hypersonic" },
     { label: "48K CATALOG", href: "/catalog" },
     { label: "ORBIT VISUALIZER", href: "/visualizer" },
   ]
@@ -57,10 +57,10 @@ export default function Navbar({ onTriggerSuction }: NavbarProps) {
           
           {/* Left: Clean Borderless V Logo */}
           <div className="shrink-0 flex items-center">
-            <VeroyxLogo size={26} />
+            <VeroyxLogo size={24} />
           </div>
 
-          {/* Center: SpaceX Minimalist Navigation (Nowrap, Clean Spacing) */}
+          {/* Center: SpaceX Minimalist Navigation (Strict No-Wrap, Clean Spacing) */}
           <nav className="hidden xl:flex items-center gap-6 text-[11px] font-bold tracking-[0.2em] text-neutral-400 whitespace-nowrap">
             {navLinks.map((link) => {
               const isActive = pathname === link.href
