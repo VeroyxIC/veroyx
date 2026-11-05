@@ -11,22 +11,20 @@ import {
 
 export default function PlanetaryDefensePage() {
   const [deltaV, setDeltaV] = useState<number>(3.8) // cm/s
-  const [betaFactor, setBetaFactor] = useState<number>(2.4) // Momentum enhancement beta
+  const [betaFactor, setBetaFactor] = useState<number>(2.4)
   const [interceptEngaged, setInterceptEngaged] = useState<boolean>(true)
   const [leadTimeYears, setLeadTimeYears] = useState<number>(3.5)
   const orbitCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const radarCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  // Physical calculations:
-  // Deflection distance = beta * deltaV * lead_time (in seconds)
-  const effectiveDeltaV_mps = (deltaV * 0.01) * betaFactor // m/s
+  const effectiveDeltaV_mps = (deltaV * 0.01) * betaFactor
   const leadTimeSec = leadTimeYears * 365.25 * 86400
   const totalDeflectionKm = Math.round((effectiveDeltaV_mps * leadTimeSec) / 1000)
   
-  // Nominal perigee: 31,600 km (Earth GEO belt is ~35,786 km)
   const nominalPerigeeKm = 31600
   const actualPerigeeKm = interceptEngaged ? nominalPerigeeKm + totalDeflectionKm : nominalPerigeeKm
 
-  // Interactive Heliocentric Orbital Deflection Canvas
+  // 1. Heliocentric Orbital Deflection Canvas
   useEffect(() => {
     const canvas = orbitCanvasRef.current
     if (!canvas) return
@@ -49,7 +47,7 @@ export default function PlanetaryDefensePage() {
       ctx.fillStyle = "#020408"
       ctx.fillRect(0, 0, w, h)
 
-      // Background grid
+      // Grid
       ctx.strokeStyle = "rgba(255, 255, 255, 0.04)"
       ctx.lineWidth = 1
       for (let x = 0; x < w; x += 45) {
@@ -65,7 +63,7 @@ export default function PlanetaryDefensePage() {
         ctx.stroke()
       }
 
-      // 1. Sun at Origin
+      // Sun
       const sunPulse = Math.sin(time * 2.0) * 2 + 10
       const sunGrad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 28)
       sunGrad.addColorStop(0, "#ffffff")
@@ -82,7 +80,7 @@ export default function PlanetaryDefensePage() {
       ctx.arc(cx, cy, sunPulse * 0.6, 0, Math.PI * 2)
       ctx.fill()
 
-      // 2. Earth's Orbit (1.0 AU Circle)
+      // Earth Orbit
       ctx.strokeStyle = "rgba(255, 255, 255, 0.15)"
       ctx.lineWidth = 1.2
       ctx.setLineDash([4, 6])
@@ -91,12 +89,10 @@ export default function PlanetaryDefensePage() {
       ctx.stroke()
       ctx.setLineDash([])
 
-      // Earth Position at Close Approach Epoch
       const earthAngle = 0.22
       const earthX = cx + Math.cos(earthAngle) * auScale
       const earthY = cy + Math.sin(earthAngle) * auScale
 
-      // Earth GEO keep-out envelope
       ctx.strokeStyle = "rgba(255, 255, 255, 0.25)"
       ctx.beginPath()
       ctx.arc(earthX, earthY, 14, 0, Math.PI * 2)
@@ -111,16 +107,14 @@ export default function PlanetaryDefensePage() {
       ctx.fillStyle = "#ffffff"
       ctx.fillText("EARTH (1.00 AU)", earthX + 16, earthY + 3)
 
-      // 3. Apophis Nominal Orbit (a = 0.92 AU, e = 0.19)
+      // Apophis Orbit
       const apophisA = auScale * 0.922
       const apophisB = auScale * 0.885
       const focusOffsetX = auScale * 0.176
 
-      // Nominal Hazardous Path
       ctx.save()
       ctx.translate(cx - focusOffsetX, cy)
       ctx.rotate(-0.18)
-
       ctx.strokeStyle = interceptEngaged ? "rgba(239, 68, 68, 0.3)" : "rgba(239, 68, 68, 0.85)"
       ctx.lineWidth = interceptEngaged ? 1.0 : 1.8
       if (interceptEngaged) ctx.setLineDash([3, 4])
@@ -130,7 +124,6 @@ export default function PlanetaryDefensePage() {
       ctx.setLineDash([])
       ctx.restore()
 
-      // 4. Deflected Trajectory (Green / Safe)
       if (interceptEngaged) {
         ctx.save()
         ctx.translate(cx - focusOffsetX * 1.08, cy)
@@ -145,7 +138,7 @@ export default function PlanetaryDefensePage() {
         ctx.restore()
       }
 
-      // 5. Kinetic Intercept Impact Point
+      // Impact Reticle
       const impactAngle = -1.15
       const impactX = cx + Math.cos(impactAngle) * (auScale * 0.84)
       const impactY = cy + Math.sin(impactAngle) * (auScale * 0.84)
@@ -159,7 +152,6 @@ export default function PlanetaryDefensePage() {
       ctx.arc(impactX, impactY, 3, 0, Math.PI * 2)
       ctx.fill()
 
-      // Impact Flash Animation
       const impactPulse = (Math.sin(time * 4) * 0.5 + 0.5) * 16
       ctx.strokeStyle = "rgba(245, 158, 11, 0.6)"
       ctx.beginPath()
@@ -167,13 +159,13 @@ export default function PlanetaryDefensePage() {
       ctx.stroke()
 
       ctx.fillStyle = "#f59e0b"
-      ctx.fillText("KINETIC IMPACT POINT (DART-II)", impactX + 14, impactY - 2)
+      ctx.fillText("KINETIC IMPACT (DART-II)", impactX + 14, impactY - 2)
       ctx.fillStyle = "rgba(255, 255, 255, 0.5)"
-      ctx.fillText(`Δv IMPULSE: +${deltaV.toFixed(1)} cm/s (β=${betaFactor.toFixed(1)})`, impactX + 14, impactY + 10)
+      ctx.fillText(`Δv: +${deltaV.toFixed(1)} cm/s (β=${betaFactor.toFixed(1)})`, impactX + 14, impactY + 10)
 
-      // 6. Closest Approach Keyhole B-Plane Vector
-      const missVectorScale = Math.min(110, 18 + (totalDeflectionKm / 1000) * 0.65)
-      const approachX = earthX - (interceptEngaged ? missVectorScale : 14)
+      // Closest Approach Perigee Vector
+      const missScale = Math.min(110, 18 + (totalDeflectionKm / 1000) * 0.65)
+      const approachX = earthX - (interceptEngaged ? missScale : 14)
       const approachY = earthY + 8
 
       ctx.strokeStyle = interceptEngaged ? "#10b981" : "#ef4444"
@@ -199,6 +191,109 @@ export default function PlanetaryDefensePage() {
     return () => cancelAnimationFrame(animId)
   }, [deltaV, betaFactor, interceptEngaged, totalDeflectionKm, actualPerigeeKm])
 
+  // 2. Procedural Goldstone Radar Delay-Doppler Asteroid Mesh Canvas
+  useEffect(() => {
+    const canvas = radarCanvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    let animId: number
+    let rot = 0
+
+    // Irregular polyhedral vertices for Apophis
+    const nodes = [
+      { x: -0.7, y: -0.4, z: -0.3 }, { x: 0.8, y: -0.3, z: -0.2 },
+      { x: 0.5, y: 0.6, z: -0.4 }, { x: -0.6, y: 0.5, z: -0.2 },
+      { x: -0.4, y: -0.6, z: 0.5 }, { x: 0.7, y: -0.5, z: 0.4 },
+      { x: 0.6, y: 0.7, z: 0.3 }, { x: -0.5, y: 0.6, z: 0.5 },
+      { x: 0.0, y: -0.8, z: 0.1 }, { x: 0.0, y: 0.8, z: 0.0 },
+      { x: 0.9, y: 0.1, z: 0.2 }, { x: -0.8, y: -0.1, z: 0.1 }
+    ]
+
+    const edges = [
+      [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],
+      [0,4],[1,5],[2,6],[3,7],[8,0],[8,1],[8,4],[8,5],
+      [9,2],[9,3],[9,6],[9,7],[10,1],[10,2],[10,5],[10,6],
+      [11,0],[11,3],[11,4],[11,7]
+    ]
+
+    const render = () => {
+      animId = requestAnimationFrame(render)
+      rot += 0.012
+
+      const w = (canvas.width = canvas.parentElement?.clientWidth || 400)
+      const h = (canvas.height = canvas.parentElement?.clientHeight || 210)
+      const cx = w * 0.5
+      const cy = h * 0.5
+      const scale = Math.min(w, h) * 0.48
+
+      ctx.fillStyle = "#020408"
+      ctx.fillRect(0, 0, w, h)
+
+      // Radar scanlines
+      ctx.strokeStyle = "rgba(245, 158, 11, 0.05)"
+      ctx.lineWidth = 1
+      for (let y = 0; y < h; y += 8) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(w, y)
+        ctx.stroke()
+      }
+
+      // Rotate and project 3D vertices
+      const proj = nodes.map(n => {
+        const cosY = Math.cos(rot), sinY = Math.sin(rot)
+        const cosX = Math.cos(0.35), sinX = Math.sin(0.35)
+
+        // Rotate Y
+        const x1 = n.x * cosY + n.z * sinY
+        const z1 = -n.x * sinY + n.z * cosY
+        // Rotate X
+        const y2 = n.y * cosX - z1 * sinX
+        const z2 = n.y * sinX + z1 * cosX
+
+        const f = 2.2 / (2.2 + z2)
+        return {
+          x: cx + x1 * scale * f,
+          y: cy + y2 * scale * f,
+          z: z2
+        }
+      })
+
+      // Draw wireframe edges
+      edges.forEach(([i, j]) => {
+        const p1 = proj[i], p2 = proj[j]
+        const avgZ = (p1.z + p2.z) * 0.5
+        const alpha = Math.max(0.12, 0.6 + avgZ * 0.4)
+
+        ctx.strokeStyle = `rgba(245, 158, 11, ${alpha})`
+        ctx.lineWidth = 1.2
+        ctx.beginPath()
+        ctx.moveTo(p1.x, p1.y)
+        ctx.lineTo(p2.x, p2.y)
+        ctx.stroke()
+      })
+
+      // Vertices
+      proj.forEach(p => {
+        ctx.fillStyle = p.z > 0 ? "#ffffff" : "#f59e0b"
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.z > 0 ? 2.5 : 1.5, 0, Math.PI * 2)
+        ctx.fill()
+      })
+
+      // Radar corner tag
+      ctx.font = "8px monospace"
+      ctx.fillStyle = "rgba(245, 158, 11, 0.8)"
+      ctx.fillText("GOLDSTONE DSN 70m RADAR // DELAY-DOPPLER 3D MODEL", 10, 16)
+      ctx.fillText(`AZ: ${(rot * 57.3 % 360).toFixed(0)}° // ROT: 30.56h`, 10, 26)
+    }
+
+    render()
+    return () => cancelAnimationFrame(animId)
+  }, [])
+
   return (
     <div className="relative w-full min-h-screen bg-[#000000] text-white font-mono selection:bg-amber-500/30 overflow-x-hidden flex flex-col justify-between">
       <Navbar />
@@ -217,7 +312,6 @@ export default function PlanetaryDefensePage() {
             </h1>
           </div>
 
-          {/* Intercept Engagement Action Button */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => setInterceptEngaged(!interceptEngaged)}
@@ -228,12 +322,12 @@ export default function PlanetaryDefensePage() {
               }`}
             >
               <Target className="w-4 h-4" />
-              <span>{interceptEngaged ? "DEFLECTION TRAJECTORY ENGAGED" : "NOMINAL UNMITIGATED THREAT [CLICK TO DEFLECT]"}</span>
+              <span>{interceptEngaged ? "DEFLECTION TRAJECTORY ENGAGED" : "NOMINAL THREAT [CLICK TO DEFLECT]"}</span>
             </button>
           </div>
         </div>
 
-        {/* Top 4 PDCO Threat Assessment KPI Cards */}
+        {/* 4 KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="p-3.5 border border-white/10 bg-[#080808] space-y-1">
             <span className="text-[9px] text-neutral-500 block uppercase">PRIMARY TARGET</span>
@@ -273,7 +367,7 @@ export default function PlanetaryDefensePage() {
           </div>
         </div>
 
-        {/* Main Grid: Heliocentric Simulator + Physics Sliders & Threat Profile */}
+        {/* Viewports Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
           
           {/* LEFT 7 COLS: HELIOCENTRIC ORBITAL DEFLECTION SIMULATOR */}
@@ -316,7 +410,6 @@ export default function PlanetaryDefensePage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1 text-[11px]">
-                {/* Slider 1: Delta-v Impulse */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between">
                     <span className="text-neutral-400">Δv IMPULSE:</span>
@@ -334,7 +427,6 @@ export default function PlanetaryDefensePage() {
                   <span className="text-[9px] text-neutral-500 block">Linear velocity change applied at intercept</span>
                 </div>
 
-                {/* Slider 2: Beta Factor */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between">
                     <span className="text-neutral-400">BETA FACTOR (β):</span>
@@ -349,10 +441,9 @@ export default function PlanetaryDefensePage() {
                     onChange={(e) => setBetaFactor(parseFloat(e.target.value))}
                     className="w-full accent-amber-500 bg-neutral-800 cursor-pointer"
                   />
-                  <span className="text-[9px] text-neutral-500 block">Ejecta crater momentum enhancement factor</span>
+                  <span className="text-[9px] text-neutral-500 block">Ejecta crater momentum enhancement</span>
                 </div>
 
-                {/* Slider 3: Lead Time */}
                 <div className="space-y-1.5">
                   <div className="flex justify-between">
                     <span className="text-neutral-400">LEAD TIME:</span>
@@ -373,10 +464,9 @@ export default function PlanetaryDefensePage() {
             </div>
           </div>
 
-          {/* RIGHT 5 COLS: ASTEROID PROFILE & INTERCEPTOR VEHICLE */}
+          {/* RIGHT 5 COLS: PROCEDURAL GOLDSTONE RADAR MESH CANVAS & DART-II */}
           <div className="lg:col-span-5 flex flex-col gap-4">
             
-            {/* Target Asteroid Profile Card */}
             <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -386,20 +476,9 @@ export default function PlanetaryDefensePage() {
                 <span className="text-[10px] text-amber-300 font-bold">CHONDRITE (Sq-TYPE)</span>
               </div>
 
-              {/* Asteroid Threat Render Asset */}
-              <div className="relative w-full h-52 rounded-lg overflow-hidden border border-white/10 bg-black flex items-center justify-center">
-                <img
-                  src="/assets/threats/asteroid-apophis.jpg"
-                  alt="Asteroid 9942 Apophis"
-                  className="w-full h-full object-cover filter contrast-[1.1]"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
-                    target.style.display = "none"
-                  }}
-                />
-                <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/85 border border-white/10 text-[9px] text-white">
-                  SEMI-MAJOR AXIS (a): 0.922 AU // ECCENTRICITY: 0.191
-                </div>
+              {/* LIVE 3D GOLDSTONE RADAR DELAY-DOPPLER MESH CANVAS (ZERO BROKEN IMAGES) */}
+              <div className="relative w-full h-52 rounded-lg overflow-hidden border border-white/10 bg-black">
+                <canvas ref={radarCanvasRef} className="w-full h-full" />
                 <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/85 border border-white/10 text-[9px] text-amber-400 font-bold">
                   ROTATION PERIOD: 30.56 HOURS
                 </div>
@@ -425,7 +504,7 @@ export default function PlanetaryDefensePage() {
               </div>
             </div>
 
-            {/* Kinetic Impactor Vehicle Specifications */}
+            {/* Impactor Specs */}
             <div className="p-4 border border-white/10 bg-[#080808] rounded-xl space-y-3">
               <span className="text-[10px] text-neutral-400 font-bold tracking-wider uppercase block">
                 DART-II KINETIC INTERCEPTOR FLIGHT VEHICLE
@@ -442,7 +521,7 @@ export default function PlanetaryDefensePage() {
                 </div>
                 <div className="flex justify-between border-b border-white/5 pb-1">
                   <span className="text-neutral-500">OPTICAL SENSOR</span>
-                  <span className="text-amber-400 font-bold">DRACO High-Resolution Narrow-Angle Imager</span>
+                  <span className="text-amber-400 font-bold">DRACO Narrow-Angle Imager</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-neutral-500">PROPULSION STAGE</span>
@@ -457,7 +536,6 @@ export default function PlanetaryDefensePage() {
 
       </main>
 
-      {/* SpaceX Minimalist Footer */}
       <footer className="relative w-full px-6 sm:px-12 py-4 border-t border-white/10 bg-black/80 backdrop-blur-md flex flex-wrap items-center justify-between text-[10px] text-neutral-500 z-20">
         <div className="flex items-center gap-4">
           <span className="text-white font-bold tracking-wider">VEROYX PLANETARY DEFENSE NODE</span>
